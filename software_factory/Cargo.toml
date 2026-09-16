@@ -1,0 +1,26 @@
+[package]
+name = "software_factory"
+version = "0.1.0"
+edition = "2021"
+authors = ["Software Factory Systems Team <dev@softwarefactory.enterprise>"]
+description = "High-performance multi-tenant B2B SaaS runtime engine using Tokio async pipeline and Gemini structured outputs"
+
+[dependencies]
+tokio = { version = "1.38", features = ["full"] }
+axum = { version = "0.7", features = ["json", "macros"] }
+tower = { version = "0.4", features = ["util", "timeout", "load-shed"] }
+tower-http = { version = "0.5", features = ["trace", "cors"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+thiserror = "1.0"
+anyhow = "1.0"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+async-trait = "0.1"
+dashmap = "5.5"
+
+[dev-dependencies]
+tokio-test = "0.4"

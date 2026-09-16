@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-config
+  namespace: factory-production
+data:
+  APPWRITE_ENDPOINT: "https://cloud.appwrite.io/v1"
+  APPWRITE_DATABASE_ID: "b2b_software_factory"
+  APPWRITE_PROJECT_ID: "b2b_software_factory_proj"
+  RUST_LOG: "info,software_factory=debug"
+  PORT: "8080"
