@@ -1,0 +1,61 @@
+name: Software Factory CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint-and-test:
+    name: Rust Audit, Lint & Integration Testing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: software_factory
+
+      - name: Enforce Code Formatting
+        working-directory: software_factory
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy Linter
+        working-directory: software_factory
+        run: cargo clippy -- -D warnings
+
+      - name: Execute Unit & Integration Tests
+        working-directory: software_factory
+        run: cargo test --verbose
+
+  container-build:
+    name: Docker Multi-Stage Build & Push
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: software_factory
+          push: false
+          tags: gcr.io/b2b-software-factory/runtime:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

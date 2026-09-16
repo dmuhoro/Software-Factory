@@ -1,0 +1,6 @@
+{
+  "name": "Software Factory - Multi-Tenant B2B SaaS Platform",
+  "description": "High-performance enterprise architecture and execution engine for multi-niche B2B SaaS with Appwrite, Rust Tokio, and Gemini structured outputs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

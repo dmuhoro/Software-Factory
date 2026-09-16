@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: software-factory-ingress
+  namespace: factory-production
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  rules:
+    - host: api.softwarefactory.enterprise
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: software-factory-runtime
+                port:
+                  number: 8080

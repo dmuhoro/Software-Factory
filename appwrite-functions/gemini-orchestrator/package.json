@@ -1,0 +1,14 @@
+{
+  "name": "appwrite-gemini-orchestrator",
+  "version": "1.0.0",
+  "description": "Appwrite Serverless Function for multi-tenant multi-niche telemetry orchestration with Google GenAI structured outputs",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "node-appwrite": "^14.1.0"
+  }
+}
