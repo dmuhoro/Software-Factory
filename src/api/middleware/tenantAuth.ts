@@ -19,7 +19,7 @@ function isAuthenticated(req: Request): boolean {
 }
 
 export function tenantAuthMiddleware(req: Request, res: Response, next: NextFunction) {
-  if (req.path.startsWith('/health') || req.path.startsWith('/schemas')) return next();
+  if (req.path.startsWith('/health') || req.path.startsWith('/schemas') || req.path === '/factory/health') return next();
   if (!isAuthenticated(req)) return res.status(401).json(emitSecurityError('UNAUTHORIZED', 'Valid API credentials are required'));
 
   const tenantId = (req.headers['x-tenant-id'] as string) || req.body?.tenantId || (req.query.tenantId as string);
