@@ -7,7 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { PipelineOrchestrator } from '../../services/pipelineOrchestrator';
 import { AppwriteService } from '../../services/appwriteService';
-import { generateRustStackTrace } from '../../utils/validation';
+import { validateTenantRequest } from '../middleware/tenantAuth';
 
 const router = Router();
 
@@ -24,23 +24,20 @@ router.post('/ingest', async (req: Request, res: Response) => {
       status: 'error',
       code: 'PIPELINE_FAILURE',
       message: diagnosticMessage,
-      rustTrace: generateRustStackTrace('PIPELINE_FAILURE', diagnosticMessage),
     });
   }
 });
 
 router.get('/history', (req: Request, res: Response) => {
   const tenantId = (req.query.tenantId as string) || (req.headers['x-tenant-id'] as string);
-  if (tenantId) {
-    const records = AppwriteService.getTransformationsByTenant(tenantId);
-    return res.json({ status: 'success', tenantId, count: records.length, records });
-  }
-  const allRecords = AppwriteService.getAllTransformations();
-  return res.json({ status: 'success', count: allRecords.length, records: allRecords });
+  if (!tenantId || !validateTenantRequest(req, res)) return;
+  const records = AppwriteService.getTransformationsByTenant(tenantId);
+  return res.json({ status: 'success', tenantId, count: records.length, records });
 });
 
 router.get('/audit', (req: Request, res: Response) => {
   const tenantId = req.query.tenantId as string;
+  if (!tenantId || !validateTenantRequest(req, res)) return;
   const logs = AppwriteService.getAuditLogs(tenantId);
   return res.json({ status: 'success', count: logs.length, logs });
 });

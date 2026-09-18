@@ -143,7 +143,6 @@ export function emitMalformedContextError(diagnosticDescription: string, details
     code: 'MALFORMED_CONTEXT',
     message: diagnosticDescription,
     ...(details ? { details } : {}),
-    rustTrace: generateRustStackTrace('MALFORMED_CONTEXT', diagnosticDescription),
   };
 }
 
@@ -152,7 +151,6 @@ export function emitSecurityError(code: string, message: string): StandardErrorR
     status: 'error',
     code,
     message,
-    rustTrace: generateRustStackTrace(code, message),
   };
 }
 
