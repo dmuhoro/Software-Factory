@@ -2,6 +2,14 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.0.0-founder-mode] - 2026-09-18
+### Added
+- **Durable Founder Runtime**: Added atomic local persistence for telemetry, transformations, audit entries, and founder workflow jobs through the `AppwriteService` persistence port.
+- **Tenant-Safe API Boundary**: Added fail-closed bearer/API-key authentication, loopback-only development access, tenant context verification, and request body limits.
+- **Founder Software Factory Loop**: Added durable idea-to-delivery jobs with explicit state transitions and evidence recording at `/api/factory-jobs`.
+- **Measured Operations**: Replaced fabricated health and throughput values with process, persistence, latency, and audit metrics.
+- **Verification and Delivery**: Added founder-mode tests, a frozen Bun CI pipeline, a non-root production container, a founder contract, an operating playbook, and Sprint 08 documentation.
+
 ## [3.5.0] - 2026-09-16
 ### Added
 - **Tenant Audit PDF-Style Report**: Implemented `/src/utils/reportGenerator.ts` providing executive-level structured compliance, security flag summaries, and performance metric reports with automated print-to-PDF generation.
