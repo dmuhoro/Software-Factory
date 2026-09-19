@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test test/**/*.test.ts",
+    "test": "tsx --test --test-concurrency=1 test/**/*.test.ts",
     "verify": "npm run lint && npm test && npm run build"
   },
   "dependencies": {
