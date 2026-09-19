@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import test from 'node:test';
+import { DurableStore } from '../src/services/durableStore';
+import { FactoryJobService } from '../src/services/factoryJobService';
+
+const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-workspace-'));
+const repo = path.join(workspaceRoot, 'product');
+fs.mkdirSync(repo, { recursive: true });
+execFileSync('git', ['init', '-q', repo]);
+execFileSync('git', ['-C', repo, 'config', 'user.email', 'factory@test.local']);
+execFileSync('git', ['-C', repo, 'config', 'user.name', 'Factory Test']);
+fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ scripts: { verify: 'node -e "process.exit(0)"' } }));
+fs.mkdirSync(path.join(repo, 'dist'));
+fs.writeFileSync(path.join(repo, 'dist', 'index.html'), '<!doctype html><title>preview</title>');
+execFileSync('git', ['-C', repo, 'add', '.']);
+execFileSync('git', ['-C', repo, 'commit', '-qm', 'initial']);
+process.env.FACTORY_WORKSPACE_ROOT = workspaceRoot;
+process.env.FACTORY_PREVIEW_DIR = path.join(workspaceRoot, 'previews');
+process.env.FACTORY_DATA_DIR = path.join(workspaceRoot, 'data');
+
+ test('controlled delivery loop produces durable, verified preview evidence', () => {
+  DurableStore.resetForTests();
+  const job = FactoryJobService.create({ tenantId: 'tenant_re_8841', title: 'Delivery loop', problem: 'Manual delivery loses evidence', desiredOutcome: 'Every release is reproducible', acceptanceCriteria: ['verify passes'] });
+  let current = FactoryJobService.createProductBrief(job.tenantId, job.id, { audience: 'Founder', valueHypothesis: 'Reduce delivery risk', wedge: 'One repository at a time' });
+  current = FactoryJobService.createImplementationPlan(job.tenantId, job.id);
+  current = FactoryJobService.prepareRepository(job.tenantId, job.id, { repositoryPath: repo });
+  current = FactoryJobService.modifyRepository(job.tenantId, job.id, { files: [{ path: 'DELIVERY.md', content: '# Verified delivery\n' }] });
+  current = FactoryJobService.verifyRepository(job.tenantId, job.id);
+  assert.equal(current.verificationRun?.passed, true);
+  current = FactoryJobService.createPreview(job.tenantId, job.id);
+  current = FactoryJobService.addEvidence(job.tenantId, job.id, { kind: 'preview', description: 'Preview copied from verified dist output', uri: current.preview?.entrypoint });
+  assert.equal(current.repositoryRun?.branch, `factory/${job.id}`);
+  assert.equal(fs.existsSync(current.preview?.entrypoint || ''), true);
+  assert.equal(current.evidence.at(-1)?.kind, 'preview');
+  assert.equal(FactoryJobService.get(job.tenantId, job.id)?.verificationRun?.passed, true);
+});

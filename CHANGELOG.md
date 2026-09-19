@@ -2,6 +2,12 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.1.0-controlled-delivery] - 2026-09-18
+### Added
+- **Product Foundry Context**: Added the adopted founder/company operating model, trust-layer principles, bounded autonomy rule, and institutional-memory direction.
+- **Controlled Repository-to-Delivery Loop**: Added durable product briefs, implementation plans, approved workspace branch preparation, explicit file modification, bounded repository verification, verified build previews, and evidence attachment.
+- **Sprint 09 Documentation**: Added the delivery-loop implementation record and release boundaries.
+
 ## [4.0.0-founder-mode] - 2026-09-18
 ### Added
 - **Durable Founder Runtime**: Added atomic local persistence for telemetry, transformations, audit entries, and founder workflow jobs through the `AppwriteService` persistence port.
