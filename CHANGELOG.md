@@ -2,6 +2,13 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.2.0-context-compounding] - 2026-09-20
+### Added
+- **Repository Context Index**: Imported distilled product, architecture, security, quality, operations, and knowledge context from Forge.ai, Hermes-Forge, Forge, Portable-UI-Engine, and ShrinkMedia.
+- **Context-Aware Planning**: Implementation plans now inherit relevant repository patterns and trust-layer quality gates through deterministic context search.
+- **Compounding Quality Score**: Added evidence-derived launch quality snapshots across verification, security, evidence, operability, and product discipline, including baseline and percentage improvement tracking.
+- **Sprint 10 Documentation**: Added the repository context index and the context-compounding implementation record.
+
 ## [4.1.0-controlled-delivery] - 2026-09-18
 ### Added
 - **Product Foundry Context**: Added the adopted founder/company operating model, trust-layer principles, bounded autonomy rule, and institutional-memory direction.
