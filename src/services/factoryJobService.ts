@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { DurableStore } from './durableStore';
+import { ContextIndexService, seedBuiltInContexts } from './contextIndexService';
 
 export type FactoryJobStatus = 'IDEA' | 'SPECIFIED' | 'IMPLEMENTING' | 'VALIDATING' | 'DELIVERED' | 'BLOCKED';
 export interface ProductBrief { problem: string; audience: string; valueHypothesis: string; wedge: string; nonGoals: string[]; acceptanceCriteria: string[]; createdAt: string; }
-export interface ImplementationPlan { objective: string; steps: Array<{ id: string; title: string; description: string; status: 'pending' | 'complete' }>; verificationCommand: string; generatedAt: string; }
+export interface ImplementationPlan { objective: string; contextRefs: string[]; inheritedPatterns: string[]; qualityGates: string[]; steps: Array<{ id: string; title: string; description: string; status: 'pending' | 'complete' }>; verificationCommand: string; generatedAt: string; }
 export interface RepositoryRun { repositoryPath: string; branch: string; baseCommit: string; changedFiles: string[]; appliedAt: string; }
 export interface VerificationRun { command: string; passed: boolean; exitCode: number; output: string; startedAt: string; completedAt: string; }
 export interface PreviewArtifact { directory: string; entrypoint: string; generatedAt: string; }
@@ -50,12 +51,14 @@ export class FactoryJobService {
 
   public static createImplementationPlan(tenantId: string, id: string): FactoryJob {
     const job = this.get(tenantId, id); if (!job?.productBrief) throw new Error(job ? 'PRODUCT_BRIEF_REQUIRED' : 'FACTORY_JOB_NOT_FOUND');
+    seedBuiltInContexts();
+    const contexts = ContextIndexService.search(`${job.title} ${job.problem} ${job.productBrief.audience}`, 3);
     const plan: ImplementationPlan = { objective: job.productBrief.valueHypothesis, steps: [
       { id: 'contract', title: 'Define contract', description: 'Convert acceptance criteria into executable interfaces and states.', status: 'pending' },
       { id: 'implement', title: 'Implement vertical slice', description: `Build the smallest path for: ${job.productBrief.valueHypothesis}`, status: 'pending' },
       { id: 'verify', title: 'Verify trust layer', description: 'Run type checks, tests, security checks, and smoke validation.', status: 'pending' },
       { id: 'deliver', title: 'Prepare delivery evidence', description: 'Create a preview and attach the commit, verification, and preview artifacts.', status: 'pending' },
-    ], verificationCommand: 'npm run verify', generatedAt: new Date().toISOString() };
+    ], contextRefs: contexts.map((context) => context.repository), inheritedPatterns: [...new Set(contexts.flatMap((context) => context.patterns))].slice(0, 8), qualityGates: ['typecheck or compile gate', 'unit/integration verification gate', 'security and tenant-boundary review', 'observable evidence attached before delivery'], verificationCommand: 'npm run verify', generatedAt: new Date().toISOString() };
     const updated = this.save({ ...job, implementationPlan: plan }); audit(updated, 'IMPLEMENTATION_PLAN_CREATED'); return updated;
   }
 
@@ -88,6 +91,19 @@ export class FactoryJobService {
     const previewDir = path.resolve(process.env.FACTORY_PREVIEW_DIR || '.data/previews', job.id); fs.rmSync(previewDir, { recursive: true, force: true }); fs.cpSync(dist, previewDir, { recursive: true });
     const preview: PreviewArtifact = { directory: previewDir, entrypoint: path.join(previewDir, 'index.html'), generatedAt: new Date().toISOString() };
     const updated = this.save({ ...job, preview }); audit(updated, 'PREVIEW_CREATED'); return updated;
+  }
+
+  public static recordLaunchQuality(tenantId: string, id: string) {
+    const job = this.get(tenantId, id); if (!job) throw new Error('FACTORY_JOB_NOT_FOUND');
+    const dimensions = {
+      verification: job.verificationRun?.passed ? 25 : 0,
+      security: job.evidence.some((item) => item.kind.toLowerCase().includes('security')) ? 20 : 0,
+      evidence: Math.min(20, job.evidence.length * 5),
+      operability: job.repositoryRun && job.preview ? 15 : 0,
+      productDiscipline: job.productBrief && job.implementationPlan ? 20 : 0,
+    };
+    const score = Object.values(dimensions).reduce((sum, value) => sum + value, 0);
+    return ContextIndexService.recordQuality({ tenantId, jobId: id, productName: job.title, score, baselineScore: ContextIndexService.qualityBaseline(), dimensions, evidenceKinds: job.evidence.map((item) => item.kind) });
   }
 
 }
