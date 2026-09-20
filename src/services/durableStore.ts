@@ -3,19 +3,23 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export interface DurableState {
-  version: 1;
+  version: 2;
   telemetry: Record<string, Record<string, unknown>>;
   transformations: Record<string, Record<string, unknown>>;
   audits: Array<Record<string, unknown>>;
   factoryJobs: Record<string, Record<string, unknown>>;
+  repositoryContexts: Record<string, Record<string, unknown>>;
+  qualitySnapshots: Record<string, Record<string, unknown>>;
 }
 
 const defaultState = (): DurableState => ({
-  version: 1,
+  version: 2,
   telemetry: {},
   transformations: {},
   audits: [],
   factoryJobs: {},
+  repositoryContexts: {},
+  qualitySnapshots: {},
 });
 
 export class DurableStore {
@@ -28,7 +32,8 @@ export class DurableStore {
     if (this.state) return this.state;
     const file = this.dataFile();
     try {
-      this.state = JSON.parse(fs.readFileSync(file, 'utf8')) as DurableState;
+      const loaded = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<DurableState>;
+      this.state = { ...defaultState(), ...loaded, version: 2, repositoryContexts: loaded.repositoryContexts ?? {}, qualitySnapshots: loaded.qualitySnapshots ?? {} };
     } catch (error: unknown) {
       const code = (error as NodeJS.ErrnoException)?.code;
       if (code !== 'ENOENT') throw error;
@@ -54,17 +59,17 @@ export class DurableStore {
     return `${prefix}_${crypto.createHash('sha256').update(`${entropy}:${Date.now()}:${process.pid}`).digest('hex').slice(0, 20)}`;
   }
 
-  public static upsert(collection: 'telemetry' | 'transformations' | 'factoryJobs', id: string, value: Record<string, unknown>): void {
+  public static upsert(collection: 'telemetry' | 'transformations' | 'factoryJobs' | 'repositoryContexts' | 'qualitySnapshots', id: string, value: Record<string, unknown>): void {
     const state = this.ensureLoaded();
     state[collection][id] = value;
     this.persist();
   }
 
-  public static get(collection: 'telemetry' | 'transformations' | 'factoryJobs', id: string): Record<string, unknown> | undefined {
+  public static get(collection: 'telemetry' | 'transformations' | 'factoryJobs' | 'repositoryContexts' | 'qualitySnapshots', id: string): Record<string, unknown> | undefined {
     return this.ensureLoaded()[collection][id];
   }
 
-  public static list(collection: 'telemetry' | 'transformations' | 'factoryJobs'): Record<string, unknown>[] {
+  public static list(collection: 'telemetry' | 'transformations' | 'factoryJobs' | 'repositoryContexts' | 'qualitySnapshots'): Record<string, unknown>[] {
     return Object.values(this.ensureLoaded()[collection]);
   }
 
