@@ -3,17 +3,21 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { DurableStore } from './durableStore';
 import { ContextIndexService, seedBuiltInContexts } from './contextIndexService';
+import { detectVerificationProfile, executeVerification, VerificationProfile, FailureClass } from './verificationProfileService';
+import { ApprovalPolicyService } from './approvalPolicyService';
 
 export type FactoryJobStatus = 'IDEA' | 'SPECIFIED' | 'IMPLEMENTING' | 'VALIDATING' | 'DELIVERED' | 'BLOCKED';
 export interface ProductBrief { problem: string; audience: string; valueHypothesis: string; wedge: string; nonGoals: string[]; acceptanceCriteria: string[]; createdAt: string; }
 export interface ImplementationPlan { objective: string; contextRefs: string[]; inheritedPatterns: string[]; qualityGates: string[]; steps: Array<{ id: string; title: string; description: string; status: 'pending' | 'complete' }>; verificationCommand: string; generatedAt: string; }
 export interface RepositoryRun { repositoryPath: string; branch: string; baseCommit: string; changedFiles: string[]; appliedAt: string; }
-export interface VerificationRun { command: string; passed: boolean; exitCode: number; output: string; startedAt: string; completedAt: string; }
+export interface VerificationRun { command: string; profile: VerificationProfile; passed: boolean; exitCode: number; output: string; failedStep?: string; failureClass?: FailureClass; startedAt: string; completedAt: string; }
+export interface RepairAttempt { attempt: number; appliedFiles: string[]; passed: boolean; failedStep?: string; failureClass?: FailureClass; output: string; recordedAt: string; }
+export interface RepairLoopRun { maxAttempts: number; attempts: RepairAttempt[]; passed: boolean; stoppedReason: 'PASSED' | 'MAX_ATTEMPTS' | 'NO_REPAIR_AVAILABLE'; completedAt: string; }
 export interface PreviewArtifact { directory: string; entrypoint: string; generatedAt: string; }
 export interface FactoryJob {
   id: string; tenantId: string; title: string; problem: string; desiredOutcome: string; status: FactoryJobStatus; acceptanceCriteria: string[];
   evidence: Array<{ kind: string; description: string; uri?: string; recordedAt: string }>;
-  productBrief?: ProductBrief; implementationPlan?: ImplementationPlan; repositoryRun?: RepositoryRun; verificationRun?: VerificationRun; preview?: PreviewArtifact;
+  productBrief?: ProductBrief; implementationPlan?: ImplementationPlan; repositoryRun?: RepositoryRun; verificationRun?: VerificationRun; repairLoop?: RepairLoopRun; preview?: PreviewArtifact;
   createdAt: string; updatedAt: string;
 }
 
@@ -40,7 +44,7 @@ export class FactoryJobService {
   public static list(tenantId: string): FactoryJob[] { return DurableStore.list('factoryJobs').filter((job) => job.tenantId === tenantId) as unknown as FactoryJob[]; }
   public static get(tenantId: string, id: string): FactoryJob | undefined { const job = DurableStore.get('factoryJobs', id) as unknown as FactoryJob | undefined; return job?.tenantId === tenantId ? job : undefined; }
   private static save(job: FactoryJob): FactoryJob { const updated = { ...job, updatedAt: new Date().toISOString() }; DurableStore.upsert('factoryJobs', job.id, updated as unknown as Record<string, unknown>); return updated; }
-  public static transition(tenantId: string, id: string, status: FactoryJobStatus): FactoryJob { const job = this.get(tenantId, id); if (!job) throw new Error('FACTORY_JOB_NOT_FOUND'); if (!transitions[job.status].includes(status)) throw new Error(`INVALID_FACTORY_TRANSITION:${job.status}->${status}`); const updated = this.save({ ...job, status }); audit(updated, 'FACTORY_JOB_STATUS_CHANGED'); return updated; }
+  public static transition(tenantId: string, id: string, status: FactoryJobStatus): FactoryJob { const job = this.get(tenantId, id); if (!job) throw new Error('FACTORY_JOB_NOT_FOUND'); if (!transitions[job.status].includes(status)) throw new Error(`INVALID_FACTORY_TRANSITION:${job.status}->${status}`); if (status === 'DELIVERED') ApprovalPolicyService.assertApproved(tenantId, id, 'DEPLOY_PRODUCTION'); const updated = this.save({ ...job, status }); audit(updated, 'FACTORY_JOB_STATUS_CHANGED'); return updated; }
   public static addEvidence(tenantId: string, id: string, evidence: { kind: string; description: string; uri?: string }): FactoryJob { const job = this.get(tenantId, id); if (!job) throw new Error('FACTORY_JOB_NOT_FOUND'); const updated = this.save({ ...job, evidence: [...job.evidence, { ...evidence, recordedAt: new Date().toISOString() }] }); audit(updated, 'FACTORY_JOB_EVIDENCE_RECORDED'); return updated; }
 
   public static createProductBrief(tenantId: string, id: string, input: { audience: string; valueHypothesis: string; wedge: string; nonGoals?: string[] }): FactoryJob {
@@ -79,10 +83,22 @@ export class FactoryJobService {
 
   public static verifyRepository(tenantId: string, id: string): FactoryJob {
     const job = this.get(tenantId, id); if (!job?.repositoryRun) throw new Error(job ? 'REPOSITORY_BRANCH_REQUIRED' : 'FACTORY_JOB_NOT_FOUND');
-    const startedAt = new Date().toISOString(); let exitCode = 0; let output = '';
-    try { output = execFileSync('npm', ['run', 'verify'], { cwd: job.repositoryRun.repositoryPath, encoding: 'utf8', timeout: Number(process.env.FACTORY_VERIFY_TIMEOUT_MS || 120000), maxBuffer: 2_000_000 }); } catch (error: any) { exitCode = typeof error.status === 'number' ? error.status : 1; output = `${error.stdout || ''}${error.stderr || ''}`.slice(-2_000_000); }
-    const verificationRun: VerificationRun = { command: 'npm run verify', passed: exitCode === 0, exitCode, output, startedAt, completedAt: new Date().toISOString() };
+    const startedAt = new Date().toISOString(); const profile = detectVerificationProfile(job.repositoryRun.repositoryPath); const execution = executeVerification(job.repositoryRun.repositoryPath, profile, Number(process.env.FACTORY_VERIFY_TIMEOUT_MS || 120000));
+    const verificationRun: VerificationRun = { command: profile.steps.map((step) => step.label).join(' && '), profile, passed: execution.passed, exitCode: execution.exitCode, output: execution.output, failedStep: execution.failedStep, failureClass: execution.failureClass, startedAt, completedAt: new Date().toISOString() };
     const updated = this.save({ ...job, verificationRun, status: verificationRun.passed ? 'VALIDATING' : 'BLOCKED' }); audit(updated, verificationRun.passed ? 'REPOSITORY_VERIFIED' : 'REPOSITORY_VERIFICATION_FAILED'); return updated;
+  }
+
+  public static runRepairLoop(tenantId: string, id: string, input: { repairs: Array<{ files: Array<{ path: string; content: string }> }>; maxAttempts?: number }): FactoryJob {
+    let job = this.get(tenantId, id); if (!job?.repositoryRun) throw new Error(job ? 'REPOSITORY_BRANCH_REQUIRED' : 'FACTORY_JOB_NOT_FOUND');
+    const maxAttempts = Math.max(1, Math.min(input.maxAttempts ?? 3, 5)); const attempts: RepairAttempt[] = [];
+    for (let index = 0; index < maxAttempts; index += 1) {
+      const repair = input.repairs[index]; if (!repair) break;
+      job = this.modifyRepository(tenantId, id, repair); job = this.verifyRepository(tenantId, id);
+      attempts.push({ attempt: index + 1, appliedFiles: job.repositoryRun?.changedFiles ?? [], passed: Boolean(job.verificationRun?.passed), failedStep: job.verificationRun?.failedStep, failureClass: job.verificationRun?.failureClass, output: job.verificationRun?.output ?? '', recordedAt: new Date().toISOString() });
+      if (job.verificationRun?.passed) { const completed = this.save({ ...job, repairLoop: { maxAttempts, attempts, passed: true, stoppedReason: 'PASSED', completedAt: new Date().toISOString() } }); audit(completed, 'REPAIR_LOOP_PASSED'); return completed; }
+    }
+    const stoppedReason = input.repairs.length < 1 ? 'NO_REPAIR_AVAILABLE' : 'MAX_ATTEMPTS';
+    const completed = this.save({ ...job, repairLoop: { maxAttempts, attempts, passed: false, stoppedReason, completedAt: new Date().toISOString() }, status: 'BLOCKED' }); audit(completed, 'REPAIR_LOOP_BLOCKED'); return completed;
   }
 
   public static createPreview(tenantId: string, id: string): FactoryJob {
