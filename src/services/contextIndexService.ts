@@ -1,4 +1,7 @@
 import { DurableStore } from './durableStore';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 export type ContextKind = 'product' | 'architecture' | 'quality' | 'operations' | 'security' | 'knowledge';
 export interface RepositoryContext {
@@ -59,6 +62,19 @@ export class ContextIndexService {
     const snapshots = tenantId ? this.qualityHistory(tenantId) : DurableStore.list('qualitySnapshots') as unknown as QualitySnapshot[];
     const latest = [...snapshots].sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))[0];
     return { baselineScore: this.qualityBaseline(), launches: snapshots.length, latestScore: latest?.score ?? null, latestImprovementPercent: latest?.improvementPercent ?? null, averageImprovementPercent: snapshots.length ? Math.round(snapshots.reduce((sum, item) => sum + item.improvementPercent, 0) / snapshots.length * 10) / 10 : 0 };
+  }
+  public static refreshRepository(repository: string, sourcePath: string): RepositoryContext {
+    const current = this.list().find((context) => context.repository.toLowerCase() === repository.toLowerCase()); if (!current) throw new Error('REPOSITORY_CONTEXT_NOT_FOUND');
+    const root = path.resolve(sourcePath); const workspace = path.resolve(process.env.FACTORY_WORKSPACE_ROOT || process.cwd()); if (!(root === workspace || root.startsWith(`${workspace}${path.sep}`))) throw new Error('REPOSITORY_SOURCE_OUTSIDE_APPROVED_WORKSPACE'); if (!fs.existsSync(path.join(root, '.git'))) throw new Error('REPOSITORY_SOURCE_NOT_GIT');
+    const commit = execFileSync('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8', timeout: 30000 }).trim();
+    const files = fs.readdirSync(root, { withFileTypes: true }); const testCount = files.filter((entry) => /test|spec/i.test(entry.name)).length; const hasCi = fs.existsSync(path.join(root, '.github', 'workflows'));
+    const refreshed: RepositoryContext = { ...current, commit, qualityPractices: [...new Set([...current.qualityPractices, ...(testCount ? ['refresh detected test assets'] : []), ...(hasCi ? ['refresh detected CI workflows'] : [])])], importedAt: new Date().toISOString() };
+    DurableStore.upsert('repositoryContexts', current.id, refreshed as unknown as Record<string, unknown>); return refreshed;
+  }
+  public static promotePattern(repository: string, pattern: string, adapter: string): RepositoryContext {
+    const current = this.list().find((context) => context.repository.toLowerCase() === repository.toLowerCase()); if (!current) throw new Error('REPOSITORY_CONTEXT_NOT_FOUND');
+    const updated: RepositoryContext = { ...current, patterns: [...new Set([...current.patterns, pattern.trim()])], adapters: [...new Set([...current.adapters, adapter.trim()])], importedAt: new Date().toISOString() };
+    DurableStore.upsert('repositoryContexts', current.id, updated as unknown as Record<string, unknown>); return updated;
   }
 }
 
