@@ -3,6 +3,7 @@ import { validateTenantRequest } from '../middleware/tenantAuth';
 import { WorkspaceService } from '../../services/workspaceService';
 import { FactoryJobService } from '../../services/factoryJobService';
 import { ExecutionBoundaryService } from '../../services/executionBoundaryService';
+import { ReleaseService } from '../../services/releaseService';
 
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
@@ -18,4 +19,7 @@ router.post('/jobs/:id/tasks/:taskId', (req, res) => { if (!validateTenantReques
 router.get('/jobs/:id/continuation', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', report: FactoryJobService.continuationReport(tenant(req), req.params.id) }); } catch (error: any) { return fail(res, error); } });
 router.post('/execution/manifest', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', manifest: ExecutionBoundaryService.createManifest(tenant(req), req.body.sourcePath, req.body) }); } catch (error: any) { return fail(res, error); } });
 router.post('/execution/:manifestId/run', (req, res) => { if (!validateTenantRequest(req, res)) return; try { const run = ExecutionBoundaryService.run(tenant(req), req.params.manifestId); return res.json({ status: 'success', run: { ...run, digest: ExecutionBoundaryService.digestRun(run) } }); } catch (error: any) { return fail(res, error); } });
+router.get('/releases', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', releases: ReleaseService.list(tenant(req)), current: ReleaseService.current(tenant(req)) ?? null }); });
+router.post('/jobs/:id/release', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', release: ReleaseService.deploy(tenant(req), req.params.id) }); } catch (error: any) { return fail(res, error); } });
+router.post('/releases/rollback', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', release: ReleaseService.rollback(tenant(req), req.body.releaseId) }); } catch (error: any) { return fail(res, error); } });
 export default router;
