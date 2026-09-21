@@ -4,6 +4,9 @@ import { WorkspaceService } from '../../services/workspaceService';
 import { FactoryJobService } from '../../services/factoryJobService';
 import { ExecutionBoundaryService } from '../../services/executionBoundaryService';
 import { ReleaseService } from '../../services/releaseService';
+import { FailureService } from '../../services/failureService';
+import { OutcomeService } from '../../services/outcomeService';
+import { AutonomyService } from '../../services/autonomyService';
 
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
@@ -22,4 +25,14 @@ router.post('/execution/:manifestId/run', (req, res) => { if (!validateTenantReq
 router.get('/releases', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', releases: ReleaseService.list(tenant(req)), current: ReleaseService.current(tenant(req)) ?? null }); });
 router.post('/jobs/:id/release', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', release: ReleaseService.deploy(tenant(req), req.params.id) }); } catch (error: any) { return fail(res, error); } });
 router.post('/releases/rollback', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', release: ReleaseService.rollback(tenant(req), req.body.releaseId) }); } catch (error: any) { return fail(res, error); } });
+router.get('/failures', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', failures: FailureService.list(tenant(req)) }); });
+router.post('/failures', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', failure: FailureService.record({ ...req.body, tenantId: tenant(req) }) }); } catch (error: any) { return fail(res, error); } });
+router.post('/failures/:id/retry', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', failure: FailureService.retry(tenant(req), req.params.id) }); } catch (error: any) { return fail(res, error); } });
+router.post('/failures/:id/resolve', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', failure: FailureService.resolve(tenant(req), req.params.id, req.body.evidence) }); } catch (error: any) { return fail(res, error); } });
+router.get('/outcomes', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', outcomes: OutcomeService.list(tenant(req)), summary: OutcomeService.summary(tenant(req)) }); });
+router.post('/outcomes', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', outcome: OutcomeService.record({ ...req.body, tenantId: tenant(req) }) }); } catch (error: any) { return fail(res, error); } });
+router.get('/autonomy', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', sessions: AutonomyService.list(tenant(req)) }); });
+router.post('/autonomy', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', session: AutonomyService.start({ ...req.body, tenantId: tenant(req) }) }); } catch (error: any) { return fail(res, error); } });
+router.post('/autonomy/:id/consume', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', session: AutonomyService.consume(tenant(req), req.params.id, req.body.action, req.body.costUnits) }); } catch (error: any) { return fail(res, error); } });
+router.post('/autonomy/:id/abort', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', session: AutonomyService.abort(tenant(req), req.params.id) }); } catch (error: any) { return fail(res, error); } });
 export default router;
