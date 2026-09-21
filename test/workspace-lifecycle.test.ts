@@ -9,6 +9,7 @@ import { FactoryJobService } from '../src/services/factoryJobService';
 import { WorkspaceService } from '../src/services/workspaceService';
 import { ApprovalPolicyService } from '../src/services/approvalPolicyService';
 import { ExecutionBoundaryService } from '../src/services/executionBoundaryService';
+import { ReleaseService } from '../src/services/releaseService';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-workspace-lifecycle-'));
 const repo = path.join(root, 'product');
@@ -16,12 +17,16 @@ fs.mkdirSync(repo, { recursive: true });
 execFileSync('git', ['init', '-q', repo]);
 execFileSync('git', ['-C', repo, 'config', 'user.email', 'lifecycle@test.local']);
 execFileSync('git', ['-C', repo, 'config', 'user.name', 'Lifecycle Test']);
-fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ scripts: { verify: 'node -e "process.exit(0)"' } }));
+fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ scripts: { verify: 'node -e \"process.exit(0)\"' } }));
+fs.mkdirSync(path.join(repo, 'dist'));
+fs.writeFileSync(path.join(repo, 'dist', 'index.html'), '<!doctype html><title>release</title>');
 execFileSync('git', ['-C', repo, 'add', '.']);
 execFileSync('git', ['-C', repo, 'commit', '-qm', 'initial']);
 process.env.FACTORY_WORKSPACE_ROOT = root;
 process.env.FACTORY_DATA_DIR = path.join(root, 'data');
 process.env.FACTORY_BACKUP_DIR = path.join(root, 'backups');
+process.env.FACTORY_PREVIEW_DIR = path.join(root, 'previews');
+process.env.FACTORY_RELEASE_DIR = path.join(root, 'releases');
 
 test('project registry creates a canonical daily workspace record', () => {
   DurableStore.resetForTests();
@@ -63,4 +68,23 @@ test('isolated execution uses a commit snapshot, sanitized environment, and clea
   assert.equal(run.passed, true);
   assert.equal(fs.existsSync(manifest.snapshotPath), false);
   assert.equal(ExecutionBoundaryService.digestRun(run).length, 64);
+});
+
+test('verified preview deploys as an immutable release and can roll back', () => {
+  DurableStore.resetForTests();
+  const job = FactoryJobService.create({ tenantId: 'tenant_re_8841', title: 'Release proof', problem: 'Preview needs a real release artifact', desiredOutcome: 'Health-checked release', acceptanceCriteria: [] });
+  let current = FactoryJobService.createProductBrief(job.tenantId, job.id, { audience: 'Founder', valueHypothesis: 'Release safely', wedge: 'Filesystem adapter' });
+  current = FactoryJobService.createImplementationPlan(job.tenantId, current.id);
+  current = FactoryJobService.prepareRepository(job.tenantId, current.id, { repositoryPath: repo });
+  current = FactoryJobService.verifyRepository(job.tenantId, current.id);
+  current = FactoryJobService.createPreview(job.tenantId, current.id);
+  const approval = ApprovalPolicyService.request({ tenantId: job.tenantId, jobId: job.id, action: 'DEPLOY_PRODUCTION', rationale: 'Verified release proof' });
+  ApprovalPolicyService.decide(job.tenantId, approval.id, 'APPROVED', 'Approved in test');
+  const release = ReleaseService.deploy(job.tenantId, job.id);
+  assert.equal(release.status, 'DEPLOYED');
+  assert.equal(release.health.passed, true);
+  assert.equal(ReleaseService.current(job.tenantId)?.id, release.id);
+  const second = ReleaseService.deploy(job.tenantId, job.id);
+  assert.equal(second.previousReleaseId, release.id);
+  assert.equal(ReleaseService.rollback(job.tenantId).id, release.id);
 });

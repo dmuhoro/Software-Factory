@@ -1,0 +1,23 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { DurableStore } from './durableStore';
+import { ApprovalPolicyService } from './approvalPolicyService';
+import { FactoryJobService } from './factoryJobService';
+
+export type ReleaseStatus = 'PREPARED' | 'DEPLOYED' | 'FAILED' | 'ROLLED_BACK';
+export interface ReleaseRecord { id: string; tenantId: string; jobId: string; sourceCommit: string; artifactDirectory: string; artifactChecksum: string; target: string; previousReleaseId?: string; status: ReleaseStatus; health: { passed: boolean; entrypoint: string; checkedAt: string; message: string }; createdAt: string; deployedAt?: string; rolledBackAt?: string; }
+function checksumDirectory(directory: string): string { const hash = crypto.createHash('sha256'); const walk = (current: string): void => { for (const entry of fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) { const target = path.join(current, entry.name); if (entry.isDirectory()) walk(target); else hash.update(path.relative(directory, target)).update(fs.readFileSync(target)); } }; walk(directory); return hash.digest('hex'); }
+
+export class ReleaseService {
+  private static root(): string { return path.resolve(process.env.FACTORY_RELEASE_DIR || '.data/releases'); }
+  private static currentFile(tenantId: string): string { return path.join(this.root(), `${tenantId}.current.json`); }
+  public static deploy(tenantId: string, jobId: string): ReleaseRecord {
+    const job = FactoryJobService.get(tenantId, jobId); if (!job?.repositoryRun || !job.verificationRun?.passed) throw new Error('PASSED_VERIFICATION_REQUIRED'); if (!job.preview) throw new Error('PREVIEW_REQUIRED'); ApprovalPolicyService.assertApproved(tenantId, jobId, 'DEPLOY_PRODUCTION');
+    const source = job.preview.directory; if (!fs.existsSync(path.join(source, 'index.html'))) throw new Error('RELEASE_ENTRYPOINT_NOT_FOUND'); const releaseId = DurableStore.id('release', `${tenantId}:${jobId}`); const directory = path.join(this.root(), tenantId, releaseId); fs.mkdirSync(path.dirname(directory), { recursive: true }); fs.cpSync(source, directory, { recursive: true }); const current = this.current(tenantId); const createdAt = new Date().toISOString(); const health = this.healthCheck(directory); const record: ReleaseRecord = { id: releaseId, tenantId, jobId, sourceCommit: job.repositoryRun.baseCommit, artifactDirectory: directory, artifactChecksum: checksumDirectory(directory), target: job.repositoryRun.repositoryPath, previousReleaseId: current?.id, status: health.passed ? 'DEPLOYED' : 'FAILED', health, createdAt, deployedAt: health.passed ? createdAt : undefined }; DurableStore.upsert('releases', releaseId, record as unknown as Record<string, unknown>); if (health.passed) fs.writeFileSync(this.currentFile(tenantId), JSON.stringify({ releaseId }, null, 2), { mode: 0o600 }); return record;
+  }
+  public static healthCheck(directory: string) { const entrypoint = path.join(directory, 'index.html'); const passed = fs.existsSync(entrypoint) && fs.statSync(entrypoint).size > 0; return { passed, entrypoint, checkedAt: new Date().toISOString(), message: passed ? 'Entrypoint is present and non-empty' : 'Entrypoint is missing or empty' }; }
+  public static current(tenantId: string): ReleaseRecord | undefined { try { const pointer = JSON.parse(fs.readFileSync(this.currentFile(tenantId), 'utf8')); return DurableStore.get('releases', pointer.releaseId) as unknown as ReleaseRecord | undefined; } catch { return undefined; } }
+  public static rollback(tenantId: string, releaseId?: string): ReleaseRecord { const target = releaseId ? DurableStore.get('releases', releaseId) as unknown as ReleaseRecord | undefined : this.current(tenantId)?.previousReleaseId ? DurableStore.get('releases', this.current(tenantId)?.previousReleaseId as string) as unknown as ReleaseRecord | undefined : undefined; if (!target || target.tenantId !== tenantId || target.status === 'FAILED') throw new Error('ROLLBACK_TARGET_NOT_FOUND'); const health = this.healthCheck(target.artifactDirectory); if (!health.passed) throw new Error('ROLLBACK_TARGET_UNHEALTHY'); fs.writeFileSync(this.currentFile(tenantId), JSON.stringify({ releaseId: target.id }, null, 2), { mode: 0o600 }); const updated = { ...target, status: 'ROLLED_BACK' as const, health, rolledBackAt: new Date().toISOString() }; DurableStore.upsert('releases', target.id, updated as unknown as Record<string, unknown>); return updated; }
+  public static list(tenantId: string): ReleaseRecord[] { return DurableStore.list('releases').filter((release) => release.tenantId === tenantId) as unknown as ReleaseRecord[]; }
+}
