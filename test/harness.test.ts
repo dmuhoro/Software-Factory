@@ -55,6 +55,7 @@ test('approval policy blocks delivery until a founder decision is durable', () =
   assert.throws(() => FactoryJobService.transition(job.tenantId, current.id, 'DELIVERED'), /APPROVAL_REQUIRED/);
   const request = ApprovalPolicyService.request({ tenantId: job.tenantId, jobId: job.id, action: 'DEPLOY_PRODUCTION', rationale: 'Founder reviewed verified preview' });
   ApprovalPolicyService.decide(job.tenantId, request.id, 'APPROVED', 'Approved for founder release');
+  FactoryJobService.addEvidence(job.tenantId, job.id, { kind: 'verification', description: 'Founder reviewed the release evidence' });
   assert.equal(FactoryJobService.transition(job.tenantId, job.id, 'DELIVERED').status, 'DELIVERED');
 });
 
