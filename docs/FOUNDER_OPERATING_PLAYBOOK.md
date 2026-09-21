@@ -57,6 +57,41 @@ At the beginning of a work session, select one job and write the desired outcome
 
 This is the first form of the software factory. It turns founder judgment into a repeatable, inspectable system. Later adapters can automate repository changes, preview environments, deployment, and customer feedback without changing the job contract.
 
+## Daily workspace operations
+
+Register a repository once so future jobs refer to a canonical project instead of a filesystem path:
+
+```bash
+curl -X POST http://localhost:3000/api/workspace/projects \
+  -H 'content-type: application/json' -H 'x-tenant-id: tenant_re_8841' \
+  -d '{"tenantId":"tenant_re_8841","name":"Founder Product","repositoryPath":"/approved/workspace/founder-product","kind":"personal","deploymentTarget":"filesystem-preview"}'
+```
+
+Start each work session by checking the inbox and continuation report. The inbox exposes projects, blocked jobs, unfinished jobs, decisions, and pending approvals. A continuation report identifies missing product briefs, implementation plans, branches, verification, previews, and incomplete definition-of-done tasks.
+
+```bash
+curl -H 'x-tenant-id: tenant_re_8841' http://localhost:3000/api/workspace/inbox
+curl -H 'x-tenant-id: tenant_re_8841' http://localhost:3000/api/workspace/jobs/JOB_ID/continuation
+```
+
+For a verified preview, request approval before release. The filesystem release adapter records the source commit, artifact checksum, health check, current release, and rollback target.
+
+```bash
+curl -X POST http://localhost:3000/api/workspace/jobs/JOB_ID/release \
+  -H 'content-type: application/json' -H 'x-tenant-id: tenant_re_8841' \
+  -d '{"tenantId":"tenant_re_8841"}'
+```
+
+After delivery, record outcomes instead of relying on memory. Use time saved, defects, client acceptance, adoption, revenue, incidents, or learning signals. These records become evidence for future quality improvements.
+
+```bash
+curl -X POST http://localhost:3000/api/workspace/outcomes \
+  -H 'content-type: application/json' -H 'x-tenant-id: tenant_re_8841' \
+  -d '{"tenantId":"tenant_re_8841","jobId":"JOB_ID","productName":"Founder Product","signal":"TIME_SAVED","value":4,"unit":"hours/week","note":"Reduced release administration","reusablePatterns":["evidence-first release"]}'
+```
+
+The current execution boundary is a bounded local snapshot adapter. It is appropriate for controlled founder pilot work, but it is not a substitute for a container or microVM when running untrusted client code.
+
 ## Safety rules
 
 Never put provider API keys in the browser. Never enable insecure local access on a network-facing deployment. Do not mark a job delivered without evidence. Do not treat simulated metrics as operational truth. Back up `.data` before migrations and test restore before relying on the ledger as the only record.

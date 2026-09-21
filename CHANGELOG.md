@@ -2,6 +2,18 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.4.0-real-world-readiness] - 2026-09-21
+### Added
+- **Founder Workspace**: Added canonical project registration, lifecycle metadata, daily inbox, and checksum-validated ledger backup/restore.
+- **Complete Lifecycle**: Added definition-of-done tasks, continuation reports for incomplete repositories, expanded lifecycle statuses, and evidence-aware delivery gates.
+- **Execution Boundary**: Added ephemeral commit snapshots, sanitized environment metadata, disabled-network policy, bounded execution limits, run digests, and cleanup.
+- **Release Adapter**: Added immutable filesystem releases, artifact checksums, health checks, approval-gated deployment, current-release pointers, and rollback to a previous known-good artifact.
+- **Recovery and Anti-Fragility**: Added failure taxonomy, prescribed next actions, retry budgets, escalation, resolution evidence, and release-health failure recording.
+- **Product Outcomes**: Added durable adoption, retention, time-saved, revenue, client-acceptance, feedback, defect, incident, and learning signals.
+- **Bounded Autonomy**: Added graduated autonomy sessions with allowlisted actions, step limits, retry limits, cost budgets, and irreversible-action escalation.
+- **Sprint 12 Documentation**: Added the real-world readiness implementation record and updated the harness contract and founder operating playbook.
+- **Verification**: The complete test suite now passes 19 tests, lint, production build, whitespace checks, and protected API smoke tests.
+
 ## [4.3.0-harness-engineering] - 2026-09-21
 ### Added
 - **Verification Profiles**: Added repository-aware verification for Node/npm, Android Gradle, Rust Cargo, Python, and Git integrity projects with bounded sequential execution.
