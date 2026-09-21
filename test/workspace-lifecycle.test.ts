@@ -8,6 +8,7 @@ import { DurableStore } from '../src/services/durableStore';
 import { FactoryJobService } from '../src/services/factoryJobService';
 import { WorkspaceService } from '../src/services/workspaceService';
 import { ApprovalPolicyService } from '../src/services/approvalPolicyService';
+import { ExecutionBoundaryService } from '../src/services/executionBoundaryService';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-workspace-lifecycle-'));
 const repo = path.join(root, 'product');
@@ -51,4 +52,15 @@ test('continuation report exposes incomplete work and delivery is blocked by pen
   const approval = ApprovalPolicyService.request({ tenantId: job.tenantId, jobId: job.id, action: 'DEPLOY_PRODUCTION', rationale: 'Test delivery gate' });
   ApprovalPolicyService.decide(job.tenantId, approval.id, 'APPROVED', 'Still pending task should block');
   assert.throws(() => FactoryJobService.transition(job.tenantId, current.id, 'DELIVERED'), /COMPLETION_TASKS_PENDING/);
+});
+
+test('isolated execution uses a commit snapshot, sanitized environment, and cleans up', () => {
+  DurableStore.resetForTests();
+  const manifest = ExecutionBoundaryService.createManifest('tenant_re_8841', repo, { timeoutMs: 30000 });
+  assert.equal(manifest.network, 'disabled');
+  assert.equal(manifest.environment, 'sanitized');
+  const run = ExecutionBoundaryService.run('tenant_re_8841', manifest.id);
+  assert.equal(run.passed, true);
+  assert.equal(fs.existsSync(manifest.snapshotPath), false);
+  assert.equal(ExecutionBoundaryService.digestRun(run).length, 64);
 });

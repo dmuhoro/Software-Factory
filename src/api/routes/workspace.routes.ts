@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { validateTenantRequest } from '../middleware/tenantAuth';
 import { WorkspaceService } from '../../services/workspaceService';
 import { FactoryJobService } from '../../services/factoryJobService';
+import { ExecutionBoundaryService } from '../../services/executionBoundaryService';
 
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
@@ -15,4 +16,6 @@ router.post('/restore/:backupId', (req, res) => { if (!validateTenantRequest(req
 router.post('/jobs/:id/tasks', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', job: FactoryJobService.addCompletionTask(tenant(req), req.params.id, req.body) }); } catch (error: any) { return fail(res, error); } });
 router.post('/jobs/:id/tasks/:taskId', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', job: FactoryJobService.updateCompletionTask(tenant(req), req.params.id, req.params.taskId, req.body.status, req.body.evidenceKinds) }); } catch (error: any) { return fail(res, error); } });
 router.get('/jobs/:id/continuation', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', report: FactoryJobService.continuationReport(tenant(req), req.params.id) }); } catch (error: any) { return fail(res, error); } });
+router.post('/execution/manifest', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', manifest: ExecutionBoundaryService.createManifest(tenant(req), req.body.sourcePath, req.body) }); } catch (error: any) { return fail(res, error); } });
+router.post('/execution/:manifestId/run', (req, res) => { if (!validateTenantRequest(req, res)) return; try { const run = ExecutionBoundaryService.run(tenant(req), req.params.manifestId); return res.json({ status: 'success', run: { ...run, digest: ExecutionBoundaryService.digestRun(run) } }); } catch (error: any) { return fail(res, error); } });
 export default router;
