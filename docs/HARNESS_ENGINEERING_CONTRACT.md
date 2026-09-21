@@ -12,7 +12,7 @@ The remaining **32.4 points** represent the surrounding manufacturing system req
 | Bounded failure classification and repair loop | 8 | Implemented: classified failures, explicit patches, maximum five attempts, durable outcomes |
 | Approval policy for irreversible actions | 6 | Implemented: durable approval requests and delivery gate |
 | Context refresh and institutional-pattern promotion | 5 | Implemented: workspace-bound refresh and explicit pattern promotion |
-| Runtime isolation, deployment adapters, and production recovery | 5.4 | Partially implemented: workspace boundary and audit exist; container isolation and deployment adapters remain separate controlled adapters |
+| Runtime isolation, deployment adapters, and production recovery | 5.4 | Partially implemented: ephemeral sanitized execution, filesystem release, health checks, rollback, recovery records, and backups exist; hardened container/microVM execution and hosted deployment remain separate adapters |
 
 The gap is therefore covered by **capabilities**, not by simply finishing the five repositories. Completing a repository improves the factory only when its verified patterns, tests, evidence, and operational knowledge are deliberately refreshed and promoted into the context index.
 
@@ -34,6 +34,8 @@ Repository change
 
 The refresh endpoint updates the indexed repository commit and detects basic evidence signals within the approved workspace. The promotion endpoint requires an explicit repository, pattern, and factory adapter. This makes improvement deliberate and auditable while remaining fast.
 
+Repository completion now has a direct operational path into the factory. A registered project can refresh its source commit, run its detected verification profile in an ephemeral sanitized snapshot, deploy a verified filesystem release after approval, record post-launch outcomes, and promote reviewed patterns. The factory still does not silently learn from unverified source changes.
+
 ## Harness layers
 
 ### Control layer
@@ -42,11 +44,11 @@ Constitution, ADRs, product briefs, implementation plans, quality gates, reposit
 
 ### Agency layer
 
-The factory exposes mediated repository preparation, explicit file modification, verification profiles, previews, context refresh, and approval operations. The agency is intentionally narrower than arbitrary shell access.
+The factory exposes mediated repository preparation, explicit file modification, verification profiles, previews, context refresh, approval operations, canonical project registration, daily inbox, continuation reports, isolated execution manifests, and filesystem release operations. The agency is intentionally narrower than arbitrary shell access.
 
 ### Runtime layer
 
-Durable jobs now record verification profiles, failed steps, failure classes, repair attempts, approval requests, context refreshes, quality snapshots, and audit events. A repair loop is bounded to five attempts and accepts explicit file patches rather than unbounded agent authority.
+Durable jobs now record verification profiles, failed steps, failure classes, repair attempts, approval requests, context refreshes, quality snapshots, completion tasks, release health, rollback targets, and audit events. The runtime also records failure owners, escalation thresholds, product outcomes, and graduated autonomy sessions with action, step, retry, and cost budgets. A repair loop is bounded to five attempts and accepts explicit file patches rather than unbounded agent authority.
 
 ## Verification profiles
 
@@ -62,8 +64,8 @@ A profile executes sequentially, stops at the first failure, records the exact c
 
 ## Approval policy
 
-Read, branch modification, verification, and preview are reversible factory operations. Pushing a branch, deploying production, changing credentials, deleting data, and sending external messages require explicit approval. A factory job cannot transition to `DELIVERED` until a durable `DEPLOY_PRODUCTION` approval exists.
+Read, branch modification, verification, and preview are reversible factory operations. Pushing a branch, deploying production, changing credentials, deleting data, and sending external messages require explicit approval. A factory job cannot transition to `DELIVERED` until a durable `DEPLOY_PRODUCTION` approval exists, all required completion tasks are complete, and verification, test, or preview evidence is attached. A verified preview can be promoted through the filesystem release adapter, which records an artifact checksum, source commit, health check, current pointer, and rollback target.
 
 ## Honest boundaries
 
-This phase does not claim that a local Node process is an equivalent security boundary to a container or microVM. Production deployment, credential management, external messaging, and hardened untrusted-code execution must be separate adapters with their own policy and evidence. The factory now has the control contracts needed to attach them without granting them implicit authority.
+The completed phases make the factory suitable for a controlled founder daily pilot on registered low-risk projects. They do not yet justify the claim that the system can autonomously build any arbitrary product to hosted production with minimal supervision. A local Node process is not equivalent to a container or microVM, and the filesystem release adapter is not a hosted production deployment target. Production credentials, external messaging, hardened untrusted-code execution, hosted deployment, post-deployment observation, and rollback across real infrastructure require separate adapters with their own policy and evidence.
