@@ -9,6 +9,7 @@ import schemasRoutes from './schemas.routes';
 import factoryRoutes from './factory.routes';
 import factoryJobsRoutes from './factoryJobs.routes';
 import contextRoutes from './context.routes';
+import workspaceRoutes from './workspace.routes';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/schemas', schemasRoutes);
 router.use('/factory', factoryRoutes);
 router.use('/factory-jobs', factoryJobsRoutes);
 router.use('/context', contextRoutes);
+router.use('/workspace', workspaceRoutes);
 
 export default router;
