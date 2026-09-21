@@ -5,6 +5,7 @@ import { DurableStore } from './durableStore';
 import { ContextIndexService, seedBuiltInContexts } from './contextIndexService';
 import { detectVerificationProfile, executeVerification, VerificationProfile, FailureClass } from './verificationProfileService';
 import { ApprovalPolicyService } from './approvalPolicyService';
+import { FailureService } from './failureService';
 
 export type FactoryJobStatus = 'IDEA' | 'DISCOVERY' | 'VALIDATION' | 'SPECIFIED' | 'DESIGNED' | 'ARCHITECTED' | 'IMPLEMENTING' | 'VALIDATING' | 'SECURITY_REVIEW' | 'PREVIEW_READY' | 'RELEASE_PENDING' | 'DEPLOYED' | 'OBSERVING' | 'DELIVERED' | 'LEARNING' | 'CLOSED' | 'BLOCKED';
 export type CompletionTaskStatus = 'pending' | 'in_progress' | 'complete' | 'blocked';
@@ -92,6 +93,7 @@ export class FactoryJobService {
     const job = this.get(tenantId, id); if (!job?.repositoryRun) throw new Error(job ? 'REPOSITORY_BRANCH_REQUIRED' : 'FACTORY_JOB_NOT_FOUND');
     const startedAt = new Date().toISOString(); const profile = detectVerificationProfile(job.repositoryRun.repositoryPath); const execution = executeVerification(job.repositoryRun.repositoryPath, profile, Number(process.env.FACTORY_VERIFY_TIMEOUT_MS || 120000));
     const verificationRun: VerificationRun = { command: profile.steps.map((step) => step.label).join(' && '), profile, passed: execution.passed, exitCode: execution.exitCode, output: execution.output, failedStep: execution.failedStep, failureClass: execution.failureClass, startedAt, completedAt: new Date().toISOString() };
+    if (!verificationRun.passed) FailureService.record({ tenantId, jobId: id, domain: verificationRun.failureClass ?? 'UNKNOWN', message: `${verificationRun.failedStep ?? 'verification'} failed`, evidence: [verificationRun.output.slice(-2000)] });
     const updated = this.save({ ...job, verificationRun, status: verificationRun.passed ? 'VALIDATING' : 'BLOCKED' }); audit(updated, verificationRun.passed ? 'REPOSITORY_VERIFIED' : 'REPOSITORY_VERIFICATION_FAILED'); return updated;
   }
 
