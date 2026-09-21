@@ -2,6 +2,15 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.3.0-harness-engineering] - 2026-09-21
+### Added
+- **Verification Profiles**: Added repository-aware verification for Node/npm, Android Gradle, Rust Cargo, Python, and Git integrity projects with bounded sequential execution.
+- **Bounded Repair Loop**: Added failure classification, explicit patch attempts, retry limits, and durable repair evidence.
+- **Approval Policy**: Added tenant-scoped approval requests and a production-delivery gate for irreversible actions.
+- **Context Refresh and Promotion**: Added approved-workspace repository refresh and explicit promotion of verified patterns into institutional DNA.
+- **Harness APIs and Tests**: Added repair-loop, approval, context-refresh, and pattern-promotion endpoints; expanded the verification suite to 11 passing tests.
+- **Sprint 11 Documentation**: Added the product-manufacturing harness contract and implementation record.
+
 ## [4.2.0-context-compounding] - 2026-09-20
 ### Added
 - **Repository Context Index**: Imported distilled product, architecture, security, quality, operations, and knowledge context from Forge.ai, Hermes-Forge, Forge, Portable-UI-Engine, and ShrinkMedia.
