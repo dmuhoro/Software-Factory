@@ -13,5 +13,7 @@ router.post('/runs', (req, res) => { if (!validateTenantRequest(req, res)) retur
 router.get('/runs', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', runs: ParallelWorktreeService.runs(tenant(req)) }); });
 router.post('/runs/:id/worktrees', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', ...ParallelWorktreeService.prepareWorktrees(tenant(req), req.params.id) }); } catch (error) { return fail(res, error); } });
 router.get('/runs/:id/worktrees', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', worktrees: ParallelWorktreeService.list(tenant(req), req.params.id) }); });
+router.get('/runs/:id/ready', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', tasks: ParallelWorktreeService.readyTasks(tenant(req), req.params.id) }); } catch (error) { return fail(res, error); } });
+router.get('/runs/:id/merge-plan', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', plan: ParallelWorktreeService.mergePlan(tenant(req), req.params.id) }); } catch (error) { return fail(res, error); } });
 router.post('/worktrees/:id/status', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', worktree: ParallelWorktreeService.markTask(tenant(req), req.params.id, req.body.status) }); } catch (error) { return fail(res, error); } });
 export default router;
