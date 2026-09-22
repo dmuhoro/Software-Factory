@@ -1,0 +1,221 @@
+# Software Factory
+
+**Software Factory is a durable product-manufacturing workspace for turning ideas and incomplete repositories into verified, releasable products.**
+
+It is designed for a founder or small engineering team that wants a repeatable operating loop:
+
+```text
+Idea or incomplete repository
+  → product brief
+  → implementation plan
+  → controlled branch
+  → bounded implementation
+  → repository-specific verification
+  → preview artifact
+  → approval gate
+  → release and health check
+  → rollback if required
+  → outcome review
+  → institutional learning
+```
+
+The system is intentionally evidence-first. It does not treat a successful build as proof that a product is complete, useful, secure, or ready for production.
+
+## Current readiness
+
+The repository has completed the founder-workspace and bounded-harness implementation program. The current system is suitable for a **controlled daily pilot on registered, low-risk projects**.
+
+Verified capabilities include:
+
+- Tenant-scoped durable jobs, approvals, evidence, and audit records.
+- Canonical project registration and a daily workspace inbox.
+- Definition-of-done tasks and continuation reports for incomplete products.
+- Repository-specific verification profiles for Node, Android Gradle, Rust Cargo, Python, and Git integrity.
+- Bounded repair loops with failure classification and retry limits.
+- Ephemeral commit snapshots with sanitized execution metadata, disabled network policy, time limits, output limits, and cleanup.
+- Approval-gated immutable filesystem releases with checksums, health checks, current-release pointers, and rollback targets.
+- Durable failure records, prescribed next actions, escalation, and resolution evidence.
+- Post-launch outcome records for adoption, time saved, defects, incidents, client acceptance, revenue, and learning.
+- Graduated autonomy sessions with allowlisted actions, step budgets, retry budgets, and cost budgets.
+
+The system is **not yet an unrestricted autonomous production company**. Hosted deployment, hardened container or microVM execution, production secret injection, real service observation, and infrastructure-level rollback remain explicit adapters and readiness gates.
+
+## Why this exists
+
+Most development automation optimizes for code generation. Software Factory optimizes for **operational completion**:
+
+- What is the product supposed to accomplish?
+- What remains unfinished?
+- What evidence proves each acceptance criterion?
+- Which actions are reversible?
+- Which actions require approval?
+- What failed, who owns the next action, and how many retries remain?
+- What happened after release?
+- What should the next product inherit or avoid?
+
+The result is a durable operating memory for product work rather than another transient coding assistant.
+
+## Architecture
+
+Software Factory is a modular TypeScript/Express application with a React operations surface and a durable local ledger. The architecture is organized around four boundaries:
+
+1. **Control layer** — Constitution, ADRs, product briefs, implementation plans, completion tasks, approval policies, and evidence contracts.
+2. **Agency layer** — Repository preparation, explicit branch modification, verification, previews, context refresh, release preparation, and bounded autonomy.
+3. **Runtime layer** — Tenant-scoped jobs, durable persistence, failure records, audit events, quality snapshots, outcomes, and recovery state.
+4. **Adapter layer** — Verification profiles, filesystem release, future hosted deployment, execution sandboxes, model providers, and domain-specific integrations.
+
+The core domain is kept separate from replaceable infrastructure so local-first operation can grow into hosted execution without changing the product contract.
+
+## Quick start
+
+### Prerequisites
+
+- Node.js 22+
+- npm
+- Git
+
+### Install and configure
+
+```bash
+npm install
+cp .env.example .env
+```
+
+At minimum, configure a strong `FACTORY_API_KEY` for protected API access. Keep credentials outside the repository and never place them in briefs, evidence, prompts, logs, or context records.
+
+### Verify the repository
+
+```bash
+npm run verify
+```
+
+This runs TypeScript checking, the serialized test suite, and the production build.
+
+### Run locally
+
+```bash
+npm run dev
+```
+
+The server exposes the API and serves the frontend operations surface. Production mode uses the generated bundle:
+
+```bash
+npm run build
+npm start
+```
+
+## Operating the factory
+
+### 1. Register a project
+
+Register a Git repository once inside the approved workspace boundary:
+
+```bash
+curl -X POST http://localhost:3000/api/workspace/projects \
+  -H 'authorization: Bearer YOUR_FACTORY_API_KEY' \
+  -H 'x-tenant-id: founder' \
+  -H 'content-type: application/json' \
+  -d '{"tenantId":"founder","name":"My Product","repositoryPath":"/workspace/my-product","kind":"personal"}'
+```
+
+### 2. Inspect the daily inbox
+
+```bash
+curl http://localhost:3000/api/workspace/inbox \
+  -H 'authorization: Bearer YOUR_FACTORY_API_KEY' \
+  -H 'x-tenant-id: founder'
+```
+
+The inbox surfaces projects, blocked jobs, unfinished jobs, pending approvals, and stale operational work.
+
+### 3. Continue incomplete work
+
+A continuation report identifies missing briefs, plans, branches, verification, previews, and completion tasks rather than restarting the repository from scratch.
+
+```bash
+curl http://localhost:3000/api/workspace/jobs/JOB_ID/continuation \
+  -H 'authorization: Bearer YOUR_FACTORY_API_KEY' \
+  -H 'x-tenant-id: founder'
+```
+
+### 4. Use the evidence gate
+
+A job cannot be delivered until required completion tasks are complete, evidence exists, and the required approval is durable. Reversible actions can be automated within policy; irreversible actions require an explicit decision.
+
+### 5. Record outcomes
+
+After delivery, record measurable results such as time saved, adoption, client acceptance, defects, incidents, or learning. These records are the input to future quality improvement.
+
+## Supported verification profiles
+
+The profile detector selects a repository-specific verification contract:
+
+| Profile | Typical checks |
+|---|---|
+| Node/npm | Declared verify, lint, test, and build scripts |
+| Android Gradle | Unit tests, lint, and offline release assembly |
+| Rust Cargo | Format check, tests, and release build |
+| Python | Ruff and pytest when declared |
+| Git integrity | Diff and repository integrity fallback |
+
+Unsupported or ambiguous projects should be explicitly configured rather than silently executed with guessed commands.
+
+## Security and safety model
+
+Software Factory follows these non-negotiable policies:
+
+- Every durable record is tenant-scoped.
+- Production and other irreversible actions require approval.
+- The repository remains the source of truth.
+- Secrets are injected through the runtime environment, not persisted in job context.
+- Verification and repair are bounded by time, output, retry, and action budgets.
+- Failed work becomes visible with a failure class, owner, and next action.
+- Required unfinished work prevents delivery completion.
+- Context promotion requires explicit review and evidence.
+- A release must have a health check and rollback target.
+
+## Repository structure
+
+```text
+src/                    React application, API routes, services, models
+server.ts               Express production entrypoint
+src/services/           Durable jobs, workspace, execution, release, recovery, outcomes
+src/api/routes/         Authenticated tenant-scoped APIs
+test/                   Deterministic unit and integration tests
+docs/                   Constitution, ADRs, contracts, and operating playbooks
+sprints/                Sequential implementation records
+software_factory/       Rust runtime foundation and domain adapters
+appwrite-functions/     Optional Appwrite integration functions
+```
+
+## Read the operating contracts
+
+- [Harness Engineering Contract](docs/HARNESS_ENGINEERING_CONTRACT.md)
+- [Founder Operating Playbook](docs/FOUNDER_OPERATING_PLAYBOOK.md)
+- [Product Foundry Context](docs/PRODUCT_FOUNDRY_CONTEXT.md)
+- [Repository Context Index](docs/REPOSITORY_CONTEXT_INDEX.md)
+- [Sprint 12: Real-World Readiness](sprints/sprint-12-real-world-readiness.md)
+- [Engineering Constitution](docs/CONSTITUTION.md)
+- [Architecture Decision Records](docs/adr/)
+- [Changelog](CHANGELOG.md)
+
+## Roadmap to unrestricted autonomous production work
+
+The next readiness gates are deliberately concrete:
+
+1. Replace the restricted local execution adapter with a container or microVM boundary for untrusted code.
+2. Connect one hosted deployment target with isolated secret injection.
+3. Add real post-deployment observation and infrastructure rollback.
+4. Complete five founder jobs and three client-like dry runs with evidence packs.
+5. Measure cycle time, defect rate, repair rate, recovery time, and product outcomes across launches.
+6. Expand autonomy only by approved action class and verified project profile.
+
+The system should earn broader autonomy through successful evidence, not through a larger prompt or a higher claimed percentage.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before making changes. Every change should preserve the Constitution, relevant ADRs, tenant isolation, evidence contracts, and green verification.
+
+## License
+
+Software Factory is released under the [MIT License](LICENSE).
