@@ -1,0 +1,19 @@
+import { DurableStore } from './durableStore';
+
+export type ModelProviderKind = 'openai-compatible' | 'gemini-native' | 'local';
+export interface ModelProvider { id: string; tenantId: string; kind: ModelProviderKind; baseUrl?: string; modelIds: string[]; secretRef?: string; enabled: boolean; createdAt: string; }
+export interface ModelRequest { providerId: string; model: string; system: string; task: string; maxOutputTokens?: number; }
+
+function tenantOf(value: Record<string, unknown>): string { return String(value.tenantId ?? ''); }
+function secret(provider: ModelProvider): string | undefined { return provider.secretRef ? process.env[provider.secretRef] : undefined; }
+
+export class FrontierModelService {
+  public static register(input: { tenantId: string; id: string; kind?: ModelProviderKind; baseUrl?: string; modelIds?: string[]; secretRef?: string; enabled?: boolean }): ModelProvider {
+    if (input.kind === 'openai-compatible' && !input.baseUrl) throw new Error('MODEL_PROVIDER_BASE_URL_REQUIRED');
+    const provider: ModelProvider = { id: input.id, tenantId: input.tenantId, kind: input.kind ?? 'openai-compatible', baseUrl: input.baseUrl, modelIds: input.modelIds ?? [], secretRef: input.secretRef, enabled: input.enabled ?? true, createdAt: new Date().toISOString() }; DurableStore.upsert('modelProviders', `${input.tenantId}:${input.id}`, provider as unknown as Record<string, unknown>); return provider;
+  }
+  public static list(tenantId: string): ModelProvider[] { return DurableStore.list('modelProviders').filter((item) => tenantOf(item) === tenantId) as unknown as ModelProvider[]; }
+  public static get(tenantId: string, id: string): ModelProvider | undefined { return DurableStore.get('modelProviders', `${tenantId}:${id}`) as unknown as ModelProvider | undefined; }
+  public static async discover(tenantId: string, id: string): Promise<ModelProvider> { const provider = this.get(tenantId, id); if (!provider) throw new Error('MODEL_PROVIDER_NOT_FOUND'); if (provider.kind !== 'openai-compatible' || !provider.baseUrl) return provider; const response = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/models`, { headers: secret(provider) ? { Authorization: `Bearer ${secret(provider)}` } : {} }); if (!response.ok) throw new Error(`MODEL_PROVIDER_DISCOVERY_FAILED:${response.status}`); const body = await response.json() as { data?: Array<{ id?: string }> }; const updated = { ...provider, modelIds: (body.data ?? []).map((item) => item.id).filter((item): item is string => Boolean(item)) }; DurableStore.upsert('modelProviders', `${tenantId}:${id}`, updated as unknown as Record<string, unknown>); return updated; }
+  public static async request(tenantId: string, input: ModelRequest): Promise<{ providerId: string; model: string; content: string; raw: unknown }> { const provider = this.get(tenantId, input.providerId); if (!provider || !provider.enabled) throw new Error('MODEL_PROVIDER_NOT_AVAILABLE'); if (!provider.baseUrl || provider.kind !== 'openai-compatible') throw new Error('MODEL_PROVIDER_REQUEST_UNSUPPORTED'); const response = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(secret(provider) ? { Authorization: `Bearer ${secret(provider)}` } : {}) }, body: JSON.stringify({ model: input.model, messages: [{ role: 'system', content: input.system }, { role: 'user', content: input.task }], max_completion_tokens: input.maxOutputTokens ?? 4000 }) }); if (!response.ok) throw new Error(`MODEL_PROVIDER_REQUEST_FAILED:${response.status}`); const raw = await response.json() as any; const content = raw?.choices?.[0]?.message?.content; if (typeof content !== 'string') throw new Error('MODEL_PROVIDER_INVALID_RESPONSE'); return { providerId: provider.id, model: input.model, content, raw }; }
+}
