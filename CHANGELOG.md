@@ -65,7 +65,7 @@ All notable architectural and code modifications are documented here.
 - **Rockefeller Hexagonal Architecture Framework**: Established ADR-004 defining the "Command the Interfaces, Despise the Commodities" doctrine, prioritizing pure domain rules decoupled from swappable cloud infrastructure.
 - **NotebookLM AI Labor Knowledge Layer**: Authored `/docs/NOTEBOOKLM_KNOWLEDGE_LAYER.md` specifying the 4-tier grounding corpus (Blueprints, Video Transcripts, Interface Contracts, Compliance Guardrails) to eliminate structural drift in AI code generation.
 - **Sprint 05 Documentation**: Created `/sprints/sprint-05-sdlc-automation-knowledge-layer.md` outlining the end-to-end automated SDLC assembly line.
-- **Executive Master Prompts & System Protocols**: Standardized production-grade Google AI Studio prompt suites for continuous multi-niche product development linked to Appwrite and GitHub.
+- **Executive Master Prompts & System Protocols**: Standardized production-grade prompt suites for continuous multi-niche product development linked to Appwrite and GitHub.
 
 ## [3.2.0] - 2026-09-16
 ### Added

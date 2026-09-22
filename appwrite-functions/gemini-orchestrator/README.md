@@ -11,7 +11,7 @@ This Appwrite Function acts as the secure, authenticated cloud runtime for multi
 
 ## Environment Variables
 Configure these in the Appwrite Console under **Functions > Settings > Variables**:
-- `GEMINI_API_KEY`: Server-side Google Gemini API Key from Google AI Studio.
+- `GEMINI_API_KEY`: Server-side Gemini provider API key supplied through the deployment secret manager.
 - `APPWRITE_API_KEY`: Server API key with `databases.read`, `databases.write` permissions.
 - `APPWRITE_DATABASE_ID`: Database identifier (`b2b_software_factory`).
 
