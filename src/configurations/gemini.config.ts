@@ -8,7 +8,7 @@ export const GeminiConfig = {
   defaultModel: 'gemini-3.8-flash',
   // Advanced reasoning fallback
   proModel: 'gemini-3.1-pro-preview',
-  userAgent: 'aistudio-build',
+  userAgent: 'software-factory-runtime',
   generationParameters: {
     temperature: 0.1, // Near zero temperature for strict schema compliance & deterministic output
     topP: 0.95,
