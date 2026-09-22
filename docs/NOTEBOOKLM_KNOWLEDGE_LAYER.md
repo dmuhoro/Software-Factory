@@ -20,7 +20,7 @@ Instead of generic model prompting, AI agents in the development pipeline are co
 └──────────────────────────────┬──────────────────────────────┘
                                │ Grounded Context Extraction
 ┌──────────────────────────────▼──────────────────────────────┐
-│           Tier 2: AI Studio Execution Engine                │
+│           Tier 2: Structured AI Execution Engine             │
 │    (Gemini 1.5 Pro / 3.8 Flash + Strict JSON Schemas)       │
 └──────────────────────────────┬──────────────────────────────┘
                                │ Validated Code & Telemetry

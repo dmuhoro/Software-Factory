@@ -5,7 +5,7 @@
  * 1. Authenticates incoming requests via Appwrite User Sessions (JWT / Session) OR API Keys.
  * 2. Strict JSON validation and Tenant ID extraction with zero-conflation guardrails.
  * 3. Lazy initialization of the official Google GenAI SDK (@google/genai) via process.env.GEMINI_API_KEY.
- * 4. Deterministic structured output analysis using Gemini 1.5 Pro / 3.8 Flash.
+ * 4. Deterministic structured output analysis using the configured Gemini model.
  * 5. Strict schema enforcement via official @google/genai Type enum.
  * 6. Asynchronous response handling with exponential backoff & jitter.
  * 7. Multi-record Appwrite database updates (telemetry_events, ai_transformations, tenant_settings, audit_logs).
@@ -28,7 +28,7 @@ function getGeminiClient() {
       apiKey,
       httpOptions: {
         headers: {
-          'User-Agent': 'aistudio-software-factory-v3',
+          'User-Agent': 'software-factory-runtime',
         },
       },
     });
@@ -270,7 +270,7 @@ export default async ({ req, res, log, error }) => {
       }, 400);
     }
 
-    // 5. Invoke Google Gemini 1.5 Pro / 3.8 Flash with Strict Structured Output
+    // 5. Invoke the configured Gemini model with strict structured output.
     const ai = getGeminiClient();
     const schema = NICHE_SCHEMAS[niche];
     const systemPrompt = `You are the central runtime processing engine of a multi-tenant B2B SaaS factory.
