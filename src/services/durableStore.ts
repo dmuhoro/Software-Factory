@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export interface DurableState {
-  version: 2;
+  version: 3;
   telemetry: Record<string, Record<string, unknown>>;
   transformations: Record<string, Record<string, unknown>>;
   audits: Array<Record<string, unknown>>;
@@ -17,10 +17,18 @@ export interface DurableState {
   failures: Record<string, Record<string, unknown>>;
   outcomes: Record<string, Record<string, unknown>>;
   autonomySessions: Record<string, Record<string, unknown>>;
+  clientWorkspaces: Record<string, Record<string, unknown>>;
+  handovers: Record<string, Record<string, unknown>>;
+  clientAcceptances: Record<string, Record<string, unknown>>;
+  hostedDeployments: Record<string, Record<string, unknown>>;
+  modelProviders: Record<string, Record<string, unknown>>;
+  agentRuns: Record<string, Record<string, unknown>>;
+  worktrees: Record<string, Record<string, unknown>>;
+  proofRecords: Record<string, Record<string, unknown>>;
 }
 
 const defaultState = (): DurableState => ({
-  version: 2,
+  version: 3,
   telemetry: {},
   transformations: {},
   audits: [],
@@ -34,6 +42,14 @@ const defaultState = (): DurableState => ({
   failures: {},
   outcomes: {},
   autonomySessions: {},
+  clientWorkspaces: {},
+  handovers: {},
+  clientAcceptances: {},
+  hostedDeployments: {},
+  modelProviders: {},
+  agentRuns: {},
+  worktrees: {},
+  proofRecords: {},
 });
 
 export class DurableStore {
@@ -47,7 +63,7 @@ export class DurableStore {
     const file = this.dataFile();
     try {
       const loaded = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<DurableState>;
-      this.state = { ...defaultState(), ...loaded, version: 2, repositoryContexts: loaded.repositoryContexts ?? {}, qualitySnapshots: loaded.qualitySnapshots ?? {}, approvals: loaded.approvals ?? {}, projects: loaded.projects ?? {}, backups: loaded.backups ?? {}, releases: loaded.releases ?? {}, failures: loaded.failures ?? {}, outcomes: loaded.outcomes ?? {}, autonomySessions: loaded.autonomySessions ?? {} };
+      this.state = { ...defaultState(), ...loaded, version: 3, repositoryContexts: loaded.repositoryContexts ?? {}, qualitySnapshots: loaded.qualitySnapshots ?? {}, approvals: loaded.approvals ?? {}, projects: loaded.projects ?? {}, backups: loaded.backups ?? {}, releases: loaded.releases ?? {}, failures: loaded.failures ?? {}, outcomes: loaded.outcomes ?? {}, autonomySessions: loaded.autonomySessions ?? {}, clientWorkspaces: loaded.clientWorkspaces ?? {}, handovers: loaded.handovers ?? {}, clientAcceptances: loaded.clientAcceptances ?? {}, hostedDeployments: loaded.hostedDeployments ?? {}, modelProviders: loaded.modelProviders ?? {}, agentRuns: loaded.agentRuns ?? {}, worktrees: loaded.worktrees ?? {}, proofRecords: loaded.proofRecords ?? {} };
     } catch (error: unknown) {
       const code = (error as NodeJS.ErrnoException)?.code;
       if (code !== 'ENOENT') throw error;
@@ -73,17 +89,17 @@ export class DurableStore {
     return `${prefix}_${crypto.createHash('sha256').update(`${entropy}:${Date.now()}:${process.pid}`).digest('hex').slice(0, 20)}`;
   }
 
-  public static upsert(collection: 'telemetry' | 'transformations' | 'factoryJobs' | 'repositoryContexts' | 'qualitySnapshots' | 'approvals' | 'projects' | 'backups' | 'releases' | 'failures' | 'outcomes' | 'autonomySessions', id: string, value: Record<string, unknown>): void {
+  public static upsert(collection: keyof Pick<DurableState, 'telemetry' | 'transformations' | 'factoryJobs' | 'repositoryContexts' | 'qualitySnapshots' | 'approvals' | 'projects' | 'backups' | 'releases' | 'failures' | 'outcomes' | 'autonomySessions' | 'clientWorkspaces' | 'handovers' | 'clientAcceptances' | 'hostedDeployments' | 'modelProviders' | 'agentRuns' | 'worktrees' | 'proofRecords'>, id: string, value: Record<string, unknown>): void {
     const state = this.ensureLoaded();
     state[collection][id] = value;
     this.persist();
   }
 
-  public static get(collection: 'telemetry' | 'transformations' | 'factoryJobs' | 'repositoryContexts' | 'qualitySnapshots' | 'approvals' | 'projects' | 'backups' | 'releases' | 'failures' | 'outcomes' | 'autonomySessions', id: string): Record<string, unknown> | undefined {
+  public static get(collection: keyof Pick<DurableState, 'telemetry' | 'transformations' | 'factoryJobs' | 'repositoryContexts' | 'qualitySnapshots' | 'approvals' | 'projects' | 'backups' | 'releases' | 'failures' | 'outcomes' | 'autonomySessions' | 'clientWorkspaces' | 'handovers' | 'clientAcceptances' | 'hostedDeployments' | 'modelProviders' | 'agentRuns' | 'worktrees' | 'proofRecords'>, id: string): Record<string, unknown> | undefined {
     return this.ensureLoaded()[collection][id];
   }
 
-  public static list(collection: 'telemetry' | 'transformations' | 'factoryJobs' | 'repositoryContexts' | 'qualitySnapshots' | 'approvals' | 'projects' | 'backups' | 'releases' | 'failures' | 'outcomes' | 'autonomySessions'): Record<string, unknown>[] {
+  public static list(collection: keyof Pick<DurableState, 'telemetry' | 'transformations' | 'factoryJobs' | 'repositoryContexts' | 'qualitySnapshots' | 'approvals' | 'projects' | 'backups' | 'releases' | 'failures' | 'outcomes' | 'autonomySessions' | 'clientWorkspaces' | 'handovers' | 'clientAcceptances' | 'hostedDeployments' | 'modelProviders' | 'agentRuns' | 'worktrees' | 'proofRecords'>): Record<string, unknown>[] {
     return Object.values(this.ensureLoaded()[collection]);
   }
 
