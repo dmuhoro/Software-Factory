@@ -13,6 +13,7 @@ import workspaceRoutes from './workspace.routes';
 import clientRoutes from './client.routes';
 import deploymentRoutes from './deployment.routes';
 import agentsRoutes from './agents.routes';
+import proofRoutes from './proof.routes';
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use('/workspace', workspaceRoutes);
 router.use('/client', clientRoutes);
 router.use('/deployment', deploymentRoutes);
 router.use('/agents', agentsRoutes);
+router.use('/proof', proofRoutes);
 
 export default router;
