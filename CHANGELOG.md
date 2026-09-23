@@ -2,6 +2,18 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.5.0-levels-2-4] - 2026-09-23
+### Added
+- **Client Delivery**: Added isolated client workspaces, reproducible handover packs, checksums, acceptance criteria, and explicit client acceptance evidence.
+- **Hosted Deployment Contract**: Added provider-neutral hosted targets, secret references, immutable artifact checksums, health observation, approval gating, and rollback records.
+- **Frontier Model Boundary**: Added provider-neutral OpenAI-compatible model registration, runtime discovery, and secret-reference configuration.
+- **Parallel Agent Governance**: Added dependency-aware task plans, isolated Git worktrees, ready-task scheduling, bounded parallelism, and deterministic merge plans.
+- **Readiness Proof Ledger**: Added observed proof records, artifact references, measurements, evidence digests, and declaration-readiness summaries for Levels 1–4.
+- **Sprint 13 Documentation**: Added the Levels 2–4 implementation contract and operational evidence requirements.
+
+### Verification
+- The complete suite passes 23 tests, TypeScript lint, and the production build path. Real-world readiness remains evidence-gated until the documented founder, client, hosted deployment, failure-injection, and hardened-execution runs are completed.
+
 ## [4.4.0-real-world-readiness] - 2026-09-21
 ### Added
 - **Founder Workspace**: Added canonical project registration, lifecycle metadata, daily inbox, and checksum-validated ledger backup/restore.
@@ -12,7 +24,7 @@ All notable architectural and code modifications are documented here.
 - **Product Outcomes**: Added durable adoption, retention, time-saved, revenue, client-acceptance, feedback, defect, incident, and learning signals.
 - **Bounded Autonomy**: Added graduated autonomy sessions with allowlisted actions, step limits, retry limits, cost budgets, and irreversible-action escalation.
 - **Sprint 12 Documentation**: Added the real-world readiness implementation record and updated the harness contract and founder operating playbook.
-- **Verification**: The complete test suite now passes 19 tests, lint, production build, whitespace checks, and protected API smoke tests.
+- **Verification**: The complete test suite passed 19 tests, lint, production build, whitespace checks, and protected API smoke tests at the time of release.
 
 ## [4.3.0-harness-engineering] - 2026-09-21
 ### Added
