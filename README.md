@@ -37,8 +37,13 @@ Verified capabilities include:
 - Durable failure records, prescribed next actions, escalation, and resolution evidence.
 - Post-launch outcome records for adoption, time saved, defects, incidents, client acceptance, revenue, and learning.
 - Graduated autonomy sessions with allowlisted actions, step budgets, retry budgets, and cost budgets.
+- Durable agent queues with worker leases, retry recovery, cancellation, and completion evidence.
+- Provider-to-task model execution proposals with explicit tool-applier boundaries.
+- Sandbox policies covering source boundaries, network, secret references, resource budgets, timeouts, and runtime images.
+- Post-deployment observation windows, health-failure records, rollback recommendations, and ordered worktree merge recovery.
+- Project-family adapters and deterministic secret/package quality gates.
 
-The system is **not yet an unrestricted autonomous production company**. Hosted deployment, hardened container or microVM execution, production secret injection, real service observation, and infrastructure-level rollback remain explicit adapters and readiness gates.
+The system is **not yet an unrestricted autonomous production company**. A hardened container or microVM executor, a provider-specific hosted deployment adapter, production secret injection, and full local reality verification remain explicit boundaries and readiness gates.
 
 ## Why this exists
 
@@ -194,7 +199,9 @@ appwrite-functions/     Optional Appwrite integration functions
 - [Founder Operating Playbook](docs/FOUNDER_OPERATING_PLAYBOOK.md)
 - [Product Foundry Context](docs/PRODUCT_FOUNDRY_CONTEXT.md)
 - [Repository Context Index](docs/REPOSITORY_CONTEXT_INDEX.md)
+- [Machine-Building Contract](docs/MACHINE_BUILDING_CONTRACT.md)
 - [Sprint 12: Real-World Readiness](sprints/sprint-12-real-world-readiness.md)
+- [Sprint 14: Machine Building](sprints/sprint-14-machine-building.md)
 - [Engineering Constitution](docs/CONSTITUTION.md)
 - [Architecture Decision Records](docs/adr/)
 - [Changelog](CHANGELOG.md)

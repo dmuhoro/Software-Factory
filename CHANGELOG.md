@@ -2,6 +2,20 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.6.0-machine-building] - 2026-09-24
+### Added
+- **Durable Agent Runner**: Added queue jobs, worker leases, retry limits, lease-expiry recovery, cancellation, and completion evidence.
+- **Model Execution Bridge**: Added bounded provider-to-task proposal execution that records model output without falsely claiming repository mutation.
+- **Sandbox Policy Contract**: Added explicit runtime, network, secret, source-boundary, resource, timeout, and image controls.
+- **Deployment Observation**: Added health observation windows, consecutive-failure thresholds, durable runtime-health failures, and rollback recommendations.
+- **Merge Recovery**: Added ordered worktree merging, conflict capture, merge abort behavior, and merge evidence.
+- **Quality Gates**: Added project-family adapter detection, credential-like secret scanning, and package-audit integration.
+- **Operations API**: Added authenticated endpoints for queue, sandbox, observation, merge, adapter, and security operations.
+- **Sprint 14 Documentation**: Added the machine-building contract and pre-verification implementation record.
+
+### Verification
+- The automated suite passes 26 tests and TypeScript lint. Production build and final local reality verification remain the last phase before readiness determination.
+
 ## [4.5.0-levels-2-4] - 2026-09-23
 ### Added
 - **Client Delivery**: Added isolated client workspaces, reproducible handover packs, checksums, acceptance criteria, and explicit client acceptance evidence.
