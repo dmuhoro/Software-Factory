@@ -1,0 +1,19 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { DurableStore } from './durableStore';
+
+export type SandboxRuntime = 'local-restricted' | 'docker-isolated';
+export interface SandboxPolicy { id: string; tenantId: string; runtime: SandboxRuntime; sourcePath: string; writablePath: string; network: 'disabled' | 'allowlisted'; allowedHosts: string[]; secretRefs: string[]; cpuSeconds: number; memoryMb: number; diskMb: number; processLimit: number; timeoutMs: number; image?: string; createdAt: string; }
+export interface SandboxRun { id: string; tenantId: string; policyId: string; status: 'PLANNED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'; exitCode?: number; stdout?: string; stderr?: string; artifacts: string[]; startedAt: string; completedAt?: string; }
+
+function approved(source: string): string { const root = path.resolve(process.env.FACTORY_WORKSPACE_ROOT || process.cwd()); const value = path.resolve(source); if (!(value === root || value.startsWith(`${root}${path.sep}`))) throw new Error('SANDBOX_SOURCE_OUTSIDE_APPROVED_WORKSPACE'); return value; }
+function tenantOf(value: Record<string, unknown>): string { return String(value.tenantId ?? ''); }
+
+export class SandboxPolicyService {
+  public static createPolicy(input: { tenantId: string; sourcePath: string; runtime?: SandboxRuntime; network?: 'disabled' | 'allowlisted'; allowedHosts?: string[]; secretRefs?: string[]; timeoutMs?: number; memoryMb?: number; cpuSeconds?: number; diskMb?: number; processLimit?: number; image?: string }): SandboxPolicy {
+    const sourcePath = approved(input.sourcePath); if (!fs.existsSync(sourcePath)) throw new Error('SANDBOX_SOURCE_NOT_FOUND'); if ((input.network ?? 'disabled') === 'allowlisted' && !(input.allowedHosts?.length)) throw new Error('SANDBOX_ALLOWLIST_REQUIRED'); if ((input.secretRefs ?? []).some((ref) => !/^[A-Z][A-Z0-9_]+$/.test(ref))) throw new Error('SANDBOX_SECRET_REFERENCE_INVALID'); const policy: SandboxPolicy = { id: DurableStore.id('policy', `${input.tenantId}:${sourcePath}`), tenantId: input.tenantId, runtime: input.runtime ?? 'local-restricted', sourcePath, writablePath: path.resolve(process.env.FACTORY_SANDBOX_ROOT || '.data/sandboxes', DurableStore.id('workspace', sourcePath)), network: input.network ?? 'disabled', allowedHosts: input.allowedHosts ?? [], secretRefs: input.secretRefs ?? [], cpuSeconds: Math.min(Math.max(input.cpuSeconds ?? 120, 1), 3600), memoryMb: Math.min(Math.max(input.memoryMb ?? 512, 64), 8192), diskMb: Math.min(Math.max(input.diskMb ?? 1024, 64), 10240), processLimit: Math.min(Math.max(input.processLimit ?? 32, 1), 256), timeoutMs: Math.min(Math.max(input.timeoutMs ?? 120000, 1000), 900000), image: input.image ?? 'node:22-bookworm-slim', createdAt: new Date().toISOString() }; DurableStore.upsert('executionRuns', policy.id, policy as unknown as Record<string, unknown>); return policy;
+  }
+  public static planRun(tenantId: string, policyId: string): SandboxRun { const policy = DurableStore.get('executionRuns', policyId) as unknown as SandboxPolicy | undefined; if (!policy || policy.tenantId !== tenantId || !policy.runtime) throw new Error('SANDBOX_POLICY_NOT_FOUND'); const run: SandboxRun = { id: DurableStore.id('sandboxrun', policyId), tenantId, policyId, status: 'PLANNED', artifacts: [], startedAt: new Date().toISOString() }; DurableStore.upsert('executionRuns', run.id, run as unknown as Record<string, unknown>); return run; }
+  public static policy(tenantId: string, id: string): SandboxPolicy | undefined { const value = DurableStore.get('executionRuns', id) as unknown as SandboxPolicy | undefined; return value?.tenantId === tenantId && value.runtime ? value : undefined; }
+  public static listPolicies(tenantId: string): SandboxPolicy[] { return DurableStore.list('executionRuns').filter((item) => tenantOf(item) === tenantId && item.runtime !== undefined) as unknown as SandboxPolicy[]; }
+}
