@@ -1,0 +1,27 @@
+import { Router } from 'express';
+import { validateTenantRequest } from '../middleware/tenantAuth';
+import { AgentRunnerService } from '../../services/agentRunnerService';
+import { SandboxPolicyService } from '../../services/sandboxPolicyService';
+import { ObservationService } from '../../services/observationService';
+import { MergeService } from '../../services/mergeService';
+import { QualityGateService } from '../../services/qualityGateService';
+
+const router = Router();
+const tenant = (req: any): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
+const fail = (res: any, error: any) => res.status(409).json({ status: 'error', code: error?.message || 'OPERATION_FAILED', message: error?.message || 'Operation failed' });
+router.get('/queue', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', jobs: AgentRunnerService.list(tenant(req), String(req.query.runId || '') || undefined) }); });
+router.post('/runs/:runId/enqueue', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', jobs: AgentRunnerService.enqueue(tenant(req), req.params.runId, req.body.maxAttempts) }); } catch (error) { return fail(res, error); } });
+router.post('/queue/claim', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', job: AgentRunnerService.claim(tenant(req), String(req.body.worker || 'worker'), req.body.leaseMs) ?? null }); });
+router.post('/queue/:id/complete', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', job: AgentRunnerService.complete(tenant(req), req.params.id, req.body) }); } catch (error) { return fail(res, error); } });
+router.post('/queue/:id/cancel', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', job: AgentRunnerService.cancel(tenant(req), req.params.id) }); } catch (error) { return fail(res, error); } });
+router.post('/sandbox/policies', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', policy: SandboxPolicyService.createPolicy({ ...req.body, tenantId: tenant(req) }) }); } catch (error) { return fail(res, error); } });
+router.post('/sandbox/policies/:id/runs', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', run: SandboxPolicyService.planRun(tenant(req), req.params.id) }); } catch (error) { return fail(res, error); } });
+router.post('/deployments/:id/observe', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', observation: ObservationService.start(tenant(req), req.params.id, req.body) }); } catch (error) { return fail(res, error); } });
+router.post('/observations/:id/check', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', observation: ObservationService.record(tenant(req), req.params.id, req.body) }); } catch (error) { return fail(res, error); } });
+router.post('/observations/:id/rollback', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', deployment: ObservationService.rollback(tenant(req), req.params.id) }); } catch (error) { return fail(res, error); } });
+router.post('/runs/:runId/merge-next', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', merge: MergeService.mergeNext(tenant(req), req.params.runId, req.body.targetBranch) }); } catch (error) { return fail(res, error); } });
+router.get('/runs/:runId/merges', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', merges: MergeService.list(tenant(req), req.params.runId) }); });
+router.post('/quality/adapters', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', adapter: QualityGateService.detect(tenant(req), req.body.projectId, req.body.repositoryPath) }); } catch (error) { return fail(res, error); } });
+router.post('/quality/scans', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', scan: QualityGateService.scan(tenant(req), req.body.repositoryPath, req.body.projectId) }); } catch (error) { return fail(res, error); } });
+router.get('/quality/scans', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', scans: QualityGateService.list(tenant(req)) }); });
+export default router;
