@@ -1,0 +1,11 @@
+import { execFileSync } from 'node:child_process';
+import { DurableStore } from './durableStore';
+import { ParallelWorktreeService } from './parallelWorktreeService';
+
+export interface MergeRecord { id: string; tenantId: string; runId: string; taskId: string; targetBranch: string; status: 'PLANNED' | 'MERGED' | 'CONFLICT' | 'BLOCKED' | 'ROLLED_BACK'; commit?: string; conflictOutput?: string; createdAt: string; }
+function git(repo: string, args: string[]): string { return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', timeout: 60000 }).trim(); }
+
+export class MergeService {
+  public static mergeNext(tenantId: string, runId: string, targetBranch = 'main'): MergeRecord { const plan = ParallelWorktreeService.mergePlan(tenantId, runId); if (!plan.run) throw new Error('AGENT_RUN_NOT_FOUND'); const next = plan.orderedWorktrees.find((item) => item.status === 'COMPLETED'); if (!next) throw new Error(plan.canMerge ? 'MERGE_COMPLETE' : 'MERGE_PREREQUISITE_NOT_COMPLETE'); const sourceCommit = git(next.worktreePath, ['rev-parse', 'HEAD']); const record: MergeRecord = { id: DurableStore.id('merge', `${runId}:${next.taskId}`), tenantId, runId, taskId: next.taskId, targetBranch, status: 'PLANNED', createdAt: new Date().toISOString() }; try { git(plan.run.repositoryPath, ['checkout', targetBranch]); git(plan.run.repositoryPath, ['merge', '--no-ff', '--no-edit', sourceCommit]); const merged = { ...record, status: 'MERGED' as const, commit: git(plan.run.repositoryPath, ['rev-parse', 'HEAD']) }; DurableStore.upsert('mergeRecords', record.id, merged as unknown as Record<string, unknown>); ParallelWorktreeService.markTask(tenantId, next.id, 'MERGED'); return merged; } catch (error: any) { const conflictOutput = `${error.stdout || ''}${error.stderr || ''}`.slice(-10000); try { git(plan.run.repositoryPath, ['merge', '--abort']); } catch { /* preserve original merge failure */ } const failed = { ...record, status: 'CONFLICT' as const, conflictOutput }; DurableStore.upsert('mergeRecords', record.id, failed as unknown as Record<string, unknown>); return failed; } }
+  public static list(tenantId: string, runId?: string): MergeRecord[] { return DurableStore.list('mergeRecords').filter((item) => item.tenantId === tenantId && (!runId || item.runId === runId)) as unknown as MergeRecord[]; }
+}
