@@ -5,6 +5,7 @@ import { SandboxPolicyService } from '../../services/sandboxPolicyService';
 import { ObservationService } from '../../services/observationService';
 import { MergeService } from '../../services/mergeService';
 import { QualityGateService } from '../../services/qualityGateService';
+import { AgentExecutionService } from '../../services/agentExecutionService';
 
 const router = Router();
 const tenant = (req: any): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
@@ -14,6 +15,7 @@ router.post('/runs/:runId/enqueue', (req, res) => { if (!validateTenantRequest(r
 router.post('/queue/claim', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', job: AgentRunnerService.claim(tenant(req), String(req.body.worker || 'worker'), req.body.leaseMs) ?? null }); });
 router.post('/queue/:id/complete', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', job: AgentRunnerService.complete(tenant(req), req.params.id, req.body) }); } catch (error) { return fail(res, error); } });
 router.post('/queue/:id/cancel', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', job: AgentRunnerService.cancel(tenant(req), req.params.id) }); } catch (error) { return fail(res, error); } });
+router.post('/queue/execute-proposal', async (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.json({ status: 'success', execution: await AgentExecutionService.executeClaimed(tenant(req), String(req.body.worker || 'worker'), { providerId: String(req.body.providerId), model: String(req.body.model), system: req.body.system, maxOutputTokens: req.body.maxOutputTokens }) }); } catch (error) { return fail(res, error); } });
 router.post('/sandbox/policies', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', policy: SandboxPolicyService.createPolicy({ ...req.body, tenantId: tenant(req) }) }); } catch (error) { return fail(res, error); } });
 router.post('/sandbox/policies/:id/runs', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', run: SandboxPolicyService.planRun(tenant(req), req.params.id) }); } catch (error) { return fail(res, error); } });
 router.post('/deployments/:id/observe', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', observation: ObservationService.start(tenant(req), req.params.id, req.body) }); } catch (error) { return fail(res, error); } });
