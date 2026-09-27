@@ -11,7 +11,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "tsx --test --test-concurrency=1 test/**/*.test.ts",
-    "verify": "npm run lint && npm test && npm run build"
+    "verify": "npm run lint && npm test && npm run build",
+    "verify:layer1": "npm run build && bash scripts/verify-layer1.sh"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

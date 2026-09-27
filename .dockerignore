@@ -1,0 +1,21 @@
+# Keep build context small and prevent host state from leaking into the image.
+node_modules
+dist
+build
+coverage
+.data
+.git
+.github
+sprints
+docs
+*.log
+.env
+.env.*
+!.env.example
+test
+software_factory
+appwrite-functions
+README.md
+CHANGELOG.md
+DEEP_READINESS_AUDIT.md
+CONTRIBUTING.md
