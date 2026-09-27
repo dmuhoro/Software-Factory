@@ -8,6 +8,25 @@ export interface TenantAuditReportData {
   logs: TelemetryExecutionLog[];
 }
 
+/**
+ * Escapes a value for interpolation into HTML text or a quoted attribute.
+ *
+ * The report is a standalone HTML file that an auditor opens, so anything interpolated
+ * into it is attacker-reachable: `eventType`, `correlationId` and `timestamp` arrive in
+ * telemetry payloads that the client itself submits. Unescaped, a payload carrying
+ * `<img src=x onerror=...>` executes in the auditor's browser with access to their
+ * session. Escaping is applied at every interpolation rather than trusting any single
+ * field, because a filter on one field is one missed call site away from a regression.
+ */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function generateTenantReportHtml(data: TenantAuditReportData): string {
   const { tenantId, niche, generatedAt, config, logs } = data;
   const tenantLogs = logs.filter((l) => l.tenantId === tenantId);
@@ -33,7 +52,7 @@ export function generateTenantReportHtml(data: TenantAuditReportData): string {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Tenant Audit & Compliance Report - ${tenantId}</title>
+  <title>Tenant Audit &amp; Compliance Report - ${escapeHtml(tenantId)}</title>
   <style>
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -190,9 +209,9 @@ export function generateTenantReportHtml(data: TenantAuditReportData): string {
       <div class="subtitle">Platform: Multi-Tenant B2B SaaS Factory &bull; Isolation Guarantee: Enforced</div>
     </div>
     <div class="meta-badge">
-      <strong>Tenant ID:</strong> ${tenantId}<br>
-      <strong>Industry Niche:</strong> ${niche.toUpperCase()}<br>
-      <strong>Audit Timestamp:</strong> ${generatedAt}
+      <strong>Tenant ID:</strong> ${escapeHtml(tenantId)}<br>
+      <strong>Industry Niche:</strong> ${escapeHtml(String(niche).toUpperCase())}<br>
+      <strong>Audit Timestamp:</strong> ${escapeHtml(generatedAt)}
     </div>
   </div>
 
@@ -217,7 +236,7 @@ export function generateTenantReportHtml(data: TenantAuditReportData): string {
 
   <div class="section-title">Security & Tenant Partition Guardrails</div>
   <div class="audit-box">
-    &bull; <strong>Multi-Tenant Storage:</strong> Partition key 'tenant_id: ${tenantId}' isolated via Appwrite Attribute Permissions.<br>
+    &bull; <strong>Multi-Tenant Storage:</strong> Partition key 'tenant_id: ${escapeHtml(tenantId)}' isolated via Appwrite Attribute Permissions.<br>
     &bull; <strong>Anti-Conflation Violations:</strong> ${securityViolations} incidents detected (all halted deterministically).<br>
     &bull; <strong>Schema Anomalies / Malformed:</strong> ${malformedPayloads} rejected with standardized diagnostic JSON.<br>
     &bull; <strong>Active Niche Guardrails:</strong> ${
@@ -255,11 +274,11 @@ export function generateTenantReportHtml(data: TenantAuditReportData): string {
               .map(
                 (log) => `
         <tr>
-          <td>${log.correlationId}</td>
-          <td>${log.eventType}</td>
-          <td>${log.timestamp}</td>
-          <td>${log.durationMs}ms</td>
-          <td><span class="${log.status === 'success' ? 'badge-success' : 'badge-error'}">${log.status.toUpperCase()}</span></td>
+          <td>${escapeHtml(log.correlationId)}</td>
+          <td>${escapeHtml(log.eventType)}</td>
+          <td>${escapeHtml(log.timestamp)}</td>
+          <td>${escapeHtml(log.durationMs)}ms</td>
+          <td><span class="${log.status === 'success' ? 'badge-success' : 'badge-error'}">${escapeHtml(String(log.status ?? 'unknown').toUpperCase())}</span></td>
         </tr>
       `
               )
@@ -282,7 +301,7 @@ export function downloadTenantAuditReport(data: TenantAuditReportData) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `tenant_audit_report_${data.tenantId}_${Date.now()}.html`;
+  anchor.download = `tenant_audit_report_${data.tenantId.replace(/[^A-Za-z0-9_-]/g, '_')}_${Date.now()}.html`;
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
