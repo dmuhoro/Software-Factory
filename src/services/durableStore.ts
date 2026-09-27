@@ -147,6 +147,10 @@ export class DurableStore {
 
   private static acquireLock(): void {
     if (this.lockHeld) return;
+    // The lock lives beside the ledger, so the directory has to exist before the lock can
+    // be created. On a first run the data directory is absent, and opening the lock with
+    // 'wx' would fail ENOENT -- which surfaced as "ledger unusable" and refused startup.
+    fs.mkdirSync(path.dirname(this.dataFile()), { recursive: true });
     const lock = this.lockFile();
     const payload = JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() });
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -192,6 +196,10 @@ export class DurableStore {
   }
 
   private static ensureLoaded(): DurableState {
+    // The lock is taken on EVERY access, not just the first load. A writer lock that is
+    // released after each write protects nothing: the window between two writes is exactly
+    // when a second process would acquire it and start interleaving records.
+    this.acquireLock();
     if (this.state) return this.state;
     const file = this.dataFile();
     let parsed: unknown;
@@ -266,8 +274,16 @@ export class DurableStore {
       } catch { /* not permitted on every platform; the file fsync already ran */ }
       this.rotateBackups(file);
     } finally {
-      this.releaseLock();
+      // The lock is deliberately NOT released here. See ensureLoaded(): a per-write
+      // release leaves the ledger unprotected between writes.
     }
+  }
+
+  /**
+   * Releases the writer lock. Called on graceful shutdown and by tests, never by a write.
+   */
+  public static releaseWriterLock(): void {
+    this.releaseLock();
   }
 
   /** Keeps a small ring of previous-good documents for operator forensics. */

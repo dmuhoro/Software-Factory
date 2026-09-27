@@ -48,7 +48,11 @@ function probeLedger(): ReadinessCheck {
       return { name: 'durableStore', state: 'warn', detail: `recovered from an unreadable ledger at ${recovery?.occurredAt}; restoredFromBackup=${recovery?.restoredFromBackup} recordsLost=${recovery?.recordsLost}` };
     }
     if (DurableStore.hasContendedWriter()) {
-      return { name: 'durableStore', state: 'warn', detail: 'another process holds the writer lock; this adapter is single-writer' };
+      // A `fail`, not a `warn`. This adapter writes the whole ledger file on every change,
+      // so two live writers means one silently overwrites the other's records. That is
+      // data loss, not a degraded condition, and a process that cannot guarantee its own
+      // writes must not accept traffic. Startup treats `unhealthy` as fatal.
+      return { name: 'durableStore', state: 'fail', detail: 'another process holds the writer lock; this adapter is single-writer and will not serve alongside it' };
     }
     return { name: 'durableStore', state: 'pass', detail: `readable and writable at ${path.basename(DurableStore.dataFile())}; ${Object.values(stats.collections).reduce((a, b) => a + b, 0)} records` };
   } catch (error) {
