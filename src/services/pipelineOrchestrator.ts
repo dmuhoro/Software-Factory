@@ -9,6 +9,7 @@ import { NicheAdapterService } from './nicheAdapterService';
 import { GeminiService } from './geminiService';
 import { AppwriteService } from './appwriteService';
 import { validateIncomingTelemetry, emitMalformedContextError } from '../utils/validation';
+import { classifyDependencyFailure } from '../utils/operationalError';
 import { TelemetryLogger } from '../utils/telemetryLogger';
 
 export interface PipelineExecutionResult {
@@ -60,7 +61,7 @@ export class PipelineOrchestrator {
     }
 
     // Layer 3: Store raw telemetry document in Appwrite
-    const { documentId } = await AppwriteService.recordTelemetryEvent(payload);
+    const { documentId, deduplicated } = await AppwriteService.recordTelemetryEvent(payload);
 
     // Layer 4: Swappable domain adapter processing
     const adapterResult = NicheAdapterService.processAdapter(payload.niche, payload.payload);
@@ -76,13 +77,35 @@ export class PipelineOrchestrator {
     }
 
     // Layer 5: Gemini Structured Output Engine
-    const aiResult = await GeminiService.transformTelemetry(
-      payload.tenantId,
-      payload.niche,
-      payload.eventType,
-      adapterResult.result.normalizedPayload,
-      correlationId
-    );
+    // The raw document is already durable at this point. If enrichment fails, the error
+    // must carry that fact so the caller is never told the data was lost when it was not,
+    // and so a retry is safe (the idempotency key prevents duplication).
+    let aiResult: Awaited<ReturnType<typeof GeminiService.transformTelemetry>>;
+    try {
+      aiResult = await GeminiService.transformTelemetry(
+        payload.tenantId,
+        payload.niche,
+        payload.eventType,
+        adapterResult.result.normalizedPayload,
+        correlationId
+      );
+    } catch (error) {
+      TelemetryLogger.error('Structured enrichment failed after the raw record was persisted', {
+        tenantId: payload.tenantId,
+        niche: payload.niche,
+        correlationId,
+        metadata: { rawDocumentId: documentId, deduplicated, reason: (error as Error)?.message },
+      });
+      // The raw record IS durable at this point, so the failure must say so rather than
+      // letting the caller assume the data was lost. A retry is safe because the
+      // idempotency key prevents a duplicate.
+      const classified = classifyDependencyFailure(error, {
+        rawPayloadPersisted: true,
+        rawDocumentId: documentId,
+        deduplicated,
+      });
+      throw classified;
+    }
 
     // Layer 6: Asynchronous database update in Appwrite
     const transformationId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
