@@ -83,30 +83,80 @@ export class CircuitBreaker {
 }
 
 /**
- * Execute an async operation with full exponential backoff and jitter.
+ * Thrown when the overall budget for a retried operation is spent. Distinct from an
+ * attempt failure so the caller can tell "the provider is unhealthy" from "we ran out of
+ * time", which are different operational responses.
+ */
+export class OperationDeadlineExceededError extends Error {
+  readonly code = 'OPERATION_DEADLINE_EXCEEDED';
+  constructor(elapsedMs: number, deadlineMs: number, options?: { cause?: unknown }) {
+    super(`Operation exceeded its ${deadlineMs}ms deadline after ${elapsedMs}ms`, options);
+    this.name = 'OperationDeadlineExceededError';
+  }
+}
+
+/**
+ * Execute an async operation with full exponential backoff and jitter, under an overall
+ * deadline.
+ *
+ * `maxRetries` and the per-attempt timeout do not bound the total time. With a 25s
+ * per-attempt timeout and three retries an operation can occupy a request for over a
+ * minute: four attempts plus three backoffs, with a client that has usually given up by
+ * the second. The retry budget is therefore only meaningful alongside a wall-clock
+ * budget, so one is required here rather than defaulted to infinity.
+ *
+ * The deadline is checked before each attempt and after each failure, and the remaining
+ * budget bounds the backoff sleep. On expiry the last error is attached as `cause` so the
+ * underlying failure is still diagnosable, and the deadline error is thrown in its place:
+ * a caller gets an explicit refusal rather than a stalled request or a partial result.
+ *
+ * @param deadlineMs total wall-clock budget for all attempts. Must be a positive finite
+ *   number; there is deliberately no "unbounded" option.
  */
 export async function withExponentialBackoff<T>(
   operation: (attempt: number) => Promise<T>,
   maxRetries = 3,
   initialBackoffMs = 500,
   maxBackoffMs = 5000,
-  jitterFactor = 0.2
+  jitterFactor = 0.2,
+  deadlineMs = 60_000
 ): Promise<{ result: T; attempts: number }> {
+  if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+    throw new Error(`withExponentialBackoff requires a positive finite deadline, received ${deadlineMs}`);
+  }
+
+  const startedAt = Date.now();
   let attempt = 0;
+  let lastError: unknown;
+
   while (attempt <= maxRetries) {
+    const elapsed = Date.now() - startedAt;
+    if (elapsed >= deadlineMs) {
+      throw new OperationDeadlineExceededError(elapsed, deadlineMs);
+    }
+
     attempt++;
     try {
-      const result = await operation(attempt);
-      return { result, attempts: attempt };
+      return { result: await operation(attempt), attempts: attempt };
     } catch (error) {
+      lastError = error;
       if (attempt > maxRetries) {
         throw error;
       }
+
       const rawDelay = Math.min(initialBackoffMs * Math.pow(2, attempt - 1), maxBackoffMs);
       const jitter = rawDelay * jitterFactor * (Math.random() * 2 - 1);
       const delay = Math.max(50, Math.floor(rawDelay + jitter));
+
+      // Never sleep past the deadline, and stop if the sleep itself would exceed it.
+      const remaining = deadlineMs - (Date.now() - startedAt);
+      if (remaining <= delay) {
+        throw new OperationDeadlineExceededError(deadlineMs - remaining, deadlineMs, { cause: lastError });
+      }
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-  throw new Error('Exhausted all retry attempts in withExponentialBackoff');
+
+  // Only reachable if maxRetries is negative, which the loop guard above otherwise masks.
+  throw new OperationDeadlineExceededError(Date.now() - startedAt, deadlineMs, { cause: lastError });
 }

@@ -120,7 +120,8 @@ ${JSON.stringify(payload, null, 2)}`;
       GeminiConfig.resilience.maxRetries,
       GeminiConfig.resilience.initialBackoffMs,
       GeminiConfig.resilience.maxBackoffMs,
-      GeminiConfig.resilience.jitterFactor
+      GeminiConfig.resilience.jitterFactor,
+      GeminiConfig.resilience.overallDeadlineMs
     );
 
     const durationMs = Date.now() - startTime;
