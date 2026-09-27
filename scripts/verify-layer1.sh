@@ -47,9 +47,15 @@ start_server() {
   local port=$1 data=$2 ws=$3 logfile=$4; shift 4
   mkdir -p "$data" "$ws"
   : > "$logfile"
-  ( cd "$ROOT" && env NODE_ENV=production PORT="$port" \
+  # `exec` is required: backgrounding `cd ... && env ... node` makes $! the pid of the
+  # wrapping subshell, so stop_server and the EXIT trap kill the wrapper and leak a
+  # listening server that squats the port and fails the next run with EADDRINUSE.
+  ( cd "$ROOT" && exec env NODE_ENV=production PORT="$port" \
       FACTORY_API_KEY="$KEY" FACTORY_DATA_DIR="$data" FACTORY_WORKSPACE_ROOT="$ws" \
-      "$@" node "$BIN" >> "$logfile" 2>&1 & echo $! > "$ROOT/srv-$port.pid" )
+      "$@" node "$BIN" ) >> "$logfile" 2>&1 &
+  echo $! > "$ROOT/srv-$port.pid"
+  # Disown so the kill does not make bash print a "Killed" job notice.
+  disown 2>/dev/null || true
   # Wait for the banner, which is printed only after the ledger pre-flight completes.
   for _ in $(seq 1 80); do
     if grep -q "listening on 0.0.0.0:$port" "$logfile" 2>/dev/null; then return 0; fi
