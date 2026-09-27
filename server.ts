@@ -8,6 +8,7 @@ import { apiRouter } from './src/api';
 import { globalErrorHandler } from './src/api/middleware';
 import { classifyReadiness } from './src/services/healthService';
 import { describeConfig, errorsOf, resolveRuntimeConfig } from './src/configurations/runtimeConfig';
+import { TenantService } from './src/services/tenantService';
 
 const config = resolveRuntimeConfig();
 
@@ -22,7 +23,30 @@ if (fatal.length > 0) {
 // eslint-disable-next-line no-console -- startup banner is the operator's first signal
 console.log(`[Software Factory] starting\n${describeConfig(config)}`);
 
+/**
+ * Hashes and installs the configured per-tenant credentials.
+ *
+ * Runs before the port is bound so a tenant is never told it is authenticated and then
+ * fail on its first request. The plaintext is discarded here; only the scrypt digest
+ * reaches the registry.
+ */
+async function provisionTenantCredentials(): Promise<void> {
+  const entries = Object.entries(config.tenantCredentials);
+  for (const [tenantId, secret] of entries) {
+    if (!TenantService.getTenant(tenantId)) {
+      process.stderr.write(`[Software Factory] WARNING FACTORY_TENANT_CREDENTIALS names unknown tenant '${tenantId}'; the credential is not installed and that tenant cannot authenticate.\n`);
+      continue;
+    }
+    await TenantService.provisionCredential(tenantId, secret);
+  }
+  if (entries.length > 0) {
+    process.stderr.write(`[Software Factory] provisioned ${Object.keys(config.tenantCredentials).length} tenant credential(s); digests only are retained.\n`);
+  }
+}
+
 async function startServer() {
+  await provisionTenantCredentials();
+
   // Pre-flight: probe the durable ledger BEFORE binding a port. A corrupt ledger is
   // recoverable, but an operator must learn about it from the startup banner, and no
   // request should be served before that state is known.

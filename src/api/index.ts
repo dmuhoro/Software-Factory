@@ -9,9 +9,12 @@ import { tenantAuthMiddleware, tenantRateLimiter, globalErrorHandler } from './m
 
 export const apiRouter = Router();
 
-// Global middleware for API routes
-apiRouter.use(tenantRateLimiter);
+// Order is load-bearing. Authentication must run BEFORE rate limiting, because the
+// limiter can only key on an identity it can trust; the previous order gave the limiter
+// nothing but a caller-supplied X-Tenant-Id header, which a caller could rotate to
+// sidestep it entirely.
 apiRouter.use(tenantAuthMiddleware);
+apiRouter.use(tenantRateLimiter);
 apiRouter.use('/', apiRoutes);
 
 export * from './middleware';

@@ -27,6 +27,8 @@ export interface RuntimeConfig {
   requestBodyLimit: string;
   /** Environment variable names the factory may resolve for outbound model providers. */
   allowedSecretRefs: string[];
+  /** tenantId -> plaintext credential, available only at startup before hashing. */
+  tenantCredentials: Record<string, string>;
   /** Hosts a remote (non-local) model provider may reach. */
   allowedModelHosts: string[];
   issues: ConfigIssue[];
@@ -57,6 +59,7 @@ export const FACTORY_SETTING_NAMES: ReadonlySet<string> = new Set([
   'FACTORY_FRONTIER_API_URL',
   'FACTORY_FRONTIER_API_KEY',
   'FACTORY_HOSTED_DEPLOYMENT_SECRET_REF',
+  'FACTORY_TENANT_CREDENTIALS',
 ]);
 
 const MIN_PRODUCTION_KEY_LENGTH = 24;
@@ -110,8 +113,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
   const nodeEnv = env.NODE_ENV === 'production' ? 'production' : env.NODE_ENV === 'test' ? 'test' : 'development';
   const isProduction = nodeEnv === 'production';
 
-  const apiKey = trimmed(env.FACTORY_API_KEY);
-  if (apiKey === '') {
+  const apiKey = trimmed(env.FACTORY_API_KEY);  if (apiKey === '') {
     issues.push({
       variable: 'FACTORY_API_KEY',
       severity: isProduction ? 'error' : 'warning',
@@ -165,6 +167,54 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
     issues.push({ variable: 'FACTORY_ALLOWED_SECRET_REFS', severity: 'error', message: `These permitted secret references are not set in the environment: ${missingSecretRefs.join(', ')}. An allowlisted but unset reference is a configuration error, not an anonymous request.` });
   }
 
+  // Per-tenant credentials, supplied as `tenantId:secret` pairs. Each is hashed on
+  // startup and only the digest is retained. Absent means no tenant can authenticate on
+  // its own behalf, which is the fail-closed direction: the platform key still works, and
+  // every tenant route is reachable only as platform_operator until credentials exist.
+  const tenantCredentials: Record<string, string> = {};
+  for (const entry of listOf(env.FACTORY_TENANT_CREDENTIALS)) {
+    const separator = entry.indexOf(':');
+    if (separator <= 0 || separator === entry.length - 1) {
+      issues.push({
+        variable: 'FACTORY_TENANT_CREDENTIALS',
+        severity: 'error',
+        message: `Malformed tenant credential entry '${entry}'. Expected tenantId:secret.`,
+      });
+      continue;
+    }
+    const id = entry.slice(0, separator).trim();
+    const secret = entry.slice(separator + 1).trim();
+    if (isPlaceholderSecret(secret)) {
+      issues.push({
+        variable: 'FACTORY_TENANT_CREDENTIALS',
+        severity: 'error',
+        message: `Tenant '${id}' was provisioned with a placeholder credential, which is public knowledge and cannot authenticate anyone.`,
+      });
+      continue;
+    }
+    if (secret.length < 24) {
+      issues.push({
+        variable: 'FACTORY_TENANT_CREDENTIALS',
+        severity: 'error',
+        message: `Tenant '${id}' credential must be at least 24 characters.`,
+      });
+      continue;
+    }
+    tenantCredentials[id] = secret;
+  }
+  if (isProduction && Object.keys(tenantCredentials).length === 0) {
+    issues.push({
+      variable: 'FACTORY_TENANT_CREDENTIALS',
+      severity: 'warning',
+      message: 'No tenant credentials are provisioned. Tenants cannot authenticate on their own behalf; all tenant access is currently platform_operator. Set FACTORY_TENANT_CREDENTIALS to tenantId:secret pairs.',
+    });
+  }
+  for (const id of Object.keys(tenantCredentials)) {
+    if (id.startsWith('replace') || !/^[A-Za-z0-9_-]{3,64}$/.test(id)) {
+      issues.push({ variable: 'FACTORY_TENANT_CREDENTIALS', severity: 'error', message: `Tenant id '${id}' is not a valid identifier (3-64 chars of A-Z a-z 0-9 _ -).` });
+    }
+  }
+
   // A mistyped FACTORY_* variable is silently ignored by every reader, which is the
   // most expensive kind of configuration bug: the operator believes a control is
   // active when it is not. Surface any unrecognised namespace variable explicitly.
@@ -186,6 +236,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
     workspaceRoot,
     requestBodyLimit: trimmed(env.REQUEST_BODY_LIMIT) || '1mb',
     allowedSecretRefs,
+    tenantCredentials,
     allowedModelHosts: listOf(env.FACTORY_MODEL_ALLOWED_HOSTS),
     issues,
   };
@@ -205,6 +256,8 @@ export function describeConfig(config: RuntimeConfig): string {
     `  local bypass    ${config.insecureLocalBypass ? 'ENABLED (loopback only)' : 'disabled'}`,
     `  model secrets   ${config.allowedSecretRefs.length === 0 ? 'none permitted' : `${config.allowedSecretRefs.length} permitted`}`,
     `  model hosts     ${config.allowedModelHosts.length === 0 ? 'none permitted' : config.allowedModelHosts.join(', ')}`,
+    // Counts only. Credential values must never reach a log line.
+    `  tenant creds    ${Object.keys(config.tenantCredentials).length} provisioned`,
   ];
   for (const issue of warningsOf(config)) lines.push(`  warning         ${issue.variable}: ${issue.message}`);
   for (const issue of errorsOf(config)) lines.push(`  ERROR           ${issue.variable}: ${issue.message}`);
