@@ -5,17 +5,21 @@ import { DurableStore } from './durableStore';
 import { TelemetryLogger } from '../utils/telemetryLogger';
 
 export class AppwriteService {
-  public static async recordTelemetryEvent(payload: RawTelemetryPayload): Promise<{ documentId: string }> {
+  /**
+   * Persists a telemetry event under the ADR-001 composite key [tenant_id, idempotency_key].
+   *
+   * The document id is derived deterministically from that pair, so a replayed event
+   * resolves to the same id and is reported as a duplicate. This replaces a previous
+   * implementation that scanned the entire telemetry collection on every ingest, which
+   * was both O(n) per write and racy between concurrent replays.
+   */
+  public static async recordTelemetryEvent(payload: RawTelemetryPayload): Promise<{ documentId: string; deduplicated: boolean }> {
     const idempotencyKey = payload.metadata.idempotencyKey;
-    const existing = DurableStore.list('telemetry').find(
-      (item) => item.tenantId === payload.tenantId && (item.metadata as Record<string, unknown> | undefined)?.idempotencyKey === idempotencyKey,
-    );
-    if (existing?.id) return { documentId: String(existing.id) };
-
-    const documentId = DurableStore.id('doc_telem', `${payload.tenantId}:${idempotencyKey}`);
+    const documentId = DurableStore.deterministicId('doc_telem', payload.tenantId, idempotencyKey);
+    if (DurableStore.exists('telemetry', documentId)) return { documentId, deduplicated: true };
     DurableStore.upsert('telemetry', documentId, { ...payload, id: documentId, persistedAt: new Date().toISOString() } as unknown as Record<string, unknown>);
     TelemetryLogger.info('Persisted telemetry event', { tenantId: payload.tenantId, niche: payload.niche, eventType: payload.eventType, metadata: { documentId } });
-    return { documentId };
+    return { documentId, deduplicated: false };
   }
 
   public static async recordTransformation(record: TransformationRecord): Promise<void> {
