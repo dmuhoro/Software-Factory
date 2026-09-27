@@ -194,6 +194,38 @@ export function validateIncomingTelemetry(raw: unknown): { isValid: boolean; err
     };
   }
 
+  // ADR-001: the composite uniqueness key is [tenant_id, idempotency_key]. Without it
+  // a replayed event cannot be detected, so it is a required partition attribute, not
+  // an optional hint. Persistence dereferences this field unconditionally.
+  const metadata = payload.metadata as Record<string, unknown> | undefined;
+  if (!metadata || typeof metadata !== 'object') {
+    return {
+      isValid: false,
+      error: emitMalformedContextError("Telemetry metadata is required and must include 'idempotencyKey'"),
+    };
+  }
+
+  if (typeof metadata.idempotencyKey !== 'string' || !metadata.idempotencyKey.trim()) {
+    return {
+      isValid: false,
+      error: emitMalformedContextError("Telemetry metadata requires a non-empty string 'idempotencyKey' (ADR-001 composite uniqueness key)"),
+    };
+  }
+
+  if (metadata.idempotencyKey.length > 200) {
+    return {
+      isValid: false,
+      error: emitMalformedContextError("Telemetry 'idempotencyKey' must not exceed 200 characters"),
+    };
+  }
+
+  if (payload.timestamp !== undefined && (typeof payload.timestamp !== 'string' || Number.isNaN(Date.parse(payload.timestamp)))) {
+    return {
+      isValid: false,
+      error: emitMalformedContextError('Telemetry timestamp must be an ISO-8601 string when supplied'),
+    };
+  }
+
   // Check niche-specific constraints
   const niche = payload.niche as IndustryNiche;
   const inner = payload.payload as Record<string, unknown>;

@@ -6,6 +6,7 @@ import { ContextIndexService, seedBuiltInContexts } from './contextIndexService'
 import { detectVerificationProfile, executeVerification, VerificationProfile, FailureClass } from './verificationProfileService';
 import { ApprovalPolicyService } from './approvalPolicyService';
 import { FailureService } from './failureService';
+import { isWithin, resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
 
 export type FactoryJobStatus = 'IDEA' | 'DISCOVERY' | 'VALIDATION' | 'SPECIFIED' | 'DESIGNED' | 'ARCHITECTED' | 'IMPLEMENTING' | 'VALIDATING' | 'SECURITY_REVIEW' | 'PREVIEW_READY' | 'RELEASE_PENDING' | 'DEPLOYED' | 'OBSERVING' | 'DELIVERED' | 'LEARNING' | 'CLOSED' | 'BLOCKED';
 export type CompletionTaskStatus = 'pending' | 'in_progress' | 'complete' | 'blocked';
@@ -30,9 +31,7 @@ const transitions: Record<FactoryJobStatus, FactoryJobStatus[]> = {
 
 function runGit(repo: string, args: string[]): string { return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
 function workspaceAllowed(repo: string): boolean {
-  const root = path.resolve(process.env.FACTORY_WORKSPACE_ROOT || process.cwd());
-  const resolved = path.resolve(repo);
-  return resolved === root || resolved.startsWith(`${root}${path.sep}`);
+  return isWithin(workspaceRoot(), repo);
 }
 function audit(job: FactoryJob, action: string): void {
   DurableStore.appendAudit({ logId: DurableStore.id('audit', `${action}:${job.id}:${job.updatedAt}`), tenantId: job.tenantId, actorId: 'founder', action, resourceUri: `factory://jobs/${job.id}`, timestamp: new Date().toISOString() });
@@ -85,7 +84,7 @@ export class FactoryJobService {
   public static modifyRepository(tenantId: string, id: string, input: { files: Array<{ path: string; content: string }> }): FactoryJob {
     const job = this.get(tenantId, id); if (!job?.repositoryRun) throw new Error(job ? 'REPOSITORY_BRANCH_REQUIRED' : 'FACTORY_JOB_NOT_FOUND');
     const repo = job.repositoryRun.repositoryPath; const changedFiles: string[] = [];
-    for (const file of input.files) { const target = path.resolve(repo, file.path); if (!target.startsWith(`${repo}${path.sep}`)) throw new Error('FILE_OUTSIDE_REPOSITORY'); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, file.content, 'utf8'); changedFiles.push(path.relative(repo, target)); }
+    for (const file of input.files) { const target = resolveFileWithin(repo, file.path); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, file.content, 'utf8'); changedFiles.push(path.relative(repo, target)); }
     const updated = this.save({ ...job, repositoryRun: { ...job.repositoryRun, changedFiles: [...new Set([...job.repositoryRun.changedFiles, ...changedFiles])] } }); audit(updated, 'REPOSITORY_FILES_MODIFIED'); return updated;
   }
 
