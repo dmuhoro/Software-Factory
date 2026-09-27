@@ -21,5 +21,10 @@ export const GeminiConfig = {
     initialBackoffMs: 800,
     maxBackoffMs: 8000,
     jitterFactor: 0.25,
+    // Wall-clock budget for the whole retried operation, not one attempt. With a 25s
+    // per-attempt timeout and three retries the unconstrained cost is 4 x 25s plus three
+    // backoffs, so a single enrichment can hold a request for over 90s. This is the
+    // ceiling `withExponentialBackoff` enforces and must exceed timeoutMs.
+    overallDeadlineMs: 70000,
   },
 };
