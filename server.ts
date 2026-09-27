@@ -9,6 +9,7 @@ import { globalErrorHandler } from './src/api/middleware';
 import { classifyReadiness } from './src/services/healthService';
 import { describeConfig, errorsOf, resolveRuntimeConfig } from './src/configurations/runtimeConfig';
 import { TenantService } from './src/services/tenantService';
+import { DurableStore } from './src/services/durableStore';
 
 const config = resolveRuntimeConfig();
 
@@ -54,6 +55,13 @@ async function startServer() {
   if (readiness.status === 'unhealthy') {
     process.stderr.write('[Software Factory] readiness pre-flight failed:\n');
     for (const check of readiness.details) process.stderr.write(`  ${check.state.toUpperCase().padEnd(5)} ${check.name}: ${check.detail}\n`);
+    // Fail closed. Binding a port here would serve traffic from a process that cannot
+    // guarantee its own writes -- for example one that lost a race for the writer lock
+    // and would overwrite the other writer's records. An orchestrator restarts on a
+    // non-zero exit, which is the correct response; a 200 health check is not.
+    // 75 is EX_TEMPFAIL: the condition is expected to clear on its own.
+    process.stderr.write('[Software Factory] refusing to serve while the ledger is unusable\n');
+    process.exit(75);
   } else if (readiness.status === 'degraded') {
     process.stderr.write('[Software Factory] running DEGRADED:\n');
     for (const check of readiness.details) {
@@ -67,6 +75,13 @@ async function startServer() {
   app.set('trust proxy', config.isProduction ? 1 : false);
   app.use(express.json({ limit: config.requestBodyLimit }));
   app.use('/api', apiRouter);
+  // Anything under /api that no route claimed is a 404, and it must be decided here. The
+  // SPA fallback below answers `app.get('*')` with index.html and a 200, so without this
+  // a mistyped API path returned HTTP 200 and an HTML body: a client that checks the
+  // status would treat a missing endpoint as a successful call.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ status: 'error', code: 'ENDPOINT_NOT_FOUND', message: 'No such API endpoint.' });
+  });
   if (!config.isProduction) {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
@@ -98,8 +113,16 @@ async function startServer() {
   const shutdown = (signal: string) => {
     // eslint-disable-next-line no-console
     console.log(`[Software Factory] ${signal} received; draining HTTP connections`);
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(1), 10_000).unref();
+    server.close(() => {
+      // Hand the writer lock back only once no further request can be served. Releasing it
+      // earlier would let a replacement instance start while this one was still writing.
+      DurableStore.releaseWriterLock();
+      process.exit(0);
+    });
+    setTimeout(() => {
+      DurableStore.releaseWriterLock();
+      process.exit(1);
+    }, 10_000).unref();
   };
   process.once('SIGTERM', () => shutdown('SIGTERM'));
   process.once('SIGINT', () => shutdown('SIGINT'));

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { respondWithError } from '../../utils/respondWithError';
 import { validateTenantRequest } from '../middleware/tenantAuth';
 import { WorkspaceService } from '../../services/workspaceService';
 import { FactoryJobService } from '../../services/factoryJobService';
@@ -10,7 +11,7 @@ import { AutonomyService } from '../../services/autonomyService';
 
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
-const fail = (res: Response, error: any, code = 409) => res.status(code).json({ status: 'error', code: error?.message || 'WORKSPACE_OPERATION_FAILED', message: error?.message || 'Workspace operation failed' });
+const fail = (res: Response, error: unknown) => respondWithError(res, error, 'WORKSPACE_OPERATION_FAILED');
 router.get('/inbox', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', inbox: WorkspaceService.inbox(tenant(req)) }); });
 router.get('/projects', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', projects: WorkspaceService.list(tenant(req)) }); });
 router.post('/projects', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', project: WorkspaceService.register({ ...req.body, tenantId: tenant(req) }) }); } catch (error: any) { return fail(res, error); } });

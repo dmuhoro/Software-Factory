@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { respondWithError } from '../../utils/respondWithError';
 import { FactoryJobService, FactoryJobStatus } from '../../services/factoryJobService';
 import { validateTenantRequest } from '../middleware/tenantAuth';
 import { ApprovalPolicyService, HarnessAction } from '../../services/approvalPolicyService';
@@ -6,23 +7,23 @@ import { ApprovalPolicyService, HarnessAction } from '../../services/approvalPol
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
 const ok = (res: Response, job: unknown, code = 200) => res.status(code).json({ status: 'success', job });
-const fail = (res: Response, error: any, code = 409) => res.status(code).json({ status: 'error', code: error?.message || 'FACTORY_OPERATION_FAILED', message: error?.message || 'Factory operation failed' });
+const fail = (res: Response, error: unknown) => respondWithError(res, error, 'FACTORY_OPERATION_FAILED');
 
 router.get('/', (req, res) => { const jobs = FactoryJobService.list(tenant(req)); return res.json({ status: 'success', jobs, count: jobs.length }); });
 router.get('/approvals', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', approvals: ApprovalPolicyService.list(tenant(req)) }); });
-router.get('/:id', (req, res) => { const job = FactoryJobService.get(tenant(req), req.params.id); return job ? ok(res, job) : fail(res, { message: 'FACTORY_JOB_NOT_FOUND' }, 404); });
+router.get('/:id', (req, res) => { const job = FactoryJobService.get(tenant(req), req.params.id); return job ? ok(res, job) : fail(res, { message: 'FACTORY_JOB_NOT_FOUND' }); });
 
 router.post('/', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;
   const { title, problem, desiredOutcome, acceptanceCriteria } = req.body ?? {};
-  if (![title, problem, desiredOutcome].every((value) => typeof value === 'string' && value.trim())) return fail(res, { message: 'INVALID_FACTORY_JOB: title, problem, and desiredOutcome are required' }, 400);
+  if (![title, problem, desiredOutcome].every((value) => typeof value === 'string' && value.trim())) return fail(res, { message: 'INVALID_FACTORY_JOB: title, problem, and desiredOutcome are required' });
   return ok(res, FactoryJobService.create({ tenantId: tenant(req), title, problem, desiredOutcome, acceptanceCriteria }), 201);
 });
 
 router.post('/:id/brief', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;
   const { audience, valueHypothesis, wedge, nonGoals } = req.body ?? {};
-  if (![audience, valueHypothesis, wedge].every((value) => typeof value === 'string' && value.trim())) return fail(res, { message: 'INVALID_PRODUCT_BRIEF: audience, valueHypothesis, and wedge are required' }, 400);
+  if (![audience, valueHypothesis, wedge].every((value) => typeof value === 'string' && value.trim())) return fail(res, { message: 'INVALID_PRODUCT_BRIEF: audience, valueHypothesis, and wedge are required' });
   try { return ok(res, FactoryJobService.createProductBrief(tenant(req), req.params.id, { audience, valueHypothesis, wedge, nonGoals })); } catch (error: any) { return fail(res, error); }
 });
 
@@ -30,12 +31,12 @@ router.post('/:id/plan', (req: Request, res: Response) => { if (!validateTenantR
 router.post('/:id/repository', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; try { return ok(res, FactoryJobService.prepareRepository(tenant(req), req.params.id, req.body)); } catch (error: any) { return fail(res, error); } });
 router.post('/:id/modify', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; try { return ok(res, FactoryJobService.modifyRepository(tenant(req), req.params.id, req.body)); } catch (error: any) { return fail(res, error); } });
 router.post('/:id/verify', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; try { return ok(res, FactoryJobService.verifyRepository(tenant(req), req.params.id)); } catch (error: any) { return fail(res, error); } });
-router.post('/:id/repair-loop', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; const { repairs, maxAttempts } = req.body ?? {}; if (!Array.isArray(repairs)) return fail(res, { message: 'INVALID_REPAIR_LOOP: repairs must be an array' }, 400); try { return ok(res, FactoryJobService.runRepairLoop(tenant(req), req.params.id, { repairs, maxAttempts })); } catch (error: any) { return fail(res, error); } });
+router.post('/:id/repair-loop', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; const { repairs, maxAttempts } = req.body ?? {}; if (!Array.isArray(repairs)) return fail(res, { message: 'INVALID_REPAIR_LOOP: repairs must be an array' }); try { return ok(res, FactoryJobService.runRepairLoop(tenant(req), req.params.id, { repairs, maxAttempts })); } catch (error: any) { return fail(res, error); } });
 router.post('/:id/preview', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; try { return ok(res, FactoryJobService.createPreview(tenant(req), req.params.id)); } catch (error: any) { return fail(res, error); } });
 router.post('/:id/quality', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', snapshot: FactoryJobService.recordLaunchQuality(tenant(req), req.params.id) }); } catch (error: any) { return fail(res, error); } });
-router.post('/:id/approval', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; const { action, rationale } = req.body ?? {}; if (!action || !rationale || !ApprovalPolicyService.requiresApproval(action as HarnessAction)) return fail(res, { message: 'INVALID_APPROVAL_REQUEST' }, 400); try { return res.status(201).json({ status: 'success', approval: ApprovalPolicyService.request({ tenantId: tenant(req), jobId: req.params.id, action, rationale }) }); } catch (error: any) { return fail(res, error); } });
-router.post('/approvals/:approvalId/decision', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; const { status, note } = req.body ?? {}; if (!['APPROVED', 'REJECTED'].includes(status) || typeof note !== 'string' || !note.trim()) return fail(res, { message: 'INVALID_APPROVAL_DECISION' }, 400); try { return ok(res, ApprovalPolicyService.decide(tenant(req), req.params.approvalId, status, note)); } catch (error: any) { return fail(res, error); } });
+router.post('/:id/approval', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; const { action, rationale } = req.body ?? {}; if (!action || !rationale || !ApprovalPolicyService.requiresApproval(action as HarnessAction)) return fail(res, { message: 'INVALID_APPROVAL_REQUEST' }); try { return res.status(201).json({ status: 'success', approval: ApprovalPolicyService.request({ tenantId: tenant(req), jobId: req.params.id, action, rationale }) }); } catch (error: any) { return fail(res, error); } });
+router.post('/approvals/:approvalId/decision', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; const { status, note } = req.body ?? {}; if (!['APPROVED', 'REJECTED'].includes(status) || typeof note !== 'string' || !note.trim()) return fail(res, { message: 'INVALID_APPROVAL_DECISION' }); try { return ok(res, ApprovalPolicyService.decide(tenant(req), req.params.approvalId, status, note)); } catch (error: any) { return fail(res, error); } });
 router.post('/:id/transition', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; try { return ok(res, FactoryJobService.transition(tenant(req), req.params.id, req.body.status as FactoryJobStatus)); } catch (error: any) { return fail(res, error); } });
-router.post('/:id/evidence', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; const { kind, description, uri } = req.body ?? {}; if (!kind || !description) return fail(res, { message: 'INVALID_EVIDENCE: kind and description are required' }, 400); try { return ok(res, FactoryJobService.addEvidence(tenant(req), req.params.id, { kind, description, uri })); } catch (error: any) { return fail(res, error, 404); } });
+router.post('/:id/evidence', (req: Request, res: Response) => { if (!validateTenantRequest(req, res)) return; const { kind, description, uri } = req.body ?? {}; if (!kind || !description) return fail(res, { message: 'INVALID_EVIDENCE: kind and description are required' }); try { return ok(res, FactoryJobService.addEvidence(tenant(req), req.params.id, { kind, description, uri })); } catch (error: any) { return fail(res, error); } });
 
 export default router;
