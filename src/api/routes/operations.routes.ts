@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import type { Response as ExpressResponse } from 'express';
+import { respondWithError } from '../../utils/respondWithError';
 import { validateTenantRequest } from '../middleware/tenantAuth';
 import { AgentRunnerService } from '../../services/agentRunnerService';
 import { SandboxPolicyService } from '../../services/sandboxPolicyService';
@@ -9,7 +11,7 @@ import { AgentExecutionService } from '../../services/agentExecutionService';
 
 const router = Router();
 const tenant = (req: any): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
-const fail = (res: any, error: any) => res.status(409).json({ status: 'error', code: error?.message || 'OPERATION_FAILED', message: error?.message || 'Operation failed' });
+const fail = (res: ExpressResponse, error: unknown) => respondWithError(res, error, 'OPERATION_FAILED');
 router.get('/queue', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', jobs: AgentRunnerService.list(tenant(req), String(req.query.runId || '') || undefined) }); });
 router.post('/runs/:runId/enqueue', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', jobs: AgentRunnerService.enqueue(tenant(req), req.params.runId, req.body.maxAttempts) }); } catch (error) { return fail(res, error); } });
 router.post('/queue/claim', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', job: AgentRunnerService.claim(tenant(req), String(req.body.worker || 'worker'), req.body.leaseMs) ?? null }); });
