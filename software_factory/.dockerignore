@@ -1,0 +1,19 @@
+# The build context for software_factory/Dockerfile.
+#
+# The absence of this file is a real defect, not an oversight. `target/` here was 2.6GB on a
+# developer machine, and because `COPY . .` was unrestricted, that entire directory was sent
+# to the Docker daemon on every build and then copied into the image. The first build of this
+# project took over four minutes largely because of a build cache being uploaded.
+#
+# Ignore the build output and the VCS metadata. `Cargo.lock` is deliberately NOT ignored:
+# it is the reason this image is reproducible, and excluding it would reintroduce the exact
+# defect that let the image resolve a different dependency graph than the tested one.
+target/
+.git/
+.gitignore
+.github/
+*.md
+k8s/
+scripts/
+Dockerfile
+.dockerignore
