@@ -132,15 +132,24 @@ test('NC-3: the lockfile in the repository agrees with package.json', () => {
 });
 
 test('NC-3: every CI job installs with npm, so the tested tree is the shipped tree', () => {
-  const workflow = readFileSync(join(ROOT, '.github/workflows/verify.yml'), 'utf8');
+  // Comments are stripped before matching. A CI job executes instructions, not prose, and this
+  // test was wrong for exactly that reason: the comment added beside this step explains that
+  // the founder playbook used to instruct `bun install --frozen-lockfile`, and the test failed
+  // on its own documentation. That is the same defect ADR-008 rule 4 describes -- a check that
+  // cannot tell a document from a behaviour. Only whole-line comments are removed; a `#` inside
+  // a quoted string is left alone.
+  const instructions = readFileSync(join(ROOT, '.github/workflows/verify.yml'), 'utf8')
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
 
   assert.ok(
-    /npm ci/.test(workflow),
+    /npm ci/.test(instructions),
     'CI must use `npm ci` so the tested tree is exactly the locked tree',
   );
   for (const other of ['bun install', 'yarn install', 'pnpm install']) {
     assert.equal(
-      workflow.includes(other),
+      instructions.includes(other),
       false,
       `CI installs with "${other}" while the repository canonicalises npm. Every gate would ` +
         'then attest to a tree that is not the one an image build produces.',
