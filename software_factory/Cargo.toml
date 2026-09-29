@@ -1,6 +1,6 @@
 [package]
 name = "software_factory"
-version = "0.1.0"
+version = "4.7.0"
 edition = "2021"
 authors = ["Software Factory Systems Team <dev@softwarefactory.enterprise>"]
 description = "High-performance multi-tenant B2B SaaS runtime engine using Tokio async pipeline and Gemini structured outputs"
