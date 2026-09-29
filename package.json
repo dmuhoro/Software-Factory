@@ -9,6 +9,7 @@
     "dev": "tsx server.ts",
     "lint": "tsc --noEmit",
     "preview": "vite preview",
+    "render:egress": "bash scripts/render-egress-policy.sh",
     "start": "node dist/server.cjs",
     "test": "tsx --test --test-concurrency=1 test/**/*.test.ts",
     "verify": "npm run lint && npm test && npm run build && bash scripts/verify-layer4.sh",

@@ -1,7 +1,35 @@
-# Default deny, then reopen only what the runtime needs.
+# Default deny, then reopen only what the runtime demonstrably needs.
 #
-# Without this, any pod in the cluster can reach the tenant ingestion endpoint, which
-# turns a compromised sidecar elsewhere in the namespace into a tenant-isolation bypass.
+# NC-5: this file previously opened egress with `cidr: 0.0.0.0/0` on port 443, under a
+# comment that said to replace it before production. That is not a near miss. An allow-all
+# egress rule is precisely the rule that lets a compromised process exfiltrate tenant data,
+# which is the single thing this policy exists to prevent, and the comment documenting the
+# problem is not a mitigation. Reading the manifest could not have revealed it either: the
+# manifest stated the intent and expressed the opposite, and no test asserted either.
+#
+# Why there is no hardcoded allowlist here.
+#
+# The runtime makes exactly two outbound calls:
+#   - generativelanguage.googleapis.com, hardcoded at
+#     src/services/gemini_client.rs:62
+#   - APPWRITE_ENDPOINT, read by required_env at src/main.rs:39
+#
+# Neither is a fixed-address host. Google fronts both behind anycast and CDN ranges that
+# change without notice. A NetworkPolicy addresses CIDRs and knows nothing of hostnames, so a
+# static allowlist is the only thing that can be written here, and any CIDR written here today
+# would be a number nobody verified. Worse, a stale CIDR fails closed: every model call
+# errors, so a security control written from a guess becomes a production outage.
+#
+# So the wildcard is removed and the address question moves to deploy time, where it can be
+# answered from observation rather than assumption. scripts/render-egress-policy.sh resolves
+# these two hostnames and renders a policy containing only the addresses it actually saw.
+# scripts/verify-k8s.sh fails the build if a wildcard reappears in an egress rule, so this
+# defect cannot return quietly.
+#
+# What this is not: durable hostname filtering. DNS answers can change after the policy is
+# rendered, and the control plane cannot enforce SNI. A rendered policy is a snapshot with a
+# stated lifetime, and the honest durable answer is an egress proxy or service mesh that
+# filters by SNI. That is recorded as an open item rather than presented as closed.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -23,8 +51,10 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
-    # DNS, or the process cannot resolve the Gemini or Appwrite endpoints and every
-    # request fails with a name-resolution error.
+    # DNS first, or the process cannot resolve the Gemini or Appwrite endpoints and every
+    # request fails with a name-resolution error. Removing the wildcard without this would be
+    # an outage wearing the costume of a security fix, so it is asserted explicitly in
+    # scripts/verify-k8s.sh.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -37,11 +67,13 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # Egress to Appwrite and Gemini. Replace with a CIDR allowlist or an egress gateway
-    # before production: these two destinations are the only ones the runtime needs.
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-      ports:
-        - protocol: TCP
-          port: 443
+    # HTTPS egress to the two hosts above is intentionally absent here.
+    #
+    # It is rendered at deploy time by scripts/render-egress-policy.sh, which resolves
+    # generativelanguage.googleapis.com and APPWRITE_ENDPOINT and writes a policy containing
+    # only the addresses it observed. Committing addresses would mean committing a guess, and
+    # a guessed CIDR in a NetworkPolicy denies production traffic.
+    #
+    # Until that render step has run for a given environment, this policy denies all HTTPS
+    # egress and model calls will fail. That is the intended failure direction: an
+    # unconfigured network control is visibly broken rather than silently open.
