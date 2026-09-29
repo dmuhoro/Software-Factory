@@ -55,7 +55,7 @@ spec:
                     app.kubernetes.io/name: software-factory-runtime
       containers:
         - name: runtime-engine
-          image: gcr.io/b2b-software-factory/runtime:v4.7.0
+          image: gcr.io/b2b-software-factory/runtime:v4.8.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
