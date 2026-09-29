@@ -2,6 +2,92 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.8.0-asserted-controls] - 2026-09-29
+
+The hardening that decides whether a control is real. Every item below shipped through at least
+one release, or was a gate that reported success without proving anything.
+
+### Security
+- **The Kubernetes egress policy permitted 443 to `0.0.0.0/0`,** and the manifest gate passed it
+  on all 57 checks. The gate asserted that a policy of type `Egress` existed. It never read what
+  the egress rules permitted, so a policy covering egress and allowing the entire internet
+  satisfied it. The comment in the file said "replace with a CIDR allowlist before production";
+  the comment was the only control, and it was free. The base policy now denies all egress except
+  DNS, and a deploy-time renderer resolves the two real hostnames to `/32` addresses. The
+  rendered policy is a DNS snapshot, not a durable hostname filter -- NetworkPolicy cannot filter
+  SNI, so the durable answer is an egress proxy or service mesh, and that remains open.
+- **The image gate claimed to walk the layer history for credentials and never did.** Every
+  no-credential check read the final container environment. `RUN echo "GEMINI_API_KEY=..." >
+  /tmp/leak` followed by `RUN rm /tmp/leak` leaves a credential in an intermediate layer while
+  the final environment looks clean. Both images are now inspected layer by layer, and the
+  live-value scan reports that it was skipped when no credential is set rather than passing
+  silently.
+- **The deployment would have run a three-year-old binary.** `deployment.yaml` pinned
+  `runtime:v3.2.0` -- immutable, so the existing gate passed -- while the software was 4.7.0. The
+  gate now requires the deployed tag to equal the current version, and CI derives that tag from
+  `package.json` instead of a literal that could disagree.
+- **`ci.yml` could not publish a release image at all:** `push: false` with a hardcoded
+  `:latest`. The tag is now derived from the version and pushing is gated on a credential this
+  repository does not carry, so the build verifies and publishes nothing until one is added.
+
+### Fixed
+- **The production image had never been built.** CI typechecked, unit-tested and HTTP-harnessed
+  the code and never built the thing that ships. The Rust runtime -- the image the deployment
+  actually runs -- did not build at all: `rust:1.78-alpine` ships Cargo 1.78, and the committed
+  `Cargo.lock` pins `rand_pcg 0.10.2`, which requires `edition2024`, unstabilized until 1.85.
+  It also copied no `Cargo.lock`, passed no `--locked`, swallowed a failed build with `|| true`,
+  and hardcoded `x86_64-unknown-linux-musl`, so it could not build on arm64.
+- **The image shipped a bundler.** Ten build-time packages were declared as production
+  dependencies, so `npm ci --omit=dev` installed vite and esbuild's native binaries into the
+  runtime image. Classification is now asserted against the built bundle: a package is a runtime
+  dependency only if `dist/server.cjs` requires it. Node image 119MB -> 86.6MB, Rust 36.9MB.
+- **The artifact was built from something other than the thing that was tested, in both
+  ecosystems.** `package-lock.json` and `bun.lock` described one manifest and resolved 63 of
+  313 shared packages differently, while CI ran `npm ci` and both Docker stages ran
+  `bun install --frozen-lockfile`. `bun.lock` is deleted; npm is canonical (ADR-007).
+- **The founder playbook could not start the product.** It instructed
+  `bun install --frozen-lockfile` after `bun.lock` was deleted, which fails outright. Migrated
+  to `npm ci`, and `scripts/verify-docs.sh` now extracts every command a live document tells a
+  reader to run and fails if it does not resolve.
+- **Governance records were not reconciled in the commit that changed the behaviour they
+  described.** NC-1/6/7 were resolved and left in the open table; NC-3/4/5 were resolved and
+  left in the open table. Six of nine resolutions across two waves. Every row must now be
+  classified as resolved or open and name the commit or wave that resolved it.
+- **An integration could report a pass it never earned.** A job whose steps are all
+  `continue-on-error` is green without verifying anything. `scripts/verify-integrations.sh`
+  rejects that shape across all four integrations.
+
+### Added
+- **`scripts/kb-mcp-server.mjs` serves the repository to AI reviewers over MCP.** CodeRabbit is
+  an MCP *client* -- its documentation states it "ingests data from your connected MCP servers,
+  not the other way around" -- so the repository serves its own context rather than calling out.
+  33 documents, read-only, every response carrying a `SOURCE:` line, refusing `.env` and the
+  tenant ledger, with containment re-checked after path normalisation. Six attack paths are
+  self-tested in CI. ADR-006.
+- **`scripts/generate-dashboard.mjs` generates delivery status from Git.** No figure is typed by
+  hand. It asserts its own coverage -- any `verify*` script it does not run is reported by name,
+  which immediately surfaced four omitted harnesses -- and lists what it cannot measure, with
+  owners, instead of printing a plausible number.
+- **Three ADRs:** ADR-006 (repository as knowledge base over MCP), ADR-007 (one package manager;
+  the lockfile is the build), ADR-008 (security controls are asserted, not documented).
+- **Secret-gated integrations:** CodeRabbit, SonarQube, Snyk, Datadog. Each is conditioned on
+  its own credential so a fork PR is not failed for a secret the contributor cannot have.
+- **Negative controls across every gate added in this release.** Three of the four ADR-007
+  controls passed on first run, and two controls in this release passed because the mutation
+  never applied. Both are recorded: a green negative control is as dangerous as a test that
+  never ran.
+
+### Known open
+- **NC-2: TypeScript persistence is single-writer and single-replica.** By design, not by
+  oversight. Horizontal scaling requires a shared transactional store.
+- **The egress allowlist is a DNS snapshot.** Durable hostname filtering needs an egress proxy or
+  service mesh; a NetworkPolicy cannot filter SNI.
+- **Nothing is connected.** Every integration, the registry push, and live Gemini/Appwrite
+  verification require credentials absent from this environment. The dashboard reports each as
+  unmeasured with its owner rather than implying coverage.
+- **The v4.8.0 image is not in GCR.** The manifest now refuses to drift, but publishing remains
+  credential-blocked.
+
 ## [4.7.0-production-hardening] - 2026-09-29
 
 Layers 2 through 4 of the production hardening programme. Every item below was a defect
