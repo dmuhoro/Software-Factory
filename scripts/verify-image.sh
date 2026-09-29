@@ -55,10 +55,65 @@ section() { printf '\n\033[1m═══ %s ═══\033[0m\n' "$1"; }
 command -v docker >/dev/null 2>&1 || { echo "docker is required to verify an image" >&2; exit 2; }
 docker info >/dev/null 2>&1 || { echo "the docker daemon is not reachable" >&2; exit 2; }
 
+# Walks the layer history of an image looking for a credential.
+#
+# This exists because the final-environment check is not the same claim. An intermediate layer
+# can hold a secret that a later layer deletes, and the final environment will look clean. The
+# history check is what makes "no credential is baked into any layer" true rather than merely
+# "no credential is set on the finished image".
+#
+# Two independent things are looked for, because they leak differently:
+#   1. a layer instruction that mentions a credential by name and assigns it. This covers
+#      `ENV GEMINI_API_KEY=...` and `ARG TENANT_API_KEYS`, and equally
+#      `RUN echo "GEMINI_API_KEY=..." > /tmp/x` followed by a later `RUN rm /tmp/x` -- the
+#      final environment is clean in that case, which is the whole reason to look here
+#   2. the *live value* of a credential that is set in this shell, appearing in any layer,
+#      which catches a value pasted in with no variable name at all
+#
+# (2) is the stronger of the two and is only available when the verifying shell actually holds
+# the secret. It is skipped, loudly, when it cannot be run -- a check that silently does nothing
+# is the failure mode this repository keeps paying for.
+#
+# $1 = human name, $2 = image tag, $3 = alternation of secret variable names
+assert_history_clean() {
+  local NAME="$1" IMAGE="$2" SECRET_PATTERN="$3"
+  local HISTORY LEAK
+  HISTORY="$(docker history --no-trunc "$IMAGE" 2>/dev/null || true)"
+
+  if [ -z "$HISTORY" ]; then
+    fail "$NAME: layer history is unreadable, so 'no credential in any layer' cannot be claimed"
+    return
+  fi
+
+  LEAK="$(printf '%s' "$HISTORY" | grep -E "($SECRET_PATTERN)=" || true)"
+  if [ -n "$LEAK" ]; then
+    fail "$NAME: a layer instruction assigns a credential: $(printf '%s' "$LEAK" | head -1 | cut -c1-120)"
+  else
+    pass "$NAME: no layer instruction assigns a credential by name"
+  fi
+
+  # The literal-value scan. Also catches a value pasted into a RUN or COPY without an ENV.
+  local SCANNED=0
+  local VAR VALUE
+  for VAR in GEMINI_API_KEY APPWRITE_API_KEY APPWRITE_PROJECT_ID TENANT_API_KEYS FACTORY_API_KEY; do
+    VALUE="${!VAR:-}"
+    [ -z "$VALUE" ] && continue
+    if printf '%s' "$HISTORY" | grep -qF -- "$VALUE"; then
+      fail "$NAME: the live value of $VAR appears in the layer history"
+    else
+      SCANNED=$((SCANNED + 1))
+    fi
+  done
+  if [ "$SCANNED" -eq 0 ]; then
+    pass "$NAME: literal-value scan skipped -- no credential is set in this shell to scan for"
+  else
+    pass "$NAME: no live credential value ($SCANNED checked) appears in the layer history"
+  fi
+}
+
 # Shared assertions, applied to whichever image is under test.
 # $1 = image tag, $2 = human name, $3 = "uid the image must run as"
-common_checks() {
-  local IMAGE="$1" NAME="$2" EXPECT_UID="$3"
+common_checks() {  local IMAGE="$1" NAME="$2" EXPECT_UID="$3"
 
   section "$NAME: runs as uid $EXPECT_UID, not root"
   local IMAGE_USER RUN_UID
@@ -146,6 +201,12 @@ if [ -n "$ENV_BAKED" ]; then
 else
   pass "the Rust image environment contains no credential"
 fi
+# The check above reads the *final* environment. That is a weaker statement than "no layer",
+# and the difference is exploitable: `RUN echo KEY=... > /tmp/x` followed by `RUN rm /tmp/x`
+# leaves a credential in an intermediate layer while the final environment looks clean. So the
+# layer history is walked separately, which is what this script claimed to do.
+assert_history_clean "the Rust image" sf-rust-verify \
+  "GEMINI_API_KEY|APPWRITE_API_KEY|APPWRITE_PROJECT_ID|TENANT_API_KEYS|FACTORY_API_KEY"
 
 section "The Rust runtime: it refuses to start without configuration, and names what is missing"
 # The fail-closed contract is enforced one variable at a time, so this walks them in order.
@@ -269,6 +330,9 @@ if [ -n "$ENV_BAKED" ]; then
 else
   pass "the Node image environment contains no credential"
 fi
+# Same distinction as the Rust image above: the final environment is not the layer history.
+assert_history_clean "the Node image" sf-node-verify \
+  "APPWRITE_API_KEY|APPWRITE_PROJECT_ID|GEMINI_API_KEY|TENANT_API_KEYS|FACTORY_API_KEY"
 
 section "The Node server: it refuses to start without configuration"
 docker run --rm sf-node-verify >/tmp/sf-node-refuse.log 2>&1
