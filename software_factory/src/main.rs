@@ -1,12 +1,29 @@
 use axum::{
+    middleware,
     routing::{get, post},
     Router,
 };
+use software_factory::middleware::tenant_guard::{parse_tenant_keys, require_tenant_auth};
 use software_factory::{routes, AppState};
 use std::net::SocketAddr;
 use tower_http::trace::TraceLayer;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+/// Reads a variable that has no safe default.
+///
+/// A missing production credential used to fall back to a placeholder, so the process
+/// started, served traffic, and returned a canned success that looked like a real AI
+/// response. Refusing to start turns a silent wrong answer into a failed deploy.
+fn required_env(name: &str) -> anyhow::Result<String> {
+    match std::env::var(name) {
+        Ok(value) if !value.trim().is_empty() => Ok(value),
+        _ => {
+            error!(variable = name, "Refusing to start: a required credential is not configured");
+            anyhow::bail!("{name} must be set to a non-empty value")
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -18,21 +35,54 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Starting Software Factory High-Performance Concurrency Engine...");
 
-    let gemini_key = std::env::var("GEMINI_API_KEY").unwrap_or_else(|_| "TEST_KEY".into());
-    let appwrite_endpoint = std::env::var("APPWRITE_ENDPOINT").unwrap_or_else(|_| "https://cloud.appwrite.io/v1".into());
-    let appwrite_project_id = std::env::var("APPWRITE_PROJECT_ID").unwrap_or_else(|_| "b2b_factory".into());
+    let gemini_key = required_env("GEMINI_API_KEY")?;
+    let appwrite_endpoint = required_env("APPWRITE_ENDPOINT")?;
+    let appwrite_project_id = required_env("APPWRITE_PROJECT_ID")?;
+    let tenant_keys_spec = required_env("TENANT_API_KEYS")?;
 
-    let state = AppState::new(gemini_key, appwrite_endpoint, appwrite_project_id);
+    // A malformed or ambiguous credential map is a startup failure, not a warning: half of
+    // a credential set is indistinguishable from none, and the tenants missing from it are
+    // silently unwritable.
+    let tenant_keys = parse_tenant_keys(&tenant_keys_spec).map_err(|reason| {
+        error!(%reason, "Refusing to start: TENANT_API_KEYS is invalid");
+        anyhow::anyhow!(reason)
+    })?;
+    if tenant_keys.is_empty() {
+        error!("Refusing to start: TENANT_API_KEYS provisioned no credentials");
+        anyhow::bail!("TENANT_API_KEYS must provision at least one tenant credential");
+    }
+    info!(
+        tenants = tenant_keys.len(),
+        "Provisioned per-tenant credentials at the request boundary"
+    );
 
-    // 2. Build Axum high-throughput routing pipeline
+    let state = AppState::with_tenant_keys(
+        gemini_key,
+        appwrite_endpoint,
+        appwrite_project_id,
+        tenant_keys,
+    );
+
+    // 2. Build Axum high-throughput routing pipeline.
+    //
+    // The tenant guard is layered over the router here, which is the only layer that is on
+    // the real request path. It previously existed in `middleware/tenant_guard.rs` and was
+    // never applied, so the telemetry endpoint accepted writes for any tenant from any
+    // caller. `route_layer` is used rather than `layer` so the guard runs after routing
+    // has matched, and public paths are skipped inside the guard.
     let app = Router::new()
         .route("/health", get(routes::health::health_check))
+        .route("/ready", get(routes::health::readiness_check))
         .route("/api/v1/telemetry/ingest", post(routes::telemetry::ingest_telemetry))
-        .route("/api/v1/tenants", get(routes::telemetry::list_tenants))
+        .route("/api/v1/tenants/me", get(routes::telemetry::current_tenant))
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_tenant_auth))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".into()).parse::<u16>()?;
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(8080);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!(%addr, "Listening for concurrent multi-niche telemetry streams");
 

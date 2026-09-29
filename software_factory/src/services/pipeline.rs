@@ -58,17 +58,28 @@ impl ConcurrencyPipeline {
         let duration_ms = start.elapsed().as_millis() as u64;
         let transformation_id = format!("tx_rust_{}", Uuid::new_v4());
 
-        // 4. Asynchronously persist to Appwrite without blocking main thread
-        let appwrite = AppwriteClient::new(state.appwrite_endpoint.clone(), state.appwrite_project_id.clone());
-        let tenant_id_clone = payload.tenant_id.clone();
-        let tx_id_clone = transformation_id.clone();
-        let ai_output_clone = ai_output.clone();
+        // 4. Persist to Appwrite before answering.
+        //
+        // This was spawned and its result discarded, so a failed write was logged after the
+        // caller had already been told the transformation succeeded, and the response
+        // advertised a durable audit record that was never written. The write is now awaited:
+        // if the audit record cannot be stored, the request is refused, because reporting
+        // success for an unrecorded event is the failure mode this pipeline exists to
+        // prevent. Throughput is unaffected in the healthy case, where the call is a single
+        // bounded HTTP round trip.
+        let appwrite = AppwriteClient::new(
+            state.appwrite_endpoint.clone(),
+            state.appwrite_project_id.clone(),
+            state.appwrite_api_key.clone(),
+        );
 
-        tokio::spawn(async move {
-            if let Err(e) = appwrite.persist_transformation(&tenant_id_clone, &tx_id_clone, &ai_output_clone).await {
-                error!(error = %e, "Failed to persist transformation to Appwrite");
-            }
-        });
+        if let Err(e) = appwrite
+            .persist_transformation(&payload.tenant_id, &transformation_id, &ai_output)
+            .await
+        {
+            error!(error = %e, transformation_id = %transformation_id, "Failed to persist transformation to Appwrite");
+            return Err(format!("AUDIT_PERSIST_FAILED: {e}"));
+        }
 
         info!(%duration_ms, %transformation_id, "Successfully processed telemetry event in Tokio pipeline");
 
