@@ -52,6 +52,11 @@ jobs:
       - name: Layer 3 - error contract and writer lock
         run: npm run verify:layer3
 
+      # The tenancy harness was written but never added here, so 42 restart, revocation and
+      # migration checks could regress on main without CI noticing.
+      - name: Layer 4 - durable tenant registry
+        run: npm run verify:layer4
+
       - name: No server left listening
         run: |
           if ss -ltn | grep -E ':(3000|552[0-9]|553[0-9])\b'; then

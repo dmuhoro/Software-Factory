@@ -69,14 +69,19 @@ async fn a_valid_event_is_transformed_and_actually_persisted() {
     // The mock is opt-in through an explicit flag, and it marks its own output as a mock so a
     // fabricated response can never again be mistaken for a real inference.
     std::env::set_var("GEMINI_MOCK", "1");
-    std::env::set_var("APPWRITE_API_KEY", "stub-project-key");
 
     let (endpoint, received) = spawn_appwrite_stub().await;
-    let state = AppState::with_tenant_keys(
+    // The persistence key is a constructor argument, not a process-environment read. It
+    // used to be `std::env::set_var("APPWRITE_API_KEY", ...)`, and the test below removed
+    // the same variable -- so the pair raced, and the suite failed roughly one run in five
+    // depending on which thread won. Tests that mutate process env are tests whose
+    // correctness depends on the runner's thread count.
+    let state = AppState::with_full_config(
         "mocked-gemini-key".into(),
         endpoint,
         "proj_test".into(),
         Default::default(),
+        "stub-project-key".into(),
     );
 
     let result = ConcurrencyPipeline::process_telemetry(&state, real_estate_payload()).await;
@@ -103,21 +108,20 @@ async fn a_valid_event_is_transformed_and_actually_persisted() {
         .as_str()
         .unwrap()
         .starts_with("tx_rust_"));
-
-    std::env::remove_var("APPWRITE_API_KEY");
 }
 
 #[tokio::test]
 async fn a_failed_audit_write_is_reported_instead_of_claimed_as_success() {
     std::env::set_var("GEMINI_MOCK", "1");
-    // No APPWRITE_API_KEY: the write cannot happen, and the caller must be told.
-    std::env::remove_var("APPWRITE_API_KEY");
-
-    let state = AppState::with_tenant_keys(
+    // An EMPTY persistence key, not an unset environment variable. The write cannot happen
+    // and the caller must be told -- and the reason is now a property of this state value
+    // rather than of whatever another test thread did to the environment.
+    let state = AppState::with_full_config(
         "mocked-gemini-key".into(),
         "https://appwrite.invalid/v1".into(),
         "proj_test".into(),
         Default::default(),
+        String::new(),
     );
 
     let result = ConcurrencyPipeline::process_telemetry(&state, real_estate_payload()).await;
