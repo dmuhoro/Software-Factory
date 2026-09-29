@@ -120,6 +120,19 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   MODEL_PROVIDER_URL_INVALID: { status: 400, message: 'The provider URL is not permitted.' },
   MODEL_PROVIDER_HOST_NOT_ALLOWED: { status: 403, message: 'That provider host is not on the allowlist.' },
   MODEL_PROVIDER_ADDRESS_NOT_ALLOWED: { status: 403, message: 'That provider address is not permitted for outbound calls.' },
+
+  // A niche the platform recognises but cannot serve. 403 rather than 404: the niche exists
+  // and is a legitimate part of the taxonomy, the service is declining to act on it. It is
+  // NOT a 400, because the caller's payload is correct -- reporting a bad request here would
+  // send an integrator to fix a document that was never the problem. It is NOT a 501 either,
+  // because this is a product boundary rather than an absent implementation detail, and 501
+  // invites a retry that will never succeed.
+  //
+  // The message is fixed and public: it must not echo the caller's payload, and it must not
+  // enumerate which niches ARE served, because that is an invitation to probe the boundary.
+  // The detailed reason travels in the `details` field of the thrown response, which the
+  // handler classifies rather than forwards.
+  NICHE_NOT_SERVED: { status: 403, message: 'This platform does not serve that industry niche.' },
   OUTCOME_NOTE_REQUIRED: { status: 400, message: 'An outcome note is required.' },
   PROJECT_ID_REQUIRED: { status: 400, message: 'A project id is required.' },
   READINESS_CRITERION_NOT_RECOGNIZED: { status: 400, message: 'That readiness criterion is not recognized.' },

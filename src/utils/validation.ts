@@ -154,6 +154,22 @@ export function emitSecurityError(code: string, message: string): StandardErrorR
   };
 }
 
+/**
+ * Refusal for a niche that is modelled but has no implemented adapter.
+ *
+ * A separate code from `MALFORMED_CONTEXT` because the operator action is different: a
+ * malformed context is fixed in the caller's payload, while an unserved niche is fixed by
+ * providing an adapter. Reporting both as `MALFORMED_CONTEXT` would send an integrator into
+ * a debugging loop over a payload that is in fact correct.
+ */
+export function emitNicheNotServedError(niche: string, reason: string): StandardErrorResponse {
+  return {
+    status: 'error',
+    code: 'NICHE_NOT_SERVED',
+    message: `NICHE_NOT_SERVED: niche '${niche}' has no implemented adapter. ${reason}`,
+  };
+}
+
 export function validateIncomingTelemetry(raw: unknown): { isValid: boolean; error?: StandardErrorResponse; data?: Record<string, unknown> } {
   if (!raw || typeof raw !== 'object') {
     return {

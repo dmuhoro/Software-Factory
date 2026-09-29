@@ -116,7 +116,6 @@ Open entries:
 | NC-3 | VI.1 | `package-lock.json` and `bun.lock` are both tracked; two lockfiles is an unreconciled dependency policy. | 2026-09-29 | Wave 3 |
 | NC-4 | V.3 | The Docker image has never been built. Non-root execution and absence of secrets are verified by inspection only. | 2026-09-29 | Wave 5 |
 | NC-5 | III.3 / V.3 | The Kubernetes egress policy permits 443 to `0.0.0.0/0`. | 2026-09-29 | Wave 5 |
-| NC-8 | I.4 | A `CustomB2B` tenant is routed to the real-estate adapter, so a non-real-estate tenant is validated against the wrong rules. | 2026-09-29 | Wave 4 — **held for decision** |
 
 ### Resolved
 
@@ -129,6 +128,7 @@ indistinguishable from one that was never recorded.
 | NC-6 | `921ce52` (Wave 1) | A credential naming an unknown tenant is a startup failure. `server.ts` refuses to serve and the harness asserts the process exits non-zero. | `scripts/verify-layer4.sh` L4-7 |
 | NC-7 | `921ce52` (Wave 1) | `server.ts` deletes each plaintext entry from the runtime config immediately after installing its digest. The comment states the honest limit: the bytes are no longer collectable through the object, and are not zeroized. | `scripts/verify-layer4.sh` L4-9 |
 | NC-9 | Wave 2 | `software_factory/src/metrics.rs` serves a real Prometheus exposition at `/metrics` from the live router. | `software_factory/tests/metrics_tests.rs`; live-binary scrape; four recorded negative controls |
+| NC-8 | Wave 3 | An unserved niche is refused, not approximated. `get_adapter` returns `Result` and `custom_b2b` is an error; the TypeScript path no longer returns a fabricated `isCompliant: true`; `NICHE_REGISTRY` carries an `operational` flag. | ADR-005; `test/l5-niche-refusal.test.ts`; `software_factory/tests/niche_refusal_tests.rs`; two negative controls |
 
 **Process note.** NC-1, NC-6 and NC-7 were resolved by `921ce52` but left in the open table,
 which is the exact failure the Scope rule exists to prevent: this document claimed four

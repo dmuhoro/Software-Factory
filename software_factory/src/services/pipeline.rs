@@ -35,7 +35,19 @@ impl ConcurrencyPipeline {
         }
 
         // 2. Select swappable domain adapter
-        let adapter = get_adapter(payload.niche);
+        //
+        // A niche with no implemented adapter is refused here, before any payload is read and
+        // before any model is called. The refusal is a typed error the caller can distinguish
+        // from a bad payload, and it names the niche. Serving `custom_b2b` with the
+        // real-estate adapter -- which is what this did before -- meant a non-property
+        // document was validated against property rules and reported as having passed
+        // Fair Housing checks. Refusing is the honest answer; guessing in a neighbouring
+        // regulatory frame is the failure this pipeline exists to prevent.
+        let adapter = get_adapter(payload.niche).map_err(|e| {
+            error!(niche = ?payload.niche, reason = %e, "Refusing a niche with no implemented adapter");
+            e.to_string()
+        })?;
+
         let normalized = adapter
             .validate_and_normalize(&payload.payload)
             .await

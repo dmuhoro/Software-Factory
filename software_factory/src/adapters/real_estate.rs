@@ -2,6 +2,7 @@ use super::{AdapterError, NicheAdapter};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
+#[derive(Debug)]
 pub struct RealEstateAdapter;
 
 #[async_trait]
