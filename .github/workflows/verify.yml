@@ -65,6 +65,15 @@ jobs:
       - name: Release records agree
         run: bash scripts/verify-release.sh --pre-release
 
+      # The integration gates need auditing too. An integration that reports a pass it did
+      # not earn is the same defect as the unasserted non-conformances this repository
+      # already shipped: a green check that means nothing was verified.
+      - name: Integration gates are honest
+        run: bash scripts/verify-integrations.sh
+
+      - name: Knowledge base MCP server serves this repository
+        run: node scripts/kb-mcp-server.mjs --self-test
+
       - name: No server left listening
         run: |
           if ss -ltn | grep -E ':(3000|552[0-9]|553[0-9])\b'; then
