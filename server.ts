@@ -3,7 +3,6 @@ import express from 'express';
 import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
-import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './src/api';
 import { globalErrorHandler } from './src/api/middleware';
 import { classifyReadiness } from './src/services/healthService';
@@ -122,6 +121,14 @@ async function startServer() {
     res.status(404).json({ status: 'error', code: 'ENDPOINT_NOT_FOUND', message: 'No such API endpoint.' });
   });
   if (!config.isProduction) {
+    // Imported dynamically, and not at the top of this file, because vite is a build-time
+    // dependency that the production server never executes. It was a static import, so the
+    // production bundle required it at module load to serve a SPA that does not exist in
+    // production -- which is what forced vite and its ~50MB of esbuild native binaries to be
+    // declared in `dependencies` rather than `devDependencies`, and what put them in the
+    // runtime image. The import moves here so the dependency can be classified honestly, and
+    // a production image stops shipping a bundler.
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
