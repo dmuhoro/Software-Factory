@@ -2,6 +2,116 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.7.0-production-hardening] - 2026-09-29
+
+Layers 2 through 4 of the production hardening programme. Every item below was a defect
+that reached `main`; each is named with what it actually did, not with the class of bug
+it belonged to.
+
+### Security
+- **The Rust tenant guard was never applied to the router.** `require_tenant_header` existed,
+  was documented, and did not run. `main.rs` layered only `TraceLayer`, so
+  `POST /api/v1/telemetry/ingest` accepted writes for any tenant from any unauthenticated
+  caller. It is now layered onto the real router and authenticates rather than checking that
+  a header exists: the presented key must be the one provisioned for the claimed tenant,
+  compared in constant time. A tenant with no provisioned credential is unwritable, and one
+  credential bound to two tenants is a startup error.
+- **`GET /api/v1/tenants` returned the full tenant list to anyone.** Replaced by
+  `GET /api/v1/tenants/me`, which returns the caller its own profile using the tenant id the
+  guard resolved, so the partition is not caller-chosen.
+- **`GEMINI_API_KEY` defaulted to `TEST_KEY`,** and the client returned a canned response for
+  that placeholder. A misconfigured deployment answered with invented data that even
+  asserted `complianceVerified: true`. All three Rust defaults (`GEMINI_API_KEY`,
+  `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`) are now refused at startup, verified to exit 1.
+- **The tenant audit report was unescaped.** `eventType`, `correlationId` and `timestamp`
+  originate in telemetry the client posted, and the report is written to a file an auditor
+  opens, so the document was attacker-authored. All eleven interpolation sites now escape.
+- **The Gemini key travelled in the URL query string,** where intermediary access logs keep a
+  durable copy. It is sent in a header.
+- **Per-tenant credential binding (TypeScript).** Salted-scrypt digests, and one credential
+  resolves to exactly one partition.
+
+### Fixed
+- **The writer lock did not exist.** `persist()` released it in a `finally` and the store only
+  took it on first load, so it was held for the length of a single load. A second process
+  opened the same ledger without complaint and, because the adapter rewrites the whole file
+  per change, would have silently overwritten the first one's records. The lock is now held
+  for the life of the process and released explicitly on shutdown. It is also created after
+  the data directory is ensured to exist, which a first run on an empty volume needs.
+- **Startup failed open.** An unhealthy pre-flight only printed its result and bound a port
+  anyway. A contended or unusable ledger now refuses to serve and exits 75.
+- **Every API failure was reported as `409` with `error.message` published verbatim,** so a
+  corrupt ledger, a filesystem error and a `TypeError` all invited the caller to retry a
+  server-side failure, and absolute paths and internal identifiers reached the client. Status,
+  code and message are now decided in one classifier; unknown faults answer `500` with a
+  correlation id.
+- **An unknown `/api` path returned 200 with an HTML body,** so a mistyped endpoint looked
+  like a successful call. It is now a 404 with JSON.
+- **`persist_transformation` wrote nothing and returned `Ok(())`,** logging "persistence
+  completed". The pipeline spawned it and discarded the result, so callers received success
+  and an audit trail asserting an immutable record that was never written. It performs the
+  write, returns failures, and the pipeline awaits it and refuses the event when the audit
+  record cannot be stored.
+- **`/health` reported `"circuit_breaker": "CLOSED"` and `"hpa_status": "READY"` as string
+  literals.** Both are gone. Liveness reports only that the process runs; `/ready` reports 503
+  with the missing variables when configuration is absent.
+- **The readiness probe pointed at `/health`,** which answers 200 whenever the process is
+  alive, so a pod missing its credentials would still have been handed traffic it refuses.
+- **The ingress carried a cert-manager issuer annotation with no `tls` block,** so nothing
+  bound the certificate and the host would have been served over plain HTTP.
+- **Retried AI work had no wall-clock deadline.** A 25s per-attempt timeout with three
+  retries held a request for over 90 seconds. A retry budget without a time budget does not
+  bound latency; the total is now a required finite `deadlineMs`, and expiry surfaces as
+  `OPERATION_DEADLINE_EXCEEDED` with the provider error attached as `cause`.
+- **Building a report threw on a log with no `status`,** rather than degrading.
+- **The client key was an unbounded `unwrap()`** on the TLS client build, panicking a worker
+  thread on a TLS setup failure.
+- **Both verification harnesses recorded the subshell pid instead of `node`'s,** leaking a
+  listening server that squatted the port and failed the next run with `EADDRINUSE`.
+- **The Layer 2 throttle probe asserted against a design that no longer existed** and ran on
+  an ENTERPRISE tenant where zero refusals is correct, so it could never have passed.
+
+### Added
+- Per-tenant credential provisioning, verification and revocation; credential-bound tenant
+  authentication; authenticated-principal rate limiting.
+- `GET /api/v1/tenants/me`; `GET /ready`; `TENANT_API_KEYS`; `APPWRITE_API_KEY`.
+- `src/utils/apiError.ts`, `src/utils/respondWithError.ts`, `src/utils/tenantCredentials.ts`.
+- `scripts/verify-layer2.sh`, `scripts/verify-layer3.sh`, `software_factory/scripts/verify-k8s.py`.
+- `software_factory/tests/tenant_guard_tests.rs`.
+- k8s `NetworkPolicy`, `namespace.yaml`, `secret.example.yaml`.
+- `.github/workflows/verify.yml`, gating typecheck, tests, the three live harnesses,
+  `cargo fmt`, `cargo clippy -D warnings`, `cargo test`, and 51 manifest assertions.
+
+### Verification
+- TypeScript: 76/76 tests, `tsc --noEmit` clean, production build clean.
+- Live harnesses against the built server: Layer 1 34/34, Layer 2 26/26, Layer 3 24/24, with
+  no server left listening afterwards.
+- Rust: 15/15 tests (`cargo test`), `cargo clippy --all-targets -- -D warnings` clean,
+  `cargo fmt --check` clean.
+- The compiled Rust binary was driven over HTTP: unauthenticated write refused 401,
+  credential-for-another-tenant refused 403, invented tenant refused 403, `/health` public
+  200, anonymous tenant read 401, own-tenant read 200. All three missing-variable startup
+  cases exit 1.
+- Manifests: 51/51 assertions. Verified that reverting the readiness path fails the check.
+- Test discrimination was confirmed by reverting each fix: the report-escaping tests fail on
+  a pass-through `escapeHtml`, the deadline tests fail with the budget removed, and the
+  manifest validator fails on a `/health` readiness probe.
+
+### Open, deliberately not closed
+- **The TypeScript tenant registry is in-memory.** Provisioned tenants do not survive a
+  restart, and this service cannot be scaled horizontally without a shared registry. Stated
+  here rather than implied away.
+- **Both `bun.lock` and `package-lock.json` are now tracked.** CI runs under npm because that
+  is what the harnesses were executed with. Pick one package manager, drop the other lockfile,
+  re-run the harnesses.
+- **The Docker image has never been built.** The image runs as non-root and carries no
+  secrets, but that is verified by inspection, not by a build.
+- **The Layer 2 configuration edge cases** are unchanged: a credential configured for an
+  unknown tenant id is a warning rather than a startup failure, and plaintext
+  `FACTORY_TENANT_CREDENTIALS` is retained in process memory for the life of the process.
+- **The k8s NetworkPolicy egress rule allows 443 to `0.0.0.0/0`.** Replace with a CIDR
+  allowlist or an egress gateway before production.
+
 ## [4.6.0-machine-building] - 2026-09-24
 ### Added
 - **Durable Agent Runner**: Added queue jobs, worker leases, retry limits, lease-expiry recovery, cancellation, and completion evidence.
