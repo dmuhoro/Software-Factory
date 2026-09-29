@@ -17,6 +17,7 @@
     "start": "node dist/server.cjs",
     "test": "tsx --test --test-concurrency=1 test/**/*.test.ts",
     "verify": "npm run lint && npm test && npm run build && bash scripts/verify-layer4.sh",
+    "verify:docs": "bash scripts/verify-docs.sh",
     "verify:image": "bash scripts/verify-image.sh",
     "verify:integrations": "bash scripts/verify-integrations.sh",
     "verify:layer1": "npm run build && bash scripts/verify-layer1.sh",

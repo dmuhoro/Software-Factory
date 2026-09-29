@@ -71,6 +71,12 @@ jobs:
       - name: Integration gates are honest
         run: bash scripts/verify-integrations.sh
 
+      # The founder playbook instructed `bun install --frozen-lockfile` after bun.lock was
+      # deleted. The document whose entire purpose is the startup procedure did not start the
+      # product. Nothing read it to check that its commands exist.
+      - name: Documented commands exist
+        run: bash scripts/verify-docs.sh
+
       - name: Knowledge base MCP server serves this repository
         run: node scripts/kb-mcp-server.mjs --self-test
 
