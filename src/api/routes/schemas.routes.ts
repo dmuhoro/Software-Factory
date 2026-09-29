@@ -24,6 +24,12 @@ router.get('/appwrite', (_req: Request, res: Response) => {
 });
 
 router.get('/gemini', (_req: Request, res: Response) => {
+  // Keyed by every niche in the registry, including the ones that are not operational. The
+  // schema for an unserved niche is still the schema that would be used, and hiding it would
+  // make the API look simpler than it is; the `operational` flag on the registry entry is
+  // what tells a caller whether sending an event will be served. A response schema with no
+  // way to ask "is this actually available?" is an invitation to build against a capability
+  // that refuses at runtime.
   res.json({
     status: 'success',
     schemas: {
@@ -32,10 +38,22 @@ router.get('/gemini', (_req: Request, res: Response) => {
       logistics: LOGISTICS_RESPONSE_SCHEMA,
       custom_b2b: CUSTOM_B2B_RESPONSE_SCHEMA,
     },
+    operationalNiches: Object.values(NICHE_REGISTRY)
+      .filter((niche) => niche.operational)
+      .map((niche) => niche.niche),
+    unavailableNiches: Object.values(NICHE_REGISTRY)
+      .filter((niche) => !niche.operational)
+      .map((niche) => ({
+        niche: niche.niche,
+        reason: niche.unavailableReason,
+      })),
   });
 });
 
 router.get('/niches', (_req: Request, res: Response) => {
+  // The full registry, with each entry marked operational or not. The gap stays visible here
+  // on purpose: a niche that is quietly absent from the API is a niche someone will keep
+  // asking about, and a niche that is quietly present is a niche someone will build against.
   res.json({
     status: 'success',
     niches: Object.values(NICHE_REGISTRY),

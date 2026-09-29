@@ -5,7 +5,7 @@
 
 import { IndustryNiche } from '../models/tenant';
 import { NICHE_REGISTRY } from '../configurations/factory.config';
-import { emitMalformedContextError } from '../utils/validation';
+import { emitMalformedContextError, emitNicheNotServedError } from '../utils/validation';
 
 export interface NicheAdapterResponse {
   isCompliant: boolean;
@@ -34,12 +34,24 @@ export class NicheAdapterService {
       case IndustryNiche.LOGISTICS:
         return this.processLogistics(rawPayload);
       default:
+        // `custom_b2b` reaches here. It previously fell through to a default branch that
+        // returned `isCompliant: true` and listed 'Standard SOC2 Logging' among the guardrails
+        // applied, having applied none: the payload was echoed back untouched and a compliance
+        // verdict was asserted for it. That is a fabricated audit result. A tenant integrating
+        // against this would have had SOC2 evidence in its file that this service manufactured,
+        // and the only record that it was never checked was the absence of any real work.
+        //
+        // There is no generic B2B compliance check to write here without a tenant's actual
+        // control set, so the honest implementation is to refuse. The niche remains in the
+        // registry so the gap is visible in `GET /api/v1/schemas/niches` rather than hidden,
+        // and the refusal names what would be needed to serve it.
         return {
-          result: {
-            isCompliant: true,
-            normalizedPayload: { ...rawPayload },
-            guardrailsApplied: ['Standard SOC2 Logging'],
-          },
+          error: emitNicheNotServedError(
+            niche,
+            'This platform serves real_estate, healthcare and logistics. Serving it would ' +
+              'mean asserting a compliance verdict that was never evaluated. Provide a ' +
+              'tenant-specific control set to enable it.',
+          ),
         };
     }
   }
