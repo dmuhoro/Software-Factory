@@ -7,10 +7,14 @@ Software Factory founder mode is a personal operating system for shortening the 
 Create a local environment file from `.env.example`, set a long random `FACTORY_API_KEY` for production-like use, and keep `ALLOW_INSECURE_LOCAL=true` only for loopback development. Run:
 
 ```bash
-bun install --frozen-lockfile
-bun run verify
-FACTORY_DATA_DIR=.data ALLOW_INSECURE_LOCAL=true bun run dev
+npm ci
+npm run verify
+FACTORY_DATA_DIR=.data ALLOW_INSECURE_LOCAL=true npm run dev
 ```
+
+`npm ci`, not `npm install`: it installs exactly the committed lockfile and fails if
+`package.json` and `package-lock.json` have drifted, so a dependency edit that forgets to
+refresh the lockfile cannot reach a build. See ADR-007.
 
 The durable ledger lives at `.data/software-factory.json`. Back it up before changing the runtime or moving machines.
 
@@ -48,7 +52,7 @@ Record evidence as work completes:
 curl -X POST http://localhost:3000/api/factory-jobs/JOB_ID/evidence \
   -H 'content-type: application/json' \
   -H 'x-tenant-id: tenant_re_8841' \
-  -d '{"tenantId":"tenant_re_8841","kind":"test","description":"bun run verify passed"}'
+  -d '{"tenantId":"tenant_re_8841","kind":"test","description":"npm run verify passed"}'
 ```
 
 ## The personal leverage loop
