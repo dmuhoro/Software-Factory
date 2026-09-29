@@ -21,6 +21,106 @@ Idea or incomplete repository
 
 The system is intentionally evidence-first. It does not treat a successful build as proof that a product is complete, useful, secure, or ready for production.
 
+## The two runtimes
+
+This repository contains two services that enforce the same tenant model independently.
+
+| | TypeScript service (`src/`, `server.ts`) | Rust runtime (`software_factory/`) |
+|---|---|---|
+| Role | Product workspace: jobs, approvals, evidence, audit | High-throughput telemetry ingestion and transformation |
+| Storage | Single-writer JSON ledger (`src/services/durableStore.ts`) | Appwrite |
+| State | **Tenant registry is in-memory** | Tenant profiles in memory, credentials at startup |
+| Scaling | **One writer. Do not run replicas.** | Stateless; horizontal scaling is safe |
+| Port | 3000 | 8080 |
+
+The TypeScript ledger is protected by a process-lifetime writer lock. A second process
+against the same data directory exits 75 rather than starting, because the adapter rewrites
+the whole file on every change and two writers would silently overwrite each other.
+
+## Running the TypeScript service
+
+```bash
+npm ci
+cp .env.example .env      # then fill in real values; see below
+npm run build
+npm start
+```
+
+Every credential is required. The service exits non-zero at startup rather than starting
+with a placeholder, because a service that starts unconfigured fails quietly at 3am.
+
+| Variable | Required | Notes |
+|---|---|---|
+| `FACTORY_TENANT_CREDENTIALS` | yes | `tenantId:secret,tenantId:secret`. One secret must map to exactly one tenant. |
+| `FACTORY_API_KEY` | yes | `platform_operator` credential, for cross-tenant operations. |
+| `FACTORY_DATA_DIR` | no | Ledger location. Single-writer. |
+| `FACTORY_WORKSPACE_ROOT` | production | Bounded directory the service may write to. |
+| `FACTORY_MODEL_ALLOWED_HOSTS` | production | Egress allowlist for model providers. |
+| `FACTORY_ALLOWED_SECRET_REFS` | production | Names a job may substitute into a request. |
+| `ALLOW_INSECURE_LOCAL` | no | Only for local work; refused when `NODE_ENV=production`. |
+
+A request carries its credential in `x-tenant-id` and `x-api-key`. A credential issued for
+one tenant is refused with `403 TENANT_CREDENTIAL_MISMATCH` for any other, and a tenant with
+no provisioned credential is unwritable.
+
+## Running the Rust runtime
+
+```bash
+cd software_factory
+cargo build --release
+GEMINI_API_KEY=... \
+APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1 \
+APPWRITE_PROJECT_ID=... \
+APPWRITE_API_KEY=... \
+TENANT_API_KEYS="tenant_re_8841:...,tenant_hc_1042:..." \
+./target/release/software_factory
+```
+
+All five are required; the process exits 1 naming the missing one. `GEMINI_MOCK=1` enables
+the deterministic mock for local work, and its output is labelled `"mock": true` so a
+fabricated response cannot be mistaken for inference. A key bound to two tenants is rejected
+at startup.
+
+Endpoints: `/health` (liveness, public), `/ready` (readiness, 503 when unconfigured),
+`POST /api/v1/telemetry/ingest`, `GET /api/v1/tenants/me`.
+
+## Verifying
+
+```bash
+npm test                    # 76 tests
+npx tsc --noEmit            # types
+npm run verify:layer1       # 34 checks against the built server
+npm run verify:layer2       # 26 checks: tenant isolation
+npm run verify:layer3       # 24 checks: error contract, writer lock
+
+cd software_factory
+cargo test                  # 15 tests
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
+python3 scripts/verify-k8s.py   # 51 manifest assertions
+```
+
+The three harnesses start the built server and drive it over HTTP, then assert nothing is
+left listening. A unit test cannot pass while the real request path is unguarded; several
+defects in 4.7.0 were found only by the harnesses.
+
+## Known limits
+
+These are real and are not scheduled work:
+
+- **The tenant registry is in-memory.** Provisioned tenants do not survive a restart, and
+  the TypeScript service cannot be scaled horizontally. A credential that stops matching a
+  tenant is the only thing that keeps a stale tenant from being served.
+- **The Docker image has never been built.** It is configured to run as non-root and to
+  contain no secrets; that is verified by inspection, not by a build.
+- **Plaintext tenant credentials are held in process memory** for the process lifetime.
+- **The k8s NetworkPolicy permits egress on 443 to `0.0.0.0/0`.** Narrow it before
+  production.
+- **The Rust runtime has no metrics endpoint.**
+
+See `sprints/sprint-15-production-hardening.md` for the full record, including the fixes
+that were reverted to confirm the tests would fail without them.
+
 ## Current readiness
 
 The repository has completed the founder-workspace and bounded-harness implementation program. The current system is suitable for a **controlled daily pilot on registered, low-risk projects**.
