@@ -9,6 +9,7 @@ pub mod models;
 pub mod routes;
 pub mod services;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use dashmap::DashMap;
 use models::tenant::TenantProfile;
@@ -17,9 +18,15 @@ use models::tenant::TenantProfile;
 #[derive(Clone)]
 pub struct AppState {
     pub tenants: Arc<DashMap<String, TenantProfile>>,
+    /// Per-tenant credentials, keyed by tenant id. A tenant absent from this map has no
+    /// credential and is therefore unwritable: the guard refuses rather than defaulting.
+    pub tenant_keys: Arc<DashMap<String, String>>,
     pub gemini_api_key: String,
     pub appwrite_endpoint: String,
     pub appwrite_project_id: String,
+    /// Appwrite project key. Absent means persistence cannot happen, which the pipeline
+    /// reports as a refusal rather than a success.
+    pub appwrite_api_key: String,
 }
 
 impl AppState {
@@ -63,9 +70,30 @@ impl AppState {
 
         Self {
             tenants,
+            tenant_keys: Arc::new(DashMap::new()),
             gemini_api_key: gemini_key,
             appwrite_endpoint: endpoint,
             appwrite_project_id: project_id,
+            appwrite_api_key: String::new(),
         }
+    }
+
+    /// Builds state with per-tenant credentials provisioned.
+    ///
+    /// `AppState::new` deliberately provisions no credentials, so a process that forgot to
+    /// load `TENANT_API_KEYS` serves traffic with every tenant write refused rather than
+    /// silently open. This constructor is the only path that installs keys.
+    pub fn with_tenant_keys(
+        gemini_key: String,
+        endpoint: String,
+        project_id: String,
+        keys: HashMap<String, String>,
+    ) -> Self {
+        let mut state = Self::new(gemini_key, endpoint, project_id);
+        state.appwrite_api_key = std::env::var("APPWRITE_API_KEY").unwrap_or_default();
+        for (tenant, key) in keys {
+            state.tenant_keys.insert(tenant, key);
+        }
+        state
     }
 }
