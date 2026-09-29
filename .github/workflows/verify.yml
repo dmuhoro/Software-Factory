@@ -57,6 +57,14 @@ jobs:
       - name: Layer 4 - durable tenant registry
         run: npm run verify:layer4
 
+      # A release is described in five places. This is what notices when they stop
+      # agreeing, and it is cheap enough to run on every change rather than at tag time.
+      # Pre-release mode skips the tag and clean-tree checks, which describe a release and
+      # cannot pass on a commit. The step is NOT wrapped in `|| true`: a check that cannot
+      # fail is not a check, and an earlier version of this step did exactly that.
+      - name: Release records agree
+        run: bash scripts/verify-release.sh --pre-release
+
       - name: No server left listening
         run: |
           if ss -ltn | grep -E ':(3000|552[0-9]|553[0-9])\b'; then
