@@ -77,6 +77,29 @@ one release, or was a gate that reported success without proving anything.
   never applied. Both are recorded: a green negative control is as dangerous as a test that
   never ran.
 
+### Added
+- **A real Appwrite integration.** `node-appwrite` 29.0.0 (0 vulnerabilities) installed, and
+  `src/services/appwriteClient.ts` created — the module did not exist. `npm run appwrite:check`
+  performs a live authenticated call and reports the outcome, so "integrated" is no longer an
+  assumption. Unconfigured, it exits 1 rather than reporting success. Proven live against
+  `fra.cloud.appwrite.io`: a real HTTP 401 on a deliberately invalid key, which establishes that
+  DNS, TLS, the SDK wiring and the project id all work and only the credential is missing.
+  Appwrite CLI 28.1.0 installed; `mcp.appwrite.io` merged into the OpenCode config with all
+  existing entries preserved. ADR-006, Sprint 17.
+
+### Fixed
+- **The shipped Appwrite configuration was fiction that looked real.**
+  `src/configurations/appwrite.config.ts` defaulted `apiKey` to
+  `standard_appwrite_api_key_secret` — a placeholder shaped like a genuine Appwrite credential —
+  `projectId` to a fabricated `b2b_software_factory_proj`, and `endpoint` to the global
+  `cloud.appwrite.io` rather than the regional endpoint this deployment uses, so a missing
+  variable sent tenant telemetry to the wrong jurisdiction. Meanwhile `AppwriteService`, the
+  class named after Appwrite, made no HTTP request and imported no SDK: it wrote to the local
+  file ledger. The Rust runtime refused to start without `APPWRITE_API_KEY` while the
+  TypeScript half invented one. Configuration is now fail-closed with no defaulted credential
+  or project id, and 8 tests guard it — including a source-level check that no `APPWRITE_*`
+  variable regains a string fallback.
+
 ### Known open
 - **NC-2: TypeScript persistence is single-writer and single-replica.** By design, not by
   oversight. Horizontal scaling requires a shared transactional store.

@@ -4,6 +4,7 @@
   "version": "4.8.0",
   "type": "module",
   "scripts": {
+    "appwrite:check": "tsx scripts/check-appwrite.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "dashboard": "node scripts/generate-dashboard.mjs",
@@ -29,7 +30,8 @@
   "dependencies": {
     "@google/genai": "^2.4.0",
     "dotenv": "^17.2.3",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "node-appwrite": "^29.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",
