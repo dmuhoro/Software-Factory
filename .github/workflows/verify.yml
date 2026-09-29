@@ -1,0 +1,104 @@
+name: verify
+
+# Every gate in this file corresponds to a defect that reached main before it existed.
+# The three harnesses are the reason: they exercise the built service over HTTP, so a unit
+# test cannot pass while the real request path is unguarded.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  typescript:
+    name: typescript (build, types, tests, live harnesses)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit and source-invariant tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Each harness starts the built server, drives it over HTTP, and fails if the server
+      # leaks. They are separate steps so a failure names the layer that regressed.
+      - name: Layer 1 - filesystem, egress, durability, truthful health
+        run: npm run verify:layer1
+
+      - name: Layer 2 - tenant isolation
+        run: npm run verify:layer2
+
+      - name: Layer 3 - error contract and writer lock
+        run: npm run verify:layer3
+
+      - name: No server left listening
+        run: |
+          if ss -ltn | grep -E ':(3000|552[0-9]|553[0-9])\b'; then
+            echo "a verification server was left listening"
+            exit 1
+          fi
+
+  rust:
+    name: rust (fmt, clippy, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: software_factory
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # The lock file is committed, so this resolves rather than updating the graph.
+      - name: Build
+        run: cargo build --locked --all-targets
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --locked
+
+  manifests:
+    name: kubernetes manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install pyyaml
+
+      - name: Validate manifests
+        run: python software_factory/scripts/verify-k8s.py
