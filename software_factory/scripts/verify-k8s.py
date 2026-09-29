@@ -7,6 +7,7 @@ Each assertion names the failure it prevents, so a future edit that reintroduces
 problem fails here rather than in production.
 """
 
+import json
 import sys
 import pathlib
 
@@ -153,6 +154,33 @@ check(
     "the deployment must reference a pinned image tag or digest, not a floating tag",
     image,
 )
+# Pinned is necessary and not sufficient. `gcr.io/.../runtime:v3.2.0` passes the check above
+# and is immutable, while the software in the repository is 4.7.0: production would run a
+# three-year-old binary that no gate has ever inspected, and every check here stays green
+# because the reference never changes. That is precisely the NC-4/NC-5 failure mode -- an
+# assertion that cannot fail -- so the tag is now required to name the release it ships.
+#
+# The version comes from package.json, which scripts/verify-release.sh already treats as the
+# reference site. One source: version -> image tag -> manifest, with the middle link asserted.
+def read_version():
+    root = pathlib.Path(__file__).resolve().parents[2]
+    return json.loads((root / "package.json").read_text())["version"]
+
+
+VERSION = read_version()
+if "@sha256:" in image:
+    check(
+        True,
+        "the deployment pins an immutable digest (a digest is versioned by content)",
+        image.rsplit("@", 1)[-1][:23],
+    )
+else:
+    tag = image.rsplit(":", 1)[-1]
+    check(
+        tag.lstrip("v") == VERSION,
+        f"the deployment must run the image for the current release (v{VERSION})",
+        f"{image} (tag {tag})",
+    )
 # The pod's runAsUser must match the uid the image creates. software_factory/Dockerfile makes
 # 10001 and scripts/verify-image.sh asserts the container reports it; a mismatch here means the
 # pod crashes on start, which is cheap to catch in a manifest and expensive in a rollout.

@@ -111,6 +111,8 @@ async function main() {
     { name: 'Layer 4 harness (durable tenancy)', cmd: ['bash', 'scripts/verify-layer4.sh'] },
     { name: 'Image gate (both images built)', cmd: ['bash', 'scripts/verify-image.sh', 'all'] },
     { name: 'Kubernetes manifests', cmd: ['python3', 'software_factory/scripts/verify-k8s.py'] },
+    { name: 'Integration gates are honest', cmd: ['bash', 'scripts/verify-integrations.sh'] },
+    { name: 'Documented commands exist', cmd: ['bash', 'scripts/verify-docs.sh'] },
     { name: 'Rust tests', cmd: ['bash', 'scripts/verify-rust.sh'] },
     { name: 'Knowledge base MCP self-test', cmd: ['node', 'scripts/kb-mcp-server.mjs', '--self-test'] },
     {
