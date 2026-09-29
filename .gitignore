@@ -7,3 +7,6 @@ coverage/
 .env*
 !.env.example
 .data/
+
+# Rust build output (2GB locally); the dependency graph is pinned in Cargo.lock
+software_factory/target/
