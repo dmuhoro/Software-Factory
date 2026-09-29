@@ -6,7 +6,11 @@
   "scripts": {
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "clean": "rm -rf dist server.js",
+    "dashboard": "node scripts/generate-dashboard.mjs",
+    "dashboard:write": "node scripts/generate-dashboard.mjs --write",
     "dev": "tsx server.ts",
+    "kb:self-test": "node scripts/kb-mcp-server.mjs --self-test",
+    "kb:serve": "node scripts/kb-mcp-server.mjs",
     "lint": "tsc --noEmit",
     "preview": "vite preview",
     "render:egress": "bash scripts/render-egress-policy.sh",

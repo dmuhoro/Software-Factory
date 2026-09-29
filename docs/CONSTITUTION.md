@@ -113,9 +113,6 @@ Open entries:
 | ID | Article | Non-conformance | Recorded | Resolves in |
 |---|---|---|---|---|
 | NC-2 | III.3 | The TypeScript service is not horizontally scalable: a single-writer JSON ledger and an in-memory registry. It MUST run exactly one replica. | 2026-09-29 | Not scheduled — requires a shared store, tracked as a platform decision |
-| NC-3 | VI.1 | `package-lock.json` and `bun.lock` are both tracked; two lockfiles is an unreconciled dependency policy. | 2026-09-29 | Wave 3 |
-| NC-4 | V.3 | The Docker image has never been built. Non-root execution and absence of secrets are verified by inspection only. | 2026-09-29 | Wave 5 |
-| NC-5 | III.3 / V.3 | The Kubernetes egress policy permits 443 to `0.0.0.0/0`. | 2026-09-29 | Wave 5 |
 
 ### Resolved
 
@@ -128,10 +125,27 @@ indistinguishable from one that was never recorded.
 | NC-6 | `921ce52` (Wave 1) | A credential naming an unknown tenant is a startup failure. `server.ts` refuses to serve and the harness asserts the process exits non-zero. | `scripts/verify-layer4.sh` L4-7 |
 | NC-7 | `921ce52` (Wave 1) | `server.ts` deletes each plaintext entry from the runtime config immediately after installing its digest. The comment states the honest limit: the bytes are no longer collectable through the object, and are not zeroized. | `scripts/verify-layer4.sh` L4-9 |
 | NC-9 | Wave 2 | `software_factory/src/metrics.rs` serves a real Prometheus exposition at `/metrics` from the live router. | `software_factory/tests/metrics_tests.rs`; live-binary scrape; four recorded negative controls |
+| NC-3 | `7af6238` (Wave 3) | npm is the single canonical package manager. `bun.lock` is deleted, the lockfile root version is reconciled with `package.json`, and both Docker stages install with `npm ci`. | `test/l6-dependency-policy.test.ts` (5 checks); negative controls for a foreign lockfile, Docker Bun install, and version drift |
+| NC-4 | `5e0d73e`, `c369580` (Wave 5) | Both images are built, not inspected. Non-root execution, absence of baked credentials, fail-closed startup, and a lockfile-driven build are asserted against the built artifact. The Rust runtime, which is the artifact the deployment actually runs, is verified first. | `scripts/verify-image.sh` (25 checks across both images); six recorded negative controls including a restored `|| true` and a dropped `Cargo.lock` |
+| NC-5 | `31bddc3` (Wave 5) | Egress is no longer `0.0.0.0/0`. No CIDR is committed, because both destinations sit behind changing CDN ranges and a wrong CIDR denies production traffic; `scripts/render-egress-policy.sh` resolves the two real hostnames at deploy time. | `software_factory/scripts/verify-k8s.py` (57 checks, parsed structurally from the YAML); negative controls for `0.0.0.0/0`, `::/0`, `/8`, deleted DNS rules, and an unscoped ingress peer |
 | NC-8 | Wave 3 | An unserved niche is refused, not approximated. `get_adapter` returns `Result` and `custom_b2b` is an error; the TypeScript path no longer returns a fabricated `isCompliant: true`; `NICHE_REGISTRY` carries an `operational` flag. | ADR-005; `test/l5-niche-refusal.test.ts`; `software_factory/tests/niche_refusal_tests.rs`; two negative controls |
 
 **Process note.** NC-1, NC-6 and NC-7 were resolved by `921ce52` but left in the open table,
 which is the exact failure the Scope rule exists to prevent: this document claimed four
 non-conformances that the code no longer had. They are removed here, in the first change after
 the one that resolved them, and the gap is recorded rather than hidden.
+
+**Second lapse, of the same kind and longer.** NC-3 was resolved by `7af6238` and left in the
+open table. NC-4 and NC-5 were resolved by `c369580` and `31bddc3` and left in the open table.
+The pattern is not a one-off oversight: three of four Wave 3/5 resolutions were not reconciled
+in the same change, and this table was three entries stale for the duration. The cause is that
+resolving a non-conformance is a code change, and this document is a separate file, so nothing
+forced them together.
+
+The gate that would have caught it is the same one that caught NC-5's actual defect: a check
+that compares the claim to the code. `scripts/kb-mcp-server.mjs` `get_governing_rules` reads
+these rows directly, which is how the staleness was noticed here -- the search for "egress"
+returned this document asserting that `0.0.0.0/0` was still present, six commits after it was
+removed. A knowledge base that surfaces a stale claim is doing its job; a dashboard that
+repeats one is not.
 
