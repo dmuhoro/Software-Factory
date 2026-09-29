@@ -19,7 +19,11 @@ pub const API_KEY_HEADER: &str = "x-api-key";
 /// This is an allow list, not a prefix match. A prefix test would exempt any path that
 /// happens to begin with `/health`, and would keep growing a quiet list of exceptions.
 fn is_public_path(path: &str) -> bool {
-    matches!(path, "/health" | "/ready")
+    // `/metrics` is public because a scraper holds no tenant credential, and it is safe to
+    // expose because the series are aggregate operational counters that carry no tenant
+    // identifier -- see the exposure rules in `crate::metrics`. Inventing a monitoring tenant
+    // per scraper would be a worse answer than an aggregate counter set.
+    matches!(path, "/health" | "/ready" | "/metrics")
 }
 
 /// The authenticated tenant, stashed for handlers so they never re-derive it from a header
@@ -144,6 +148,10 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 fn refuse(status: StatusCode, code: &str, detail: &str) -> Response {
     tracing::warn!(%status, %code, "API request refused by tenant boundary");
+    // Counted here, where the decision is made, rather than inferred from the status code in
+    // the observer above. A 401 emitted by a proxy is not a refusal this service made, and a
+    // series that counted those would describe the network, not the boundary.
+    crate::middleware::observe::note_auth_failure(status);
     (
         status,
         axum::Json(json!({

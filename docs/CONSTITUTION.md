@@ -108,14 +108,30 @@ record, and a metric.
 Recorded per the Scope rule. Each is a claim this document makes that the code does not yet
 satisfy. **Removing an entry requires the code that resolves it, in the same change.**
 
+Open entries:
+
 | ID | Article | Non-conformance | Recorded | Resolves in |
 |---|---|---|---|---|
-| NC-1 | I.1 / AfroPay § True Database Finality | The tenant registry is an in-memory `Map`; tenants do not survive a restart, and a credential silently stops working when the process restarts. | 2026-09-29 | Wave 1 |
 | NC-2 | III.3 | The TypeScript service is not horizontally scalable: a single-writer JSON ledger and an in-memory registry. It MUST run exactly one replica. | 2026-09-29 | Not scheduled — requires a shared store, tracked as a platform decision |
 | NC-3 | VI.1 | `package-lock.json` and `bun.lock` are both tracked; two lockfiles is an unreconciled dependency policy. | 2026-09-29 | Wave 3 |
 | NC-4 | V.3 | The Docker image has never been built. Non-root execution and absence of secrets are verified by inspection only. | 2026-09-29 | Wave 5 |
 | NC-5 | III.3 / V.3 | The Kubernetes egress policy permits 443 to `0.0.0.0/0`. | 2026-09-29 | Wave 5 |
-| NC-6 | I.3 | A credential configured for a tenant id that does not exist is a startup warning rather than a fatal error. | 2026-09-29 | Wave 1 |
-| NC-7 | VI.3 | Plaintext `FACTORY_TENANT_CREDENTIALS` is retained in process memory for the life of the process. | 2026-09-29 | Wave 1 |
 | NC-8 | I.4 | A `CustomB2B` tenant is routed to the real-estate adapter, so a non-real-estate tenant is validated against the wrong rules. | 2026-09-29 | Wave 4 — **held for decision** |
-| NC-9 | V.1 | The Rust runtime has no metrics endpoint. | 2026-09-29 | Wave 2 |
+
+### Resolved
+
+Retained as an audit trail, because a non-conformance that is silently deleted is
+indistinguishable from one that was never recorded.
+
+| ID | Resolved in | By | Evidence |
+|---|---|---|---|
+| NC-1 | `921ce52` (Wave 1) | The registry is hydrated from the durable ledger before the server listens, and every mutation writes through. `TenantService.bootstrap` rehydrates; `DurableStore` carries the `tenants` collection at ledger v5. | `test/l4-durable-tenancy.test.ts`; `scripts/verify-layer4.sh` L4-1..L4-6 (restart with tenants intact) |
+| NC-6 | `921ce52` (Wave 1) | A credential naming an unknown tenant is a startup failure. `server.ts` refuses to serve and the harness asserts the process exits non-zero. | `scripts/verify-layer4.sh` L4-7 |
+| NC-7 | `921ce52` (Wave 1) | `server.ts` deletes each plaintext entry from the runtime config immediately after installing its digest. The comment states the honest limit: the bytes are no longer collectable through the object, and are not zeroized. | `scripts/verify-layer4.sh` L4-9 |
+| NC-9 | Wave 2 | `software_factory/src/metrics.rs` serves a real Prometheus exposition at `/metrics` from the live router. | `software_factory/tests/metrics_tests.rs`; live-binary scrape; four recorded negative controls |
+
+**Process note.** NC-1, NC-6 and NC-7 were resolved by `921ce52` but left in the open table,
+which is the exact failure the Scope rule exists to prevent: this document claimed four
+non-conformances that the code no longer had. They are removed here, in the first change after
+the one that resolved them, and the gap is recorded rather than hidden.
+
