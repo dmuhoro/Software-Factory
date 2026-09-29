@@ -7,6 +7,12 @@ metadata:
     kubernetes.io/ingress.class: "gce"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
+  # The cert-manager issuer annotation above requests a certificate, but without this block
+  # nothing binds it, so the host would be served over plain HTTP.
+  tls:
+    - hosts:
+        - api.softwarefactory.enterprise
+      secretName: software-factory-runtime-tls
   rules:
     - host: api.softwarefactory.enterprise
       http:

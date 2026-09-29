@@ -7,12 +7,15 @@ metadata:
     app.kubernetes.io/name: software-factory-runtime
     app.kubernetes.io/part-of: b2b-saas-platform
 spec:
+  # The runtime is stateless: partitions live in Appwrite and credentials are read at
+  # startup, so horizontal scaling does not contend for a writer.
   replicas: 5
   revisionHistoryLimit: 10
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 25%
+      # Never take capacity away while a rollout is in progress.
       maxUnavailable: 0
   selector:
     matchLabels:
@@ -21,16 +24,35 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: software-factory-runtime
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/metrics"
     spec:
+      # No API calls are made from inside the pod, so the token is not mounted. It would
+      # otherwise be a credential available to code that processes untrusted telemetry.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # Spread replicas so losing a node or a zone cannot take the whole service with it.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: software-factory-runtime
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: software-factory-runtime
       containers:
         - name: runtime-engine
           image: gcr.io/b2b-software-factory/runtime:v3.2.0
@@ -38,11 +60,27 @@ spec:
           ports:
             - containerPort: 8080
               name: http
+          securityContext:
+            # The process needs nothing the kernel would otherwise hand it.
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - configMapRef:
                 name: factory-config
             - secretRef:
                 name: factory-secrets
+          # readOnlyRootFilesystem is set, so any scratch path must be an emptyDir. The
+          # runtime writes nothing to disk, but a writable /tmp keeps the process from
+          # failing on a library that expects one.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 500m
@@ -50,15 +88,35 @@ spec:
             limits:
               cpu: 2000m
               memory: 2Gi
+          # Liveness asks only whether the process is running. Pointing liveness at
+          # readiness would let a transient dependency problem restart every pod at once.
           livenessProbe:
             httpGet:
               path: /health
-              port: 8080
+              port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+            failureThreshold: 3
+          # Readiness must use /ready, not /health. /ready reports 503 when configuration
+          # is absent, which keeps a pod that cannot serve out of the load balancer instead
+          # of sending it traffic it will refuse.
           readinessProbe:
             httpGet:
-              path: /health
-              port: 8080
+              path: /ready
+              port: http
             initialDelaySeconds: 3
             periodSeconds: 5
+            failureThreshold: 2
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 3
+            failureThreshold: 30
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+      volumes:
+        - name: tmp
+          emptyDir: {}
