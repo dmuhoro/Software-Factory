@@ -14,11 +14,13 @@ impl NicheAdapter for HealthcareAdapter {
         // Enforce zero-conflation and HIPAA safe harbor: Direct identifiers must NOT be present
         if raw.get("ssn").is_some() || raw.get("patientName").is_some() {
             return Err(AdapterError::ComplianceViolation(
-                "Direct PHI detected (SSN or Name); zero-conflation HIPAA boundary violation".to_string(),
+                "Direct PHI detected (SSN or Name); zero-conflation HIPAA boundary violation"
+                    .to_string(),
             ));
         }
 
-        let cohort_id = raw.get("patientCohortId")
+        let cohort_id = raw
+            .get("patientCohortId")
             .or_else(|| raw.get("clinicalEncounterId"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| AdapterError::MalformedContext("Missing patientCohortId".to_string()))?;

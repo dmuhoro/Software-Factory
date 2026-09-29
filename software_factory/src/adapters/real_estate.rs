@@ -11,16 +11,22 @@ impl NicheAdapter for RealEstateAdapter {
     }
 
     async fn validate_and_normalize(&self, raw: &Value) -> Result<Value, AdapterError> {
-        let prop_id = raw.get("propertyId")
+        let prop_id = raw
+            .get("propertyId")
             .or_else(|| raw.get("listingId"))
             .and_then(|v| v.as_str())
-            .ok_or_else(|| AdapterError::MalformedContext("Real Estate payload missing propertyId".to_string()))?;
+            .ok_or_else(|| {
+                AdapterError::MalformedContext("Real Estate payload missing propertyId".to_string())
+            })?;
 
         let mut normalized = raw.clone();
         if let Some(obj) = normalized.as_object_mut() {
             obj.insert("property_identifier".to_string(), json!(prop_id));
             obj.insert("fair_housing_verified".to_string(), json!(true));
-            obj.insert("guardrails".to_string(), json!(["RESPA_SAFEGUARD", "ANTI_REDLINING"]));
+            obj.insert(
+                "guardrails".to_string(),
+                json!(["RESPA_SAFEGUARD", "ANTI_REDLINING"]),
+            );
         }
 
         Ok(normalized)

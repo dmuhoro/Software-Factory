@@ -51,17 +51,41 @@ pub async fn require_tenant_auth(
     let tenant_id = match req.headers().get(TENANT_HEADER) {
         Some(value) => match value.to_str() {
             Ok(text) if !text.is_empty() => text.to_string(),
-            _ => return refuse(StatusCode::UNAUTHORIZED, "MISSING_TENANT_HEADER", TENANT_HEADER),
+            _ => {
+                return refuse(
+                    StatusCode::UNAUTHORIZED,
+                    "MISSING_TENANT_HEADER",
+                    TENANT_HEADER,
+                )
+            }
         },
-        None => return refuse(StatusCode::UNAUTHORIZED, "MISSING_TENANT_HEADER", TENANT_HEADER),
+        None => {
+            return refuse(
+                StatusCode::UNAUTHORIZED,
+                "MISSING_TENANT_HEADER",
+                TENANT_HEADER,
+            )
+        }
     };
 
     let presented = match req.headers().get(API_KEY_HEADER) {
         Some(value) => match value.to_str() {
             Ok(text) if !text.is_empty() => text.to_string(),
-            _ => return refuse(StatusCode::UNAUTHORIZED, "MISSING_CREDENTIAL", API_KEY_HEADER),
+            _ => {
+                return refuse(
+                    StatusCode::UNAUTHORIZED,
+                    "MISSING_CREDENTIAL",
+                    API_KEY_HEADER,
+                )
+            }
         },
-        None => return refuse(StatusCode::UNAUTHORIZED, "MISSING_CREDENTIAL", API_KEY_HEADER),
+        None => {
+            return refuse(
+                StatusCode::UNAUTHORIZED,
+                "MISSING_CREDENTIAL",
+                API_KEY_HEADER,
+            )
+        }
     };
 
     // An unknown tenant is 403, not 401: the caller proved knowledge of a credential we
@@ -151,7 +175,9 @@ pub fn parse_tenant_keys(spec: &str) -> Result<HashMap<String, String>, String> 
         let tenant = tenant.trim();
         let key = key.trim();
         if tenant.is_empty() || key.is_empty() {
-            return Err(format!("TENANT_API_KEYS entry '{entry}' has an empty tenant or key"));
+            return Err(format!(
+                "TENANT_API_KEYS entry '{entry}' has an empty tenant or key"
+            ));
         }
         if let Some(previous) = seen.get(key) {
             return Err(format!(

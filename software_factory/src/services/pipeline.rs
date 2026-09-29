@@ -18,7 +18,9 @@ impl ConcurrencyPipeline {
         let correlation_id = format!("rust_corr_{}", Uuid::new_v4());
 
         // 1. Verify tenant isolation in DashMap
-        let tenant = state.tenants.get(&payload.tenant_id)
+        let tenant = state
+            .tenants
+            .get(&payload.tenant_id)
             .ok_or_else(|| format!("Tenant '{}' not found", payload.tenant_id))?;
 
         if !tenant.active {

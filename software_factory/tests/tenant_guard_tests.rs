@@ -37,9 +37,15 @@ fn app() -> Router {
     Router::new()
         .route("/health", get(routes::health::health_check))
         .route("/ready", get(routes::health::readiness_check))
-        .route("/api/v1/telemetry/ingest", post(routes::telemetry::ingest_telemetry))
+        .route(
+            "/api/v1/telemetry/ingest",
+            post(routes::telemetry::ingest_telemetry),
+        )
         .route("/api/v1/tenants/me", get(routes::telemetry::current_tenant))
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_tenant_auth))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_tenant_auth,
+        ))
         .with_state(state)
 }
 
@@ -70,7 +76,10 @@ fn ingest_request(tenant: Option<&str>, key: Option<&str>) -> Request<Body> {
 
 #[tokio::test]
 async fn missing_tenant_header_is_refused_before_the_handler_runs() {
-    let response = app().oneshot(ingest_request(None, Some(RE_KEY))).await.unwrap();
+    let response = app()
+        .oneshot(ingest_request(None, Some(RE_KEY)))
+        .await
+        .unwrap();
     assert_eq!(
         response.status(),
         StatusCode::UNAUTHORIZED,
@@ -80,7 +89,10 @@ async fn missing_tenant_header_is_refused_before_the_handler_runs() {
 
 #[tokio::test]
 async fn missing_credential_is_refused() {
-    let response = app().oneshot(ingest_request(Some("tenant_re_8841"), None)).await.unwrap();
+    let response = app()
+        .oneshot(ingest_request(Some("tenant_re_8841"), None))
+        .await
+        .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -102,7 +114,10 @@ async fn a_credential_cannot_write_to_another_tenant() {
 #[tokio::test]
 async fn an_unknown_tenant_cannot_be_invented() {
     let response = app()
-        .oneshot(ingest_request(Some("tenant_does_not_exist"), Some("anything-at-all")))
+        .oneshot(ingest_request(
+            Some("tenant_does_not_exist"),
+            Some("anything-at-all"),
+        ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
@@ -120,8 +135,14 @@ async fn a_tenant_with_no_provisioned_credential_is_unwritable() {
         keys,
     );
     let router = Router::new()
-        .route("/api/v1/telemetry/ingest", post(routes::telemetry::ingest_telemetry))
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_tenant_auth))
+        .route(
+            "/api/v1/telemetry/ingest",
+            post(routes::telemetry::ingest_telemetry),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_tenant_auth,
+        ))
         .with_state(state);
 
     let response = router
@@ -146,7 +167,11 @@ async fn liveness_is_public_but_every_data_path_is_guarded() {
         )
         .await
         .unwrap();
-    assert_eq!(health.status(), StatusCode::OK, "liveness must stay public for probes");
+    assert_eq!(
+        health.status(),
+        StatusCode::OK,
+        "liveness must stay public for probes"
+    );
 
     // The tenant listing is a data path and must not be anonymous.
     let anon = app()
@@ -168,7 +193,9 @@ async fn a_refusal_body_never_echoes_the_presented_credential() {
         .oneshot(ingest_request(Some("tenant_re_8841"), Some(secret)))
         .await
         .unwrap();
-    let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .unwrap();
     let body = String::from_utf8_lossy(&bytes);
     assert!(
         !body.contains(secret),
@@ -193,8 +220,14 @@ fn one_credential_bound_to_two_tenants_is_a_configuration_error() {
 #[test]
 fn tenant_keys_parse_into_a_tenant_keyed_map() {
     let parsed = parse_tenant_keys("tenant_re_8841:a-key,tenant_hc_1042:b-key").unwrap();
-    assert_eq!(parsed.get("tenant_re_8841").map(String::as_str), Some("a-key"));
-    assert_eq!(parsed.get("tenant_hc_1042").map(String::as_str), Some("b-key"));
+    assert_eq!(
+        parsed.get("tenant_re_8841").map(String::as_str),
+        Some("a-key")
+    );
+    assert_eq!(
+        parsed.get("tenant_hc_1042").map(String::as_str),
+        Some("b-key")
+    );
 }
 
 #[test]

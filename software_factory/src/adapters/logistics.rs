@@ -11,12 +11,16 @@ impl NicheAdapter for LogisticsAdapter {
     }
 
     async fn validate_and_normalize(&self, raw: &Value) -> Result<Value, AdapterError> {
-        let tracking_id = raw.get("shipmentTrackingId")
+        let tracking_id = raw
+            .get("shipmentTrackingId")
             .or_else(|| raw.get("waybillNumber"))
             .and_then(|v| v.as_str())
-            .ok_or_else(|| AdapterError::MalformedContext("Missing shipmentTrackingId".to_string()))?;
+            .ok_or_else(|| {
+                AdapterError::MalformedContext("Missing shipmentTrackingId".to_string())
+            })?;
 
-        let temp = raw.get("cargoTemperatureCelsius")
+        let temp = raw
+            .get("cargoTemperatureCelsius")
             .and_then(|v| v.as_f64())
             .unwrap_or(4.0);
 

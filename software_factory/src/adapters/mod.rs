@@ -25,7 +25,9 @@ pub trait NicheAdapter: Send + Sync {
 
 pub fn get_adapter(niche: crate::models::tenant::IndustryNiche) -> Box<dyn NicheAdapter> {
     match niche {
-        crate::models::tenant::IndustryNiche::RealEstate => Box::new(real_estate::RealEstateAdapter),
+        crate::models::tenant::IndustryNiche::RealEstate => {
+            Box::new(real_estate::RealEstateAdapter)
+        }
         crate::models::tenant::IndustryNiche::Healthcare => Box::new(healthcare::HealthcareAdapter),
         crate::models::tenant::IndustryNiche::Logistics => Box::new(logistics::LogisticsAdapter),
         crate::models::tenant::IndustryNiche::CustomB2B => Box::new(real_estate::RealEstateAdapter),
