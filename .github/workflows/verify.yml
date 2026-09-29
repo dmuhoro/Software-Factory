@@ -115,3 +115,9 @@ jobs:
 
       - name: Validate manifests
         run: python software_factory/scripts/verify-k8s.py
+
+  # The integration gates themselves need auditing. An integration that reports a pass it did
+  # not earn is the same defect as the unasserted non-conformances this repository already
+  # shipped: a green check that means nothing was verified.
+  - name: Integration gates are honest
+    run: bash scripts/verify-integrations.sh
