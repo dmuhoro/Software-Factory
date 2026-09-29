@@ -101,6 +101,8 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LEDGER_COLLECTION_INVALID: { status: 500, message: 'The ledger could not be interpreted.', retryAfterSeconds: 5 },
   LEDGER_COLLECTION_UNKNOWN: { status: 500, message: 'The ledger contains an unknown collection.', retryAfterSeconds: 5 },
   LEDGER_VERSION_UNSUPPORTED: { status: 500, message: 'The ledger version is not supported by this build.', retryAfterSeconds: 5 },
+  LEDGER_VERSION_FUTURE: { status: 500, message: 'The ledger was written by a newer build and cannot be safely read.', retryAfterSeconds: 5 },
+  LEDGER_VERSION_INVALID: { status: 500, message: 'The ledger version is not a valid version number.', retryAfterSeconds: 5 },
 
   // ── Caller supplied something invalid ──────────────────────────────────────
   AGENT_TASK_IDS_MUST_BE_UNIQUE: { status: 400, message: 'Task ids must be unique within an agent run.' },
@@ -199,6 +201,11 @@ const LEDGER_UNAVAILABLE: ReadonlySet<string> = new Set([
   'FACTORY_LEDGER_NOT_FOUND',
   'LEDGER_ROOT_NOT_AN_OBJECT',
   'LEDGER_RECORD_ID_REQUIRED',
+  // A registry record that cannot be decoded means the service does not know who its
+  // tenants are. That is the same class of fault as an unreadable ledger -- the process
+  // cannot honestly serve -- so it belongs with the codes that refuse traffic rather than
+  // degrading to a generic 500 with no operator signal.
+  'TENANT_RECORD_ID_INVALID',
 ]);
 
 /**
