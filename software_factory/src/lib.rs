@@ -9,10 +9,10 @@ pub mod models;
 pub mod routes;
 pub mod services;
 
-use std::collections::HashMap;
-use std::sync::Arc;
 use dashmap::DashMap;
 use models::tenant::TenantProfile;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Shared global application state protected by concurrent read-optimized DashMap
 #[derive(Clone)]
@@ -32,7 +32,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(gemini_key: String, endpoint: String, project_id: String) -> Self {
         let tenants = Arc::new(DashMap::new());
-        
+
         // Seed default multi-tenant enterprise partitions
         tenants.insert(
             "tenant_re_8841".to_string(),

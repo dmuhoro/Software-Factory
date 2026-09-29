@@ -19,7 +19,10 @@ fn required_env(name: &str) -> anyhow::Result<String> {
     match std::env::var(name) {
         Ok(value) if !value.trim().is_empty() => Ok(value),
         _ => {
-            error!(variable = name, "Refusing to start: a required credential is not configured");
+            error!(
+                variable = name,
+                "Refusing to start: a required credential is not configured"
+            );
             anyhow::bail!("{name} must be set to a non-empty value")
         }
     }
@@ -29,7 +32,9 @@ fn required_env(name: &str) -> anyhow::Result<String> {
 async fn main() -> anyhow::Result<()> {
     // 1. Initialize structured JSON tracing subscriber for Kubernetes / Cloud logging
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
         .with(tracing_subscriber::fmt::layer().json())
         .init();
 
@@ -73,9 +78,15 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/health", get(routes::health::health_check))
         .route("/ready", get(routes::health::readiness_check))
-        .route("/api/v1/telemetry/ingest", post(routes::telemetry::ingest_telemetry))
+        .route(
+            "/api/v1/telemetry/ingest",
+            post(routes::telemetry::ingest_telemetry),
+        )
         .route("/api/v1/tenants/me", get(routes::telemetry::current_tenant))
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_tenant_auth))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_tenant_auth,
+        ))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

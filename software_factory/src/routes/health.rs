@@ -28,11 +28,20 @@ pub async fn readiness_check() -> impl IntoResponse {
     // A fresh probe process cannot see the serving process's in-memory credential map, so
     // readiness reports what it can verify about its own configuration: the variables it
     // would need in order to serve.
-    let required = ["GEMINI_API_KEY", "APPWRITE_ENDPOINT", "APPWRITE_PROJECT_ID", "TENANT_API_KEYS"];
+    let required = [
+        "GEMINI_API_KEY",
+        "APPWRITE_ENDPOINT",
+        "APPWRITE_PROJECT_ID",
+        "TENANT_API_KEYS",
+    ];
     let missing: Vec<&str> = required
         .iter()
         .copied()
-        .filter(|name| std::env::var(name).map(|v| v.trim().is_empty()).unwrap_or(true))
+        .filter(|name| {
+            std::env::var(name)
+                .map(|v| v.trim().is_empty())
+                .unwrap_or(true)
+        })
         .collect();
 
     if missing.is_empty() {

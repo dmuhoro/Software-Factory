@@ -95,8 +95,14 @@ async fn a_valid_event_is_transformed_and_actually_persisted() {
         documents.len()
     );
     let stored: serde_json::Value = serde_json::from_str(&documents[0]).unwrap();
-    assert_eq!(stored["tenantId"], "tenant_re_8841", "the row must carry the tenant partition");
-    assert!(stored["documentId"].as_str().unwrap().starts_with("tx_rust_"));
+    assert_eq!(
+        stored["tenantId"], "tenant_re_8841",
+        "the row must carry the tenant partition"
+    );
+    assert!(stored["documentId"]
+        .as_str()
+        .unwrap()
+        .starts_with("tx_rust_"));
 
     std::env::remove_var("APPWRITE_API_KEY");
 }
@@ -124,7 +130,11 @@ async fn a_failed_audit_write_is_reported_instead_of_claimed_as_success() {
 
 #[tokio::test]
 async fn test_cross_tenant_niche_conflation_rejected() {
-    let state = AppState::new("TEST_KEY".into(), "https://cloud.appwrite.io/v1".into(), "proj_test".into());
+    let state = AppState::new(
+        "TEST_KEY".into(),
+        "https://cloud.appwrite.io/v1".into(),
+        "proj_test".into(),
+    );
 
     // tenant_re_8841 is Real Estate, but attempting to send Healthcare payload
     let payload = IngestPayload {
@@ -136,13 +146,22 @@ async fn test_cross_tenant_niche_conflation_rejected() {
     };
 
     let result = ConcurrencyPipeline::process_telemetry(&state, payload).await;
-    assert!(result.is_err(), "Cross-niche conflation must be strictly rejected");
-    assert!(result.unwrap_err().contains("does not match requested niche"));
+    assert!(
+        result.is_err(),
+        "Cross-niche conflation must be strictly rejected"
+    );
+    assert!(result
+        .unwrap_err()
+        .contains("does not match requested niche"));
 }
 
 #[tokio::test]
 async fn test_healthcare_direct_phi_boundary_enforcement() {
-    let state = AppState::new("TEST_KEY".into(), "https://cloud.appwrite.io/v1".into(), "proj_test".into());
+    let state = AppState::new(
+        "TEST_KEY".into(),
+        "https://cloud.appwrite.io/v1".into(),
+        "proj_test".into(),
+    );
 
     // Healthcare payload with illegal raw SSN
     let payload = IngestPayload {
@@ -157,13 +176,20 @@ async fn test_healthcare_direct_phi_boundary_enforcement() {
     };
 
     let result = ConcurrencyPipeline::process_telemetry(&state, payload).await;
-    assert!(result.is_err(), "Direct PHI in stream must trip compliance guardrails");
+    assert!(
+        result.is_err(),
+        "Direct PHI in stream must trip compliance guardrails"
+    );
     assert!(result.unwrap_err().contains("Direct PHI detected"));
 }
 
 #[tokio::test]
 async fn an_unknown_tenant_is_rejected_by_the_pipeline_itself() {
-    let state = AppState::new("TEST_KEY".into(), "https://cloud.appwrite.io/v1".into(), "proj_test".into());
+    let state = AppState::new(
+        "TEST_KEY".into(),
+        "https://cloud.appwrite.io/v1".into(),
+        "proj_test".into(),
+    );
 
     let mut payload = real_estate_payload();
     payload.tenant_id = "tenant_invented_9999".to_string();

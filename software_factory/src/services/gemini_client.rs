@@ -72,7 +72,9 @@ impl GeminiClient {
             }
         });
 
-        let resp = self.client.post(url)
+        let resp = self
+            .client
+            .post(url)
             .header("x-goog-api-key", key_header)
             .json(&body)
             .send()
@@ -83,14 +85,21 @@ impl GeminiClient {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             error!(%status, %text, "Gemini API error");
-            return Err(format!("Gemini API responded with status {}: {}", status, text));
+            return Err(format!(
+                "Gemini API responded with status {}: {}",
+                status, text
+            ));
         }
 
-        let json_resp: Value = resp.json().await.map_err(|e| format!("Invalid JSON from Gemini: {}", e))?;
+        let json_resp: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Invalid JSON from Gemini: {}", e))?;
         let content_text = json_resp["candidates"][0]["content"]["parts"][0]["text"]
             .as_str()
             .ok_or_else(|| "Missing candidates text in Gemini response".to_string())?;
 
-        serde_json::from_str(content_text).map_err(|e| format!("Failed to parse structured output: {}", e))
+        serde_json::from_str(content_text)
+            .map_err(|e| format!("Failed to parse structured output: {}", e))
     }
 }

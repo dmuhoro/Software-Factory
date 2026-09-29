@@ -52,23 +52,26 @@ impl AppwriteClient {
         // The tenant id is written as an Appwrite attribute so the row is partitioned by the
         // same key the request boundary authenticated.
         let mut body = serde_json::Map::new();
-        body.insert("documentId".to_string(), Value::String(transformation_id.to_string()));
+        body.insert(
+            "documentId".to_string(),
+            Value::String(transformation_id.to_string()),
+        );
         body.insert("tenantId".to_string(), Value::String(tenant_id.to_string()));
         body.insert("payload".to_string(), payload.clone());
         body.insert("data".to_string(), payload.clone());
 
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "content-type",
-            HeaderValue::from_static("application/json"),
-        );
+        headers.insert("content-type", HeaderValue::from_static("application/json"));
         headers.insert(
             "x-appwrite-project",
             HeaderValue::from_str(&self.project_id)
                 .map_err(|_| "APPWRITE_PROJECT_ID is not a valid header value".to_string())?,
         );
-        headers.insert("x-appwrite-key", HeaderValue::from_str(&self.api_key.clone())
-            .map_err(|_| "APPWRITE_API_KEY is not a valid header value".to_string())?);
+        headers.insert(
+            "x-appwrite-key",
+            HeaderValue::from_str(&self.api_key.clone())
+                .map_err(|_| "APPWRITE_API_KEY is not a valid header value".to_string())?,
+        );
         headers.insert(
             "x-appwrite-response-format",
             HeaderValue::from_static("1.5.3"),
