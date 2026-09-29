@@ -1,0 +1,9 @@
+# The other manifests declare this namespace, so it is included to keep the set appliable
+# in order. Applying it is a separate, deliberate step from applying the workloads.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: factory-production
+  labels:
+    kubernetes.io/metadata.name: factory-production
+    app.kubernetes.io/part-of: b2b-saas-platform

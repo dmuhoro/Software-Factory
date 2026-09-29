@@ -1,0 +1,47 @@
+# Default deny, then reopen only what the runtime needs.
+#
+# Without this, any pod in the cluster can reach the tenant ingestion endpoint, which
+# turns a compromised sidecar elsewhere in the namespace into a tenant-isolation bypass.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: software-factory-runtime-ingress
+  namespace: factory-production
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: software-factory-runtime
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: factory-production
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # DNS, or the process cannot resolve the Gemini or Appwrite endpoints and every
+    # request fails with a name-resolution error.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Egress to Appwrite and Gemini. Replace with a CIDR allowlist or an egress gateway
+    # before production: these two destinations are the only ones the runtime needs.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
