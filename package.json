@@ -25,7 +25,8 @@
     "verify:layer2": "npm run build && bash scripts/verify-layer2.sh",
     "verify:layer3": "npm run build && bash scripts/verify-layer3.sh",
     "verify:layer4": "npm run build && bash scripts/verify-layer4.sh",
-    "verify:release": "bash scripts/verify-release.sh"
+    "verify:release": "bash scripts/verify-release.sh",
+    "appwrite:provision": "tsx scripts/provision-appwrite.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

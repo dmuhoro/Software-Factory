@@ -27,7 +27,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { join } from 'node:path';
 import { isPlaceholder, isValidAppwriteId, requireAppwriteConfig, resolveAppwriteConfig } from '../src/configurations/appwrite.config';
-import { checkAppwriteReachable, documentIdFor, getAppwriteServices, resetAppwriteServices } from '../src/services/appwriteClient';
+import { checkAppwriteReachable, documentIdFor, getAppwriteServices, isTransportFailure, resetAppwriteServices } from '../src/services/appwriteClient';
 import { DurableStore } from '../src/services/durableStore';
 
 const ROOT = process.cwd();
@@ -215,4 +215,23 @@ test('no source file gives an APPWRITE_* variable a string fallback', () => {
   };
   walk(join(ROOT, 'src'));
   assert.deepEqual(offenders, [], `an APPWRITE_* variable must not have a string fallback: ${offenders.join(', ')}`);
+});
+
+test('a transport failure stays recognisable after it is wrapped', () => {
+  // Regression, caught by measurement rather than by reading. The retry classifier originally
+  // matched on the exact message "fetch failed". Wrapping the probe error to give it a useful
+  // message therefore made it unrecognisable, which silently disabled every retry and took the
+  // live check from 9/10 green to 1/6. A robustness layer that stops working when it is improved
+  // is worse than no layer, so this pins the behaviour.
+  const timeout = Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' });
+  const original = new TypeError('fetch failed', { cause: timeout });
+  assert.equal(isTransportFailure(original), true, 'a bare fetch failure is a transport failure');
+  assert.equal(isTransportFailure(new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } })), true, 'so is a reset connection');
+
+  // A status means the server answered. Retrying that is re-sending a request the server judged.
+  const judged = Object.assign(new Error('Document not found'), { response: '404' });
+  assert.equal(isTransportFailure(judged), false, 'a server verdict is never retried as a transport failure');
+
+  // And an unrelated error is not retried either.
+  assert.equal(isTransportFailure(new Error('validation failed')), false, 'application errors are not transport failures');
 });
