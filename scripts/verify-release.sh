@@ -210,11 +210,21 @@ section "The release is attributable"
 # A commit that is not attributed to an agent or a human cannot be audited later. The
 # portfolio constitution requires this footer, and a release is the last moment it can
 # still be added.
-LAST_COMMIT="$(git log -1 --pretty=%B 2>/dev/null || echo '')"
-if printf '%s' "$LAST_COMMIT" | grep -qiE 'AI-Assisted:|Co-Authored-By:'; then
-  pass "HEAD carries an authorship footer"
+#
+# Merge commits are excluded on purpose. CI checks out `refs/pull/N/merge`, so `git log -1`
+# there is the merge commit GitHub synthesises, whose message is "Merge <sha> into <sha>".
+# Nobody wrote it, so it can never carry an authorship footer, and demanding one would fail
+# every pull request for a reason that has nothing to do with the change under review. What
+# needs attributing is the branch's own work, so that is what gets inspected.
+LAST_COMMIT="$(git log --no-merges -1 --pretty=%B 2>/dev/null || echo '')"
+if [ -z "$LAST_COMMIT" ]; then
+  # A history with no non-merge commit is not a release history; say so rather than
+  # reporting a missing footer on a commit that does not exist.
+  fail "no non-merge commit found, so the release cannot be attributed"
+elif printf '%s' "$LAST_COMMIT" | grep -qiE 'AI-Assisted:|Co-Authored-By:'; then
+  pass "the branch tip carries an authorship footer"
 else
-  fail "HEAD carries no authorship footer; the release cannot be attributed"
+  fail "the branch tip carries no authorship footer; the release cannot be attributed"
 fi
 
 printf '\n'
