@@ -10,3 +10,18 @@ coverage/
 
 # Rust build output (2GB locally); the dependency graph is pinned in Cargo.lock
 software_factory/target/
+
+# Agent tooling installed by `npx skills add` (Appwrite SDK/CLI skills). These are local
+# development aids duplicated across several agent directories, not product code: committing
+# them would triple 236KB of vendored documentation into the repository and let an agent
+# tool's contents become reviewable product surface. The one path that IS canonical is the
+# OpenCode MCP server configuration in ~/.config/opencode/opencode.json.
+.agents/
+.claude/
+agent/
+
+# Built image archives. These are rebuildable from source with a single command, so committing
+# 36MB binaries would bloat the history for no benefit. The digest is recorded in
+# artifacts/README.md instead, which is the part that actually matters for verification.
+artifacts/*.tar
+artifacts/*.sha256
