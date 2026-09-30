@@ -139,15 +139,20 @@ export async function checkAppwriteReachable(env: NodeJS.ProcessEnv = process.en
   // and only here: this is a read-only probe, so a retry cannot duplicate a write. Writes get
   // their idempotency from `documentIdFor` instead, which is a structural guarantee rather than a
   // retry, and is the reason this health check is not the place to make that argument.
+  // `withRetry` is used rather than a private loop, so this command inherits the same
+  // exponential-backoff-with-jitter policy as every other caller. The previous version had its
+  // own flat `250ms * attempt` spacing, which meant the health check was the *weakest* retry in
+  // the codebase -- the component whose job is to report the truth about the network was the one
+  // giving up first, and it duly reported FAIL during a timeout burst that was about to clear.
   const attempts = Math.max(1, settings.limits.retryAttempts);
-  let lastDetail = 'no attempt was made';
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const outcome = await probeOnce(base, settings, getAppwriteServices(env));
-    if (outcome.ok === true) return outcome.result;
-    lastDetail = outcome.detail;
-    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+  try {
+    return await withRetry(
+      () => probeOnce(base, settings, getAppwriteServices(env)),
+      { attempts, label: 'appwrite reachability probe' },
+    );
+  } catch (error) {
+    return { ...base, detail: describeFailure(error) + ` (after ${attempts} attempts)` };
   }
-  return { ...base, detail: `${lastDetail} (after ${attempts} attempts)` };
 }
 
 /**
@@ -159,7 +164,7 @@ async function probeOnce(
   base: AppwriteReachability,
   settings: AppwriteSettings,
   services: AppwriteServices,
-): Promise<{ ok: true; result: AppwriteReachability } | { ok: false; detail: string }> {
+): Promise<AppwriteReachability> {
   const { databases, tables } = services;
 
   // Probe the data plane, not the account plane.
@@ -187,14 +192,11 @@ async function probeOnce(
 
     if (!names.includes(settings.databaseId)) {
       return {
-        ok: true,
-        result: {
-          ...base,
-          reachable: true,
-          detail: `authenticated against project ${settings.projectId}; database "${settings.databaseId}" does not exist. `
-            + `This project contains: ${names.length > 0 ? names.join(', ') : '(none)'}. `
-            + 'Provisioning is a separate, explicit step -- this check never creates anything.',
-        },
+        ...base,
+        reachable: true,
+        detail: `authenticated against project ${settings.projectId}; database "${settings.databaseId}" does not exist. `
+          + `This project contains: ${names.length > 0 ? names.join(', ') : '(none)'}. `
+          + 'Provisioning is a separate, explicit step -- this check never creates anything.',
       };
     }
 
@@ -206,28 +208,103 @@ async function probeOnce(
     const found = Array.isArray(listed?.rows) ? listed.rows.length : 0;
 
     return {
-      ok: true,
-      result: {
-        ...base,
-        reachable: true,
-        detail: `authenticated against project ${settings.projectId}; database "${settings.databaseId}" exists `
-          + `(${names.length} visible); table "${settings.collections.tenants}" readable (${found} row(s) returned)`,
-      },
+      ...base,
+      reachable: true,
+      detail: `authenticated against project ${settings.projectId}; database "${settings.databaseId}" exists `
+        + `(${names.length} visible); table "${settings.collections.tenants}" readable (${found} row(s) returned)`,
     };
   } catch (error) {
-    // Node's fetch wraps everything in a bare "fetch failed", naming neither cause nor host. A
-    // verification command that reports only that is useless to whoever has to act on it, so the
-    // cause chain is unwrapped.
-    const parts: string[] = [];
-    let cursor: unknown = error;
-    for (let depth = 0; cursor && depth < 4; depth += 1) {
-      const message = cursor instanceof Error ? cursor.message : String(cursor);
-      if (message && !parts.includes(message)) parts.push(message);
-      cursor = (cursor as { cause?: unknown })?.cause;
-    }
-    const code = typeof (error as { code?: unknown })?.code === 'number' ? ` (code ${(error as { code: number }).code})` : '';
-    return { ok: false, detail: `Appwrite call failed${code}: ${parts.join(' <- ')}` };
+    // Re-thrown as a typed failure so the caller's retry policy can tell a dead connection from a
+    // server that answered with a real status, and so the message names the cause instead of the
+    // bare "fetch failed" that undici throws.
+    throw new TransportProbeFailure(describeFailure(error), error);
   }
+}
+
+/**
+ * Retry helper for transport-level failures.
+ *
+ * ## Scope: transport only, on purpose
+ *
+ * Only errors that carry no HTTP response are retried -- the bare `TypeError: fetch failed` that
+ * undici throws when a connection dies before a status line arrives. An `AppwriteException` always
+ * has a status, and a status means the server answered, so retrying it would be re-sending a
+ * request the server has already judged.
+ *
+ * ## Why this is not simply "retry until it works"
+ *
+ * A transport failure is genuinely ambiguous: the request may have died in flight, or it may have
+ * been fully applied with the response lost. Retrying is therefore only safe when the operation
+ * is idempotent, and the caller has to know which case it is in:
+ *
+ * - `createTable`, `createStringColumn` and friends are safe to retry *if* the caller treats
+ *   "already exists" as success, because Appwrite enforces the id uniquely. The provisioning
+ *   script does exactly that.
+ * - Row writes use a deterministic document id, so a retry overwrites with identical content
+ *   rather than duplicating.
+ * - Anything that is neither must not be wrapped in this. Hence the explicit `retries` argument:
+ *   you have to state your idempotency, you do not get it by default.
+ */
+const TRANSPORT_CODES = /^(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|EAI_AGAIN|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|UND_ERR_)/;
+
+export function isTransportFailure(error: unknown): boolean {
+  // A re-thrown failure keeps the verdict it was given while the original error was still intact.
+  // This check has to come first: classifying by message text alone breaks the moment anything
+  // wraps the error, because the wrapper's message is no longer exactly "fetch failed". That
+  // regression was real -- wrapping the probe failure silently disabled every retry and took the
+  // health check from 9/10 green to 1/6, which is what a false "robustness" layer looks like.
+  const marked = (error as { transport?: unknown } | null)?.transport;
+  if (typeof marked === 'boolean') return marked;
+
+  // An HTTP response means the server answered, so it is never a transport failure.
+  if ((error as { response?: unknown } | null)?.response !== undefined) return false;
+  if (error instanceof Error && error.message === 'fetch failed') return true;
+
+  // Walk the cause chain: a system error code such as ETIMEDOUT is the same dead connection seen
+  // one level deeper, and that is where Node actually puts it.
+  let cursor: unknown = error;
+  for (let depth = 0; cursor && depth < 4; depth += 1) {
+    const code = (cursor as { code?: unknown })?.code;
+    if (typeof code === 'string' && TRANSPORT_CODES.test(code)) return true;
+    cursor = (cursor as { cause?: unknown })?.cause;
+  }
+  return false;
+}
+
+export async function withRetry<T>(
+  operation: () => Promise<T>,
+  options: { attempts: number; label: string; delayMs?: number },
+): Promise<T> {
+  const attempts = Math.max(1, options.attempts);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isTransportFailure(error) || attempt === attempts) throw error;
+      // Exponential backoff with jitter.
+      //
+      // The first version used a flat 250ms * attempt. Measurement killed it: the underlying
+      // failure is a *connection timeout* (cause: ETIMEDOUT) on the path to Frankfurt, observed at
+      // roughly 1 in 10 calls by curl and by Node alike, so it is environmental rather than a
+      // property of this client. Three attempts spaced 250ms/500ms apart all landed inside a
+      // single timeout burst and all failed together -- correlated failures need real spacing, not
+      // more attempts.
+      //
+      // Jitter matters too: without it, every caller in a fleet retries on the same schedule after
+      // the same upstream blip and reproduces the blip as a thundering herd.
+      const base = options.delayMs ?? 1000;
+      const exponential = base * 2 ** (attempt - 1);
+      const jitter = Math.floor(Math.random() * base);
+      const backoff = Math.min(exponential + jitter, 30_000);
+      process.stderr.write(
+        `  ! transport failure during ${options.label} (attempt ${attempt}/${attempts}), retrying in ${backoff}ms\n`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+    }
+  }
+  throw lastError;
 }
 
 export function documentIdFor(prefix: string, ...parts: string[]): string {
@@ -236,4 +313,32 @@ export function documentIdFor(prefix: string, ...parts: string[]): string {
   // database rejects is a worse outcome than a shorter one, and this was caught by the test
   // asserting the limit rather than by the type checker.
   return DurableStore.deterministicId(prefix, ...parts).slice(0, 36);
+}
+
+/** A probe failure that carries its cause, so retries can classify it and reports can explain it. */
+class TransportProbeFailure extends Error {
+  public readonly cause: unknown;
+  /** Classification is computed at construction, from the untouched original. */
+  public readonly transport: boolean;
+  constructor(message: string, cause: unknown) {
+    super(message);
+    this.name = 'TransportProbeFailure';
+    this.cause = cause;
+    this.transport = isTransportFailure(cause);
+  }
+}
+
+/** Turns an unknown thrown value into one line that names the cause rather than just "fetch failed". */
+function describeFailure(error: unknown): string {
+  const parts: string[] = [];
+  let cursor: unknown = error;
+  for (let depth = 0; cursor && depth < 4; depth += 1) {
+    const message = cursor instanceof Error ? cursor.message : String(cursor);
+    if (message && !parts.includes(message)) parts.push(message);
+    const causeCode = (cursor as { cause?: { code?: string } })?.cause?.code;
+    if (causeCode && !parts.includes(causeCode)) parts.push(causeCode);
+    cursor = (cursor as { cause?: unknown })?.cause;
+  }
+  const code = typeof (error as { code?: unknown })?.code === 'number' ? ` (code ${(error as { code: number }).code})` : '';
+  return `Appwrite call failed${code}: ${parts.join(' <- ')}`;
 }
