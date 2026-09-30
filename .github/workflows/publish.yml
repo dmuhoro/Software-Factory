@@ -59,7 +59,18 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
+  # The package lives under a repository-scoped path -- ghcr.io/<owner>/<repo>/<package> -- not
+  # ghcr.io/<owner>/<package>. The owner-only form collides the moment a second repository in the
+  # same organisation publishes an image called `runtime`: GHCR packages are scoped to the owner,
+  # so the second repository is refused or overwrites the first.
+  #
+  # This workflow published to ghcr.io/dmuhoro/runtime while software_factory/k8s/deployment.yaml
+  # pulled ghcr.io/dmuhoro/software-factory/runtime. Both files are individually plausible, so
+  # neither lint nor the image gate saw it, and a deployment of this branch would have reached
+  # ImagePullBackOff behind a green pipeline. The manifest is authoritative -- it is what actually
+  # gets applied -- so the workflow writes exactly what the manifest asks for.
   NAMESPACE: ${{ github.repository_owner }}
+  PACKAGE_PREFIX: ${{ github.event.repository.name }}
 
 jobs:
   publish:
@@ -89,8 +100,13 @@ jobs:
       # `gh` is preinstalled on the runner, so this needs no third-party action and no mutable
       # ref to audit -- an earlier draft used a `@master` action, which is a supply-chain hole
       # in a job whose whole purpose is to be trusted.
+      # No `if` on the event name. An earlier draft gated this on `github.event_name == 'push'`,
+      # which meant a workflow_dispatch published from any commit without a single check having
+      # run -- while the step name and this workflow's own header claimed nothing unverified was
+      # ever published. A gate with a bypass in it is not a gate, and a bypass discovered later is
+      # indistinguishable from one that was always there. If an operator needs to re-publish, they
+      # re-run verify for that SHA first; refusing is the correct answer.
       - name: refuse to publish a commit that has not passed verification
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -142,8 +158,8 @@ jobs:
               ;;
           esac
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "image=${REGISTRY}/${NAMESPACE}/${package}:${tag}" >> "$GITHUB_OUTPUT"
-          echo "Publishing ${REGISTRY}/${NAMESPACE}/${package}:${tag}"
+          echo "image=${REGISTRY}/${NAMESPACE}/${PACKAGE_PREFIX}/${package}:${tag}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${REGISTRY}/${NAMESPACE}/${PACKAGE_PREFIX}/${package}:${tag}"
 
       - name: build and push
         id: push
@@ -191,7 +207,7 @@ jobs:
       - name: verify the published image can be pulled
         run: |
           set -euo pipefail
-          ref="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ matrix.package }}@${{ steps.push.outputs.digest }}"
+          ref="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.PACKAGE_PREFIX }}/${{ matrix.package }}@${{ steps.push.outputs.digest }}"
           echo "verifying $ref"
           docker buildx imagetools inspect "$ref" > /dev/null
           echo "the registry serves $ref"
