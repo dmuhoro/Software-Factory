@@ -4,6 +4,54 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+### Gates that were passing without running
+
+- **`.github/workflows/integrations.yml` never executed.** Every job gated on a `secrets.*`
+  reference inside a job-level `if`, which GitHub rejects outright, so each run failed in under a
+  second with zero jobs. CodeRabbit had never reviewed a commit here, and the gate asserting it
+  was active was asserting the exact defect that stopped it running. Jobs now gate on
+  non-secret `vars.*_ENABLED` and assert their secret in a step;
+  `scripts/verify-integrations.sh` fails on any job-level `secrets.*` in any workflow, with a
+  negative control that reproduces the original five failures.
+- **The Appwrite read path was an in-memory cache**, so a restarted server reported an empty
+  history while the rows existed. Reads are now datastore-backed and async end to end, with the
+  tenant predicate pushed into `tables.listRows`, newest-first ordering, default limit 100 and a
+  hard maximum of 500. Corrupt JSON raises `LEDGER_UNAVAILABLE` instead of crashing. Reverting
+  this fails five tests; a fresh-instance test proves a row survives a restart.
+- **The Appwrite health check misdiagnosed a rejected credential** by advising that an
+  already-exported variable be exported. It now classifies `not-configured`, `unauthorized`,
+  `forbidden`, `not-found`, `network` and `not-provisioned`, each with its own advice, covered by
+  seven tests.
+- **Appwrite keys ship with an empty scope set**, which is refused on every data-plane call with
+  a 401 indistinguishable from a wrong project. The runtime and provisioner scope sets are now
+  documented in `.env.example` and enforced by `scripts/verify-appwrite-scopes.sh`, which fails
+  if the runtime key acquires schema-write scope. It takes four corrections to make that gate
+  honest, including one check that was passing without reading anything.
+- **`npm run appwrite:check` reported `api key: (unset)` on a correctly configured machine**,
+  because it read `process.env` only and worked solely for operators who remembered to source
+  `.env` first. It now loads `.env` itself; real environment variables still win.
+- **Two secret-handling defects.** `set-secret.sh` discarded a piped value with no trailing
+  newline, and printed its argument back on refusal — so pasting a key where a variable name
+  belonged leaked the whole key to the terminal. A credential-shaped argument is now redacted,
+  with an explanation of where argv leaks and an instruction to rotate.
+  `scripts/verify-argv-leak-control.sh` proves it: six checks fail against the old handler.
+- **`k8s/deployment.yaml` pointed at a `gcr.io` tag that was never published.** Added a GHCR
+  publish workflow using `GITHUB_TOKEN`, with SBOM, provenance, digest reporting and a pullability
+  check, gated on verification having passed.
+- **Added `npm run verify:full`**: static gates, tests, the local storage contract and the live
+  Appwrite layer, in dependency order, in one command. It distinguishes configured-and-working
+  from configured-and-broken, which fails, from unconfigured, which skips.
+
+### The gap between a control plane and an operating system
+
+- **`docs/OPERATIONS.md` records the largest gap in the product.** The agent path asks a model
+  for an implementation and then fails the job with `PROPOSAL_REQUIRES_TOOL_APPLIER`
+  (`src/services/agentExecutionService.ts:11`). Nothing applies a model proposal to disk. A real
+  traversal-guarded file writer exists at `factoryJobService.ts:87`, but it writes a
+  caller-supplied payload. The scheduler, worktree isolation, approvals, policy gates and
+  rollback with health checks are all built; the actuation step between a proposal and a change
+  is not. The document fixes the constraints that build must preserve.
+
 ### Appwrite pilot is live and proven end to end
 
 - Provisioned the real pilot project: `b2b_software_factory` with `tenants`, `telemetry_events`,
