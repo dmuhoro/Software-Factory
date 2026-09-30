@@ -26,15 +26,15 @@ import { strict as assert } from 'node:assert';
 import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { join } from 'node:path';
-import { isPlaceholder, requireAppwriteConfig, resolveAppwriteConfig } from '../src/configurations/appwrite.config';
-import { checkAppwriteReachable, documentIdFor } from '../src/services/appwriteClient';
+import { isPlaceholder, isValidAppwriteId, requireAppwriteConfig, resolveAppwriteConfig } from '../src/configurations/appwrite.config';
+import { checkAppwriteReachable, documentIdFor, getAppwriteServices, resetAppwriteServices } from '../src/services/appwriteClient';
 import { DurableStore } from '../src/services/durableStore';
 
 const ROOT = process.cwd();
 
 const VALID = {
   APPWRITE_ENDPOINT: 'https://fra.cloud.appwrite.io/v1',
-  APPWRITE_PROJECT_ID: '6aaa99700007bd53480e',
+  APPWRITE_PROJECT_ID: 'a1b2c3d4e5f6a7b8c9d0',
   APPWRITE_API_KEY: 'a-real-looking-opaque-key-0123456789abcdef',
 } as NodeJS.ProcessEnv;
 
@@ -48,6 +48,35 @@ test('the exact placeholder that shipped is refused', () => {
     settings.issues.some((issue) => issue.variable === 'APPWRITE_API_KEY' && issue.severity === 'error'),
     'the refusal must name APPWRITE_API_KEY as an error',
   );
+});
+
+test('a real Appwrite key is accepted and the shipped placeholder is not', () => {
+  // Found by running the detector against the operator's actual credential during the first
+  // authenticated connection. The first version refused anything beginning `standard_`, which is
+  // exactly what a *real* Appwrite key begins with -- so it refused every genuine key the
+  // operator owns. A guard that blocks real traffic protects nothing; it just gets bypassed.
+  // Synthetic, shaped like a real key. The real credential is never a test fixture: a key prefix
+  // pasted into source is a leak waiting to be committed, and this file is the one most likely to
+  // be committed by someone in a hurry.
+  const real = `standard_${'0123456789abcdef'.repeat(8)}`;
+  assert.equal(isPlaceholder(real), false, 'a real standard_<hex> key must not be refused');
+  assert.equal(isPlaceholder('standard_appwrite_api_key_secret'), true, 'the shipped placeholder must be refused');
+  assert.equal(isPlaceholder('standard_deadbeef'), true, 'a short non-hex suffix is still a template');
+  assert.equal(resolveAppwriteConfig({ ...VALID, APPWRITE_API_KEY: real }).configured, true,
+    'the operator\'s real key must produce a configured integration');
+});
+
+test('project ids are validated by shape, not against a list of known fakes', () => {
+  // `b2b_software_factory_proj` shipped as a default. A blacklist of known fakes cannot work: the
+  // next fabricated id is a different string. Appwrite ids are 24 alphanumeric characters.
+  // 20 characters, measured against the operator's real project id rather than guessed.
+  assert.equal(isValidAppwriteId('a1b2c3d4e5f6a7b8c9d0'), true, 'a measured 20-character project id is valid');
+  // 24 is a MongoDB ObjectId length, not an Appwrite one. Asserting it rejected the real id.
+  assert.equal(isValidAppwriteId('a'.repeat(24)), false, 'a 24-character id is not an Appwrite id');
+  assert.equal(isValidAppwriteId('0123456789abcdefghij'), true, 'a 20-char account id shares the format');
+  assert.equal(isValidAppwriteId('b2b_software_factory_proj'), false, 'the shipped fabrication is not a valid id');
+  assert.equal(resolveAppwriteConfig({ ...VALID, APPWRITE_PROJECT_ID: 'b2b_software_factory_proj' }).configured, false,
+    'a fabricated project id must not produce a configured integration');
 });
 
 test('nothing is defaulted: an empty environment is unconfigured, not fiction', () => {
@@ -99,6 +128,24 @@ test('requireAppwriteConfig throws and names every problem at once', () => {
     },
   );
   assert.doesNotThrow(() => requireAppwriteConfig(VALID), 'valid configuration must not throw');
+});
+
+test('the Appwrite client is memoised, because a fresh one per call is flaky', async () => {
+  // Measured against the operator's real project: a fresh Client per call failed roughly 1 in 6
+  // with a bare `TypeError: fetch failed`, while one reused client completed 8/8 and then 20/20.
+  // The SDK holds the connection pool, so building a throwaway client per call is what made the
+  // integration look flaky -- and "flaky" was a property of this code, not of Appwrite.
+  resetAppwriteServices();
+  const first = getAppwriteServices(VALID);
+  const second = getAppwriteServices(VALID);
+  assert.equal(first, second, 'the same configuration must return the same client, not rebuild it');
+
+  // A rotated credential must not be served from the memo, or a revoked key would keep working
+  // for the life of the process.
+  resetAppwriteServices();
+  const rotated = getAppwriteServices({ ...VALID, APPWRITE_API_KEY: `${VALID.APPWRITE_API_KEY}-rotated` });
+  assert.notEqual(rotated, first, 'a different credential must produce a different client');
+  resetAppwriteServices();
 });
 
 test('a live-reachability check reports "not attempted" instead of pretending', async () => {

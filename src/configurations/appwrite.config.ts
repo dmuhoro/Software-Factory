@@ -69,21 +69,66 @@ export interface AppwriteSettings {
 }
 
 const PLACEHOLDER_PATTERN =
-  /^(replace|changeme|your[-_ ]|placeholder|example|dummy|fake|xxx+|todo|standard_)/;
+  /^(replace|changeme|your[-_ ]|placeholder|example|dummy|fake|xxx+|todo)/;
 
 /**
  * True when a value is a template rather than a credential.
  *
- * `standard_` is included because that is the literal prefix Appwrite issues real keys with, and
- * the shipped placeholder was `standard_appwrite_api_key_secret`. A real Appwrite key has a
- * long opaque suffix, so refusing anything that still contains readable words after the prefix
- * costs nothing and catches the exact value that was committed.
+ * ## The bug this function had, and how it was found
+ *
+ * The first version refused anything beginning `standard_`, on the reasoning that `standard_` is
+ * the prefix Appwrite issues real keys with and the shipped placeholder was
+ * `standard_appwrite_api_key_secret`. Both halves of that reasoning are wrong in the same
+ * direction: `standard_` is precisely what a *real* Appwrite key begins with, followed by a long
+ * hex string. So the guard refused every genuine credential the operator owns.
+ *
+ * It was found by running this function against the operator's actual key during the first
+ * authenticated connection -- a guard that blocks real traffic does not protect anything. It gets
+ * bypassed by whoever hits the wall, and then it is a wall with no gate behind it.
+ *
+ * The corrected rule keeps the intent and drops the overreach. A real key is `standard_` followed
+ * by hex, so the value is a template when the text after the prefix is *not* hex --
+ * `standard_appwrite_api_key_secret` is not, and the real key is. The readable-word checks below
+ * then catch the placeholder independently, so removing `standard_` from the prefix set costs no
+ * coverage.
  */
 export function isPlaceholder(value: string): boolean {
   const normalised = value.trim().toLowerCase();
   if (normalised.length === 0) return true;
   if (PLACEHOLDER_PATTERN.test(normalised)) return true;
-  return normalised.includes('api_key') || normalised.includes('apikey') || normalised.endsWith('-secret');
+  if (normalised.includes('api_key') || normalised.includes('apikey') || normalised.endsWith('-secret')) return true;
+  // The shipped placeholder is the one value this file must always refuse, whatever its shape.
+  if (normalised === 'standard_appwrite_api_key_secret') return true;
+  // An Appwrite key is `standard_` + hex. Anything after the prefix that is not hex is a
+  // template, whatever it is called.
+  if (normalised.startsWith('standard_')) return !/^standard_[0-9a-f]{64,}$/.test(normalised);
+  return false;
+}
+
+/**
+ * True when a value is a syntactically real Appwrite project id.
+ *
+ * A blacklist of known fakes cannot work here: `b2b_software_factory_proj` was the fabricated id
+ * that shipped, and the next one will be a different string. So the project id is validated by
+ * *shape* instead.
+ *
+ * The shape is 20 alphanumeric characters, measured rather than remembered. The first version of
+ * this regex asserted 24, which is a MongoDB ObjectId length, and it rejected the operator's
+ * actual project id -- the same failure mode as the `standard_` bug above, in the opposite
+ * direction: a guard tightened until it blocked the real thing. Both the operator's real project
+ * id and their real account id are exactly 20 alphanumeric characters; the fabricated id is 25 and
+ * contains an underscore, so it fails both tests.
+ *
+ * The lesson across the three bugs this file has now had: a guard that enumerates bad values
+ * misses the next bad value; a guard that enumerates a *prefix* of good values rejects good
+ * values; and a guard invented from memory rather than measured rejects the real value too.
+ *
+ * Even so, this regex is a heuristic and is not the authority. The authority is the live
+ * authenticated call in `checkAppwriteReachable`, which asks Appwrite whether the id exists. A
+ * shape check catches the obvious; only the server can confirm.
+ */
+export function isValidAppwriteId(value: string): boolean {
+  return /^[a-zA-Z0-9]{20}$/.test(value.trim());
 }
 
 function trimmed(value: string | undefined): string {
@@ -127,6 +172,14 @@ export function resolveAppwriteConfig(env: NodeJS.ProcessEnv = process.env): App
   requireValue('APPWRITE_ENDPOINT', endpoint, 'Use the regional endpoint, e.g. https://fra.cloud.appwrite.io/v1');
   requireValue('APPWRITE_PROJECT_ID', projectId, 'The Appwrite console project id, e.g. the 24-character id under Project settings');
   requireValue('APPWRITE_API_KEY', apiKey, 'Create one in the Appwrite console under Overview > Integrations > API keys. Never commit it.');
+
+  if (projectId !== '' && !isValidAppwriteId(projectId)) {
+    issues.push({
+      variable: 'APPWRITE_PROJECT_ID',
+      severity: 'error',
+      message: `APPWRITE_PROJECT_ID must be the 20-character id from the Appwrite console (received "${projectId}"). A name, a slug or a placeholder is not an id. npm run appwrite:check confirms it against the server.`,
+    });
+  }
 
   if (endpoint !== '' && !/^https:\/\/[a-z0-9.-]+\/v\d+$/.test(endpoint)) {
     issues.push({

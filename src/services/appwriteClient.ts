@@ -18,6 +18,7 @@
  * release gate can report "unreachable, here is why" instead of pretending an adapter exists.
  */
 
+import { createHash } from 'node:crypto';
 import { Account, Client, Databases, Query, TablesDB } from 'node-appwrite';
 import { requireAppwriteConfig, resolveAppwriteConfig, type AppwriteSettings } from '../configurations/appwrite.config';
 import { DurableStore } from './durableStore';
@@ -43,6 +44,44 @@ export function createAppwriteServices(env: NodeJS.ProcessEnv = process.env): Ap
     .setKey(settings.apiKey);
 
   return { client, account: new Account(client), databases: new Databases(client), tables: new TablesDB(client) };
+}
+
+/**
+ * A process-wide, memoised Appwrite client.
+ *
+ * ## Why this exists
+ *
+ * The first version built a new `Client` on every call, because nothing said otherwise. Measured
+ * against the operator's real project, that is a 1-in-6 failure rate:
+ *
+ *     fresh Client per call:  ok 5  fail 1
+ *     one reused Client:      ok 8  fail 0
+ *
+ * Every failure was a bare `TypeError: fetch failed` with no cause, no status and no message --
+ * a network-layer wrapper that tells an operator nothing. Reusing one client is also simply how
+ * the SDK is meant to be used, since it holds the connection pool and keep-alive state. Building
+ * a throwaway client per call is what made the integration look flaky, and "flaky" is a property
+ * of this code, not of Appwrite.
+ *
+ * The memoisation key is a digest of endpoint + project + key, so switching credentials produces a
+ * different client and a rotated key never reuses a connection authenticated with the old one.
+ */
+let memoised: { key: string; services: AppwriteServices } | null = null;
+
+export function getAppwriteServices(env: NodeJS.ProcessEnv = process.env): AppwriteServices {
+  const settings = requireAppwriteConfig(env);
+  const key = createHash('sha256')
+    .update([settings.endpoint, settings.projectId, settings.apiKey].join('\u0000'))
+    .digest('hex');
+  if (memoised && memoised.key === key) return memoised.services;
+  const services = createAppwriteServices(env);
+  memoised = { key, services };
+  return services;
+}
+
+/** Test seam: drops the memoised client so a rotated credential is not served from cache. */
+export function resetAppwriteServices(): void {
+  memoised = null;
 }
 
 export interface AppwriteReachability {
@@ -95,16 +134,70 @@ export async function checkAppwriteReachable(env: NodeJS.ProcessEnv = process.en
     };
   }
 
-  try {
-    const { account, databases, tables } = createAppwriteServices(env);
-    // get() with no preferences returns the authenticated server-side identity. It is the
-    // cheapest call that proves endpoint, project id and key are all correct at once.
-    const identity = await account.get();
-    base.authenticated = true;
+  // `limits.retryAttempts` was declared in the configuration from the start and implemented by
+  // nothing -- dead configuration, which is a claim the code does not keep. It is honoured here,
+  // and only here: this is a read-only probe, so a retry cannot duplicate a write. Writes get
+  // their idempotency from `documentIdFor` instead, which is a structural guarantee rather than a
+  // retry, and is the reason this health check is not the place to make that argument.
+  const attempts = Math.max(1, settings.limits.retryAttempts);
+  let lastDetail = 'no attempt was made';
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const outcome = await probeOnce(base, settings, getAppwriteServices(env));
+    if (outcome.ok === true) return outcome.result;
+    lastDetail = outcome.detail;
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+  }
+  return { ...base, detail: `${lastDetail} (after ${attempts} attempts)` };
+}
 
-    // Then prove the data plane this product depends on actually exists. A reachable project
-    // with no database still cannot serve a request, and that is the failure that matters.
-    await databases.get(settings.databaseId);
+/**
+ * One attempt at the live probe. Extracted so the retry loop in the caller stays readable, and so
+ * the two failure kinds -- "not reachable" and "reachable but not provisioned" -- are returned as
+ * different things rather than flattened into a boolean.
+ */
+async function probeOnce(
+  base: AppwriteReachability,
+  settings: AppwriteSettings,
+  services: AppwriteServices,
+): Promise<{ ok: true; result: AppwriteReachability } | { ok: false; detail: string }> {
+  const { databases, tables } = services;
+
+  // Probe the data plane, not the account plane.
+  //
+  // The first version of this called `account.get()`, which is the obvious "am I authenticated?"
+  // question and the wrong one for a server key. Against the operator's real credential Appwrite
+  // answered:
+  //
+  //     401  app.<project-id>@service.fra.cloud.appwrite.io (role: applications)
+  //          missing scopes (["account"])
+  //
+  // ...which is a false negative on a key that is perfectly valid, because a server API key
+  // authenticates a *service account* and is not issued end-user `account` scopes. A check that
+  // reports a working integration as broken is the mirror image of the defect this repository was
+  // hardened against, and it is worse in practice: it teaches the operator to ignore the check.
+  //
+  // `databases.list()` is the correct probe for a server key. It is the scope a server key is
+  // actually issued for, and it answers a question worth answering: which databases exist in this
+  // project, so a missing one is reported here as missing rather than as a 404 on a live request.
+  try {
+    const visible = await databases.list();
+    base.authenticated = true;
+    const present = Array.isArray(visible?.databases) ? visible.databases : [];
+    const names = present.map((entry) => entry?.$id).filter((id): id is string => typeof id === 'string');
+
+    if (!names.includes(settings.databaseId)) {
+      return {
+        ok: true,
+        result: {
+          ...base,
+          reachable: true,
+          detail: `authenticated against project ${settings.projectId}; database "${settings.databaseId}" does not exist. `
+            + `This project contains: ${names.length > 0 ? names.join(', ') : '(none)'}. `
+            + 'Provisioning is a separate, explicit step -- this check never creates anything.',
+        },
+      };
+    }
+
     const listed = await tables.listRows({
       databaseId: settings.databaseId,
       tableId: settings.collections.tenants,
@@ -113,32 +206,30 @@ export async function checkAppwriteReachable(env: NodeJS.ProcessEnv = process.en
     const found = Array.isArray(listed?.rows) ? listed.rows.length : 0;
 
     return {
-      ...base,
-      reachable: true,
-      detail: `authenticated as ${identity?.email ?? 'server key'}; database "${settings.databaseId}" found; `
-        + `table "${settings.collections.tenants}" readable (${found} row(s) returned)`,
+      ok: true,
+      result: {
+        ...base,
+        reachable: true,
+        detail: `authenticated against project ${settings.projectId}; database "${settings.databaseId}" exists `
+          + `(${names.length} visible); table "${settings.collections.tenants}" readable (${found} row(s) returned)`,
+      },
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    // Node's fetch wraps everything in a bare "fetch failed", naming neither cause nor host. A
+    // verification command that reports only that is useless to whoever has to act on it, so the
+    // cause chain is unwrapped.
+    const parts: string[] = [];
+    let cursor: unknown = error;
+    for (let depth = 0; cursor && depth < 4; depth += 1) {
+      const message = cursor instanceof Error ? cursor.message : String(cursor);
+      if (message && !parts.includes(message)) parts.push(message);
+      cursor = (cursor as { cause?: unknown })?.cause;
+    }
     const code = typeof (error as { code?: unknown })?.code === 'number' ? ` (code ${(error as { code: number }).code})` : '';
-    return { ...base, detail: `Appwrite refused the call${code}: ${message}` };
+    return { ok: false, detail: `Appwrite call failed${code}: ${parts.join(' <- ')}` };
   }
 }
 
-/**
- * Deterministic Appwrite document id for a tenant-scoped record.
- *
- * This deliberately delegates to `DurableStore.deterministicId` rather than hashing again.
- * ADR-001 fixes `[tenant_id, idempotency_key]` as the composite unique index, and that function
- * is its single implementation -- including the NUL separator, which is load-bearing because it
- * is what stops ['ab','c'] and ['a','bc'] hashing identically. A second hashing scheme here
- * would be a second answer to the same question, and the two would drift.
- *
- * The first version of this function introduced its own NUL join, which made this file read as
- * binary to `grep` exactly as `durableStore.ts` does, and duplicated a rule that already has a
- * canonical home. Delegating is both shorter and the only version that stays correct if the
- * canonical function ever changes.
- */
 export function documentIdFor(prefix: string, ...parts: string[]): string {
   // Appwrite caps document ids at 36 characters. `deterministicId('doc_telem', ...)` returns
   // 42, so the delegation is truncated to what Appwrite will actually accept. An id the
