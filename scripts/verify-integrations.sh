@@ -166,6 +166,44 @@ else
   pass "no workflow step claims production measurement (comments excluded)"
 fi
 
+section "The published image path is the one the manifest requests"
+# The publish workflow wrote ghcr.io/<owner>/<package> while k8s/deployment.yaml pulled
+# ghcr.io/<owner>/<repo>-<package>. Nothing caught it because both files are individually
+# plausible: the workflow's push step succeeded in its own imagination, and the manifest names a
+# real registry. The only way to see it is to compare the two, which no gate did. A deployment of
+# that branch would have reached ImagePullBackOff with a green pipeline behind it.
+#
+# The manifest is authoritative for the path -- it is what gets applied -- so the workflow has to
+# agree with it. GHCR namespaces packages per owner, so the repository name has to appear in the
+# path or the second repository to publish an image called `runtime` collides with the first.
+PUBLISH=".github/workflows/publish.yml"
+MANIFEST="software_factory/k8s/deployment.yaml"
+if [ ! -f "$PUBLISH" ] || [ ! -f "$MANIFEST" ]; then
+  fail "the publish workflow or the deployment manifest is missing, so the image path cannot be compared"
+else
+  # Lowercased: GHCR normalises image paths to lowercase, so a repository named
+  # `Software-Factory` publishes to `software-factory`. Comparing the remote's capitalisation
+  # against the manifest's would fail on a correct workflow.
+  MANIFEST_REPO="$(basename "$(git config --get remote.origin.url)" .git | tr '[:upper:]' '[:lower:]')"
+  if grep -q "PACKAGE_PREFIX" "$PUBLISH" && grep -qE "image: ghcr\.io/[^/]+/${MANIFEST_REPO}/" "$MANIFEST"; then
+    pass "the publish workflow and the manifest agree on a repository-namespaced package path"
+  else
+    fail "the publish workflow and the manifest disagree on the package path (expected ghcr.io/<owner>/${MANIFEST_REPO}/runtime)"
+    grep -n "image:" "$MANIFEST" | sed 's/^/          manifest: /'
+    grep -n "PACKAGE_PREFIX" "$PUBLISH" | sed 's/^/          workflow: /'
+  fi
+
+  # The verification gate must not have an event-name bypass. `if: github.event_name == 'push'`
+  # on a workflow_dispatch-triggered publish means manual runs skip verification while the step
+  # name claims they do not.
+  if grep -A 1 "refuse to publish a commit that has not passed verification" "$PUBLISH" \
+       | grep -q "if: github.event_name"; then
+    fail "the publish workflow skips its verification gate on manual dispatch"
+  else
+    pass "the publish workflow's verification gate has no event-name bypass"
+  fi
+fi
+
 printf '\n'
 if [ "$FAIL" -eq 0 ]; then
   printf '\033[32m════ INTEGRATIONS GATE: %d passed, 0 failed ════\033[0m\n' "$PASS"
