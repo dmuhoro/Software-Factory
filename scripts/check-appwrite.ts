@@ -12,10 +12,28 @@
  * state this repository shipped: a configuration that looked complete and contacted nothing.
  *
  * The key is never printed. Only its presence, length-independent.
+ *
+ * It loads the repository `.env` itself. This was reported as broken twice: a correctly configured
+ * `.env`, key present, and the check announcing `api key: (unset)`. It was reading `process.env`
+ * only, so `npm run appwrite:check` worked for whoever remembered to `set -a && . ./.env` first
+ * and failed for everyone who followed the documented command. An operator tool that silently
+ * depends on an undocumented shell incantation is not a usable tool. Real environment variables
+ * still win over the file, so CI and tests are unaffected.
  */
 
+import { existsSync } from 'node:fs';
+import { resolve as resolvePath, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config as loadDotenv } from 'dotenv';
 import { checkAppwriteReachable } from '../src/services/appwriteClient';
 import { resolveAppwriteConfig } from '../src/configurations/appwrite.config';
+
+const REPO_ROOT = resolvePath(dirname(fileURLToPath(import.meta.url)), '..');
+const ENV_FILE = resolvePath(REPO_ROOT, '.env');
+
+if (existsSync(ENV_FILE)) {
+  loadDotenv({ path: ENV_FILE });
+}
 
 const GREEN = '[32m';
 const RED = '[31m';
