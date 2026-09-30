@@ -3,7 +3,9 @@
 # Tested against a throwaway copy. Nothing is echoed, nothing enters shell history.
 set -euo pipefail
 
-KEY="$1"
+# `${1:-}` rather than `$1`: under `set -u` a bare invocation aborted with an unbound-variable
+# error, which is indistinguishable from a refused credential and tells the operator nothing.
+KEY="${1:-}"
 
 if [ -z "$KEY" ]; then
   printf 'usage: %s <ENV_NAME>\n' "$0" >&2
@@ -19,17 +21,21 @@ case "$KEY" in
 esac
 
 # Read with the terminal echo off, so the value never appears on screen, in scrollback, or in
-# a screen share. read returns non-zero on a bare Enter, which is treated as "leave it alone"
-# rather than silently blanking an existing credential.
+# a screen share. Emptiness is judged explicitly below, so the read status is ignored: `read`
+# reports non-zero for a bare Enter *and* for a final line with no trailing newline, and those two
+# cases mean opposite things. Under `set -e` the piped case aborted the script before it wrote
+# anything, which looks exactly like a refused credential rather than a harness mistake.
 if [ -t 0 ]; then
   printf 'Enter the new value for %s (input hidden): ' "$KEY" >&2
   stty -echo 2>/dev/null || true
-  IFS= read -r VALUE || VALUE=""
+  IFS= read -r VALUE || true
   stty echo 2>/dev/null || true
   printf '\n' >&2
 else
   printf 'reading %s from stdin\n' "$KEY" >&2
-  IFS= read -r VALUE
+  # Same reasoning as the interactive branch: a piped value commonly has no trailing newline, and
+  # treating that as failure either discards the value or aborts the script.
+  IFS= read -r VALUE || true
 fi
 
 if [ -z "$VALUE" ]; then
