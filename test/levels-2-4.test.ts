@@ -13,7 +13,14 @@ import { ParallelWorktreeService } from '../src/services/parallelWorktreeService
 
 function repo(): string { const root = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-levels-')); execFileSync('git', ['init', '-q', root]); execFileSync('git', ['-C', root, 'config', 'user.email', 'test@example.com']); execFileSync('git', ['-C', root, 'config', 'user.name', 'Test']); fs.writeFileSync(path.join(root, 'package.json'), '{"scripts":{"test":"node -e \\\"console.log(\\\\\"ok\\\\\")\\\"}}'); execFileSync('git', ['-C', root, 'add', '.']); execFileSync('git', ['-C', root, 'commit', '-qm', 'initial']); return root; }
 
-const state = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-levels-data-')); process.env.FACTORY_DATA_DIR = state; DurableStore.resetForTests();
+const state = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-levels-data-')); process.env.FACTORY_DATA_DIR = state;
+// FACTORY_WORKTREE_ROOT is pinned here for the same reason as the roots above: the worktree service
+// falls back to `process.env.FACTORY_WORKTREE_ROOT`, so leaving it unset let a developer's sourced
+// .env decide where the test wrote. With `FACTORY_WORKTREE_ROOT=/approved/worktrees` exported, the
+// suite failed with EACCES under `/` on any machine that cannot create that path, and passed on
+// any machine that could. The test was measuring the operator's shell, not the code. Every root the
+// tests touch is now set here, so the suite is hermetic.
+process.env.FACTORY_WORKTREE_ROOT = path.join(state, 'worktrees'); DurableStore.resetForTests();
 
 test('Level 2 client workspace creates isolated handover and acceptance evidence', () => {
   const root = repo(); process.env.FACTORY_WORKSPACE_ROOT = path.dirname(root); process.env.FACTORY_CLIENT_WORKSPACE_ROOT = path.join(state, 'clients'); const project = WorkspaceService.register({ tenantId: 'client-tenant', name: 'Client Product', repositoryPath: root, kind: 'client' }); const workspace = ClientDeliveryService.registerWorkspace({ tenantId: 'client-tenant', projectId: project.id, clientName: 'Acme Client' }); const handover = ClientDeliveryService.createHandover('client-tenant', project.id, { acceptanceCriteria: ['verified', 'rollback'] }); assert.equal(fs.existsSync(handover.file), true); assert.ok(handover.checksum); assert.ok(handover.file.startsWith(workspace.isolationRoot)); const acceptance = ClientDeliveryService.accept('client-tenant', project.id, handover.id, { acceptedBy: 'acme-owner', criteria: [{ id: 'verified', label: 'Verification passes', passed: true, evidence: ['run-digest'] }, { id: 'rollback', label: 'Rollback documented', passed: true, evidence: ['rollback-record'] }] }); assert.equal(acceptance.status, 'ACCEPTED'); });

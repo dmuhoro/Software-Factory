@@ -16,7 +16,7 @@
     "preview": "vite preview",
     "render:egress": "bash scripts/render-egress-policy.sh",
     "start": "node dist/server.cjs",
-    "test": "tsx --test --test-concurrency=1 test/**/*.test.ts",
+    "test": "tsx --test --import ./test/setup-isolate-env.ts --test-concurrency=1 test/**/*.test.ts",
     "verify": "npm run lint && npm test && npm run build && bash scripts/verify-layer4.sh",
     "verify:docs": "bash scripts/verify-docs.sh",
     "verify:image": "bash scripts/verify-image.sh",
@@ -26,10 +26,12 @@
     "verify:layer2": "npm run build && bash scripts/verify-layer2.sh",
     "verify:layer3": "npm run build && bash scripts/verify-layer3.sh",
     "verify:layer4": "npm run build && bash scripts/verify-layer4.sh",
-    "verify:release": "bash scripts/verify-no-secrets.sh && bash scripts/verify-release.sh",
+    "verify:release": "npm run verify:secrets && npm run verify:storage && bash scripts/verify-release.sh",
     "appwrite:provision": "tsx scripts/provision-appwrite.ts",
     "appwrite:e2e": "tsx scripts/e2e-tenant-roundtrip.ts",
-    "verify:secrets:control": "bash scripts/verify-secret-gate-control.sh"
+    "verify:secrets:control": "bash scripts/verify-secret-gate-control.sh",
+    "verify:storage": "bash scripts/verify-storage-backend.sh",
+    "verify:storage:live": "bash scripts/verify-storage-backend.sh --require-appwrite"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
