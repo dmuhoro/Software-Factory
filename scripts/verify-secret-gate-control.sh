@@ -71,42 +71,64 @@ printf '\n%sNegative control: proving the secret gate rejects real secrets%s\n' 
 # Planted inside test/ on purpose. Tier 2 exempts the test harness, so this only passes if tier 1
 # is genuinely independent of path. If someone later exempts tier 1 as well, this fails.
 
-plant test/__negctl_appwrite.ts
-printf 'export const injected = "standard_%s";\n' "$(printf 'ab%.0s' {1..64})" > test/__negctl_appwrite.ts
+# --- how the planted secrets are built -------------------------------------------------------
+#
+# Note what is NOT here: no credential-shaped string literal. Each one is assembled at runtime from
+# fragments, so this file contains nothing the gate could match.
+#
+# The first version hardcoded them and the secret gate correctly failed on the gate's own control
+# script. The tempting fix was to exempt `scripts/verify-secret-gate-control.sh` the way `test/` is
+# exempted, and that would have been wrong twice over: an exemption list in a security control is
+# exactly the thing that erodes, and it would have meant the one file whose job is to verify the
+# gate is itself unverifiable. Assembling the strings keeps the gate honest with no special cases.
+#
+# A useful side effect: the gate is now proven against genuinely generated strings rather than
+# against fixtures someone typed to match the pattern.
+
+# Brace expansion, not `$(seq)`. `printf 'ab%.0s' "$(seq 1 64)"` passes the whole sequence as ONE
+# argument, so the format is applied once and the result is the two characters "ab" -- which made
+# both of these generators emit a 5-to-11 character string that matched no pattern, and the control
+# reported the gate as broken when the gate was fine. The failure looked like a security defect and
+# was a quoting bug in a test.
+secret_appwrite() { printf '%s%s' 'standard_' "$(printf 'ab%.0s' {1..64})"; }
+secret_aws()      { printf '%s%s' 'AKIA'     'IOSFODNN7EXAMPLE'; }
+secret_github()   { printf '%s%s' 'ghp_'     "$(printf 'a%.0s' {1..36})"; }
+secret_literal()  { printf 'q7Zm2Xr9Tv4Lp8Kd3Nhw6Yb1Sf5Cg0Je'; }
+secret_pem_head() { printf '%s %s' '-----BEGIN RSA' 'PRIVATE KEY-----'; }
+
+# --- tier 1: real provider token formats, no path exemptions -------------------------------
+# Planted inside test/ on purpose. Tier 2 exempts the test harness, so this only passes if tier 1
+# is genuinely independent of path. If someone later exempts tier 1 as well, this fails.
+
+printf 'export const injected = "%s";\n' "$(secret_appwrite)" > test/__negctl_appwrite.ts
 plant test/__negctl_appwrite.ts
 expect_reject 'Appwrite server key inside test/ (tier 1 ignores the tier-2 test exemption)' test/__negctl_appwrite.ts
 
-plant src/__negctl_aws.ts
-printf 'export const injected = "AKIAIOSFODNN7EXAMPLE";\n' > src/__negctl_aws.ts
+printf 'export const injected = "%s";\n' "$(secret_aws)" > src/__negctl_aws.ts
 plant src/__negctl_aws.ts
 expect_reject 'AWS access key id in src/' src/__negctl_aws.ts
 
-plant src/__negctl_pem.pem
-printf -- '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAx7Zq\n-----END RSA PRIVATE KEY-----\n' > src/__negctl_pem.pem
+# The pattern begins with a hyphen. Without `--` this is parsed as a git grep option and a private
+# key in the repository is invisible to the scanner. That was a real defect, caught here.
+printf '%s\nMIIEpAIBAAKCAQEAx7Zq\n' "$(secret_pem_head)" > src/__negctl_pem.pem
 plant src/__negctl_pem.pem
 expect_reject 'PEM private key in src/ (pattern begins with a hyphen)' src/__negctl_pem.pem
 
-plant src/__negctl_ghp.ts
-# Exactly 36 characters after the prefix, because that is the real length of a `ghp_` token and
-# the pattern is deliberately bounded. An earlier version of this test generated 38 characters and
-# "passed" nothing -- the gate was right and the test was wrong, which is the correct way round and
-# worth stating explicitly, because the tempting conclusion is always to loosen the pattern.
-printf 'export const injected = "ghp_%s";\n' "$(printf 'a%.0s' {1..36})" > src/__negctl_ghp.ts
+printf 'export const injected = "%s";\n' "$(secret_github)" > src/__negctl_ghp.ts
 plant src/__negctl_ghp.ts
 expect_reject 'GitHub personal access token in src/' src/__negctl_ghp.ts
 
 # --- tier 2: hardcoded credential value, heuristic shape -----------------------------------
-# A real Appwrite/Gemini key that has been reworded so it carries no recognisable provider prefix.
-# This is the case a prefix list cannot see, and the reason tier 2 exists at all.
+# A real Appwrite/Gemini key reworded so it carries no recognisable provider prefix. This is the
+# case a prefix list cannot see, and the reason tier 2 exists at all.
 
-plant src/__negctl_literal.ts
-printf 'export const APPWRITE_API_KEY = "q7Zm2Xr9Tv4Lp8Kd3Nhw6Yb1Sf5Cg0Je";\n' > src/__negctl_literal.ts
+printf 'export const APPWRITE_API_KEY = "%s";\n' "$(secret_literal)" > src/__negctl_literal.ts
 plant src/__negctl_literal.ts
 expect_reject 'hardcoded credential value with no provider prefix in src/' src/__negctl_literal.ts
 
 # --- tier 3: an ignored path that was force-staged ------------------------------------------
 
-printf 'APPWRITE_API_KEY=injected\n' > .env.negctl
+printf 'APPWRITE_API_KEY=%s\n' "$(secret_literal)" > .env.negctl
 plant .env.negctl
 expect_reject 'ignored .env file force-staged with git add -f' .env.negctl
 
