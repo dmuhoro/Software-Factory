@@ -13,9 +13,31 @@ if [ -z "$KEY" ]; then
   exit 2
 fi
 
+# A credential-shaped argument gets a different response than a merely malformed one, and this
+# branch does not print the argument. It used to print it verbatim, so pasting a key where a name
+# belonged leaked the whole key to the terminal and into scrollback and any screen share -- the
+# error handler was the leak. Redaction here is the fix, not the validation.
+case "$KEY" in
+  standard_*|s.*)
+    printf 'refusing a credential passed as an argument (redacted: %.12s...)\n' "$KEY" >&2
+    printf '\n' >&2
+    printf 'This script takes a variable NAME, not a value. Passing the value on the command line\n' >&2
+    printf 'puts it in three places it cannot be removed from:\n' >&2
+    printf '  1. your shell history\n' >&2
+    printf '  2. the process table, readable by any user on this machine for the command lifetime\n' >&2
+    printf '  3. scrollback and any screen share\n' >&2
+    printf '\n' >&2
+    printf '  Rotate this key in the Appwrite console now, then:\n' >&2
+    printf '    %s APPWRITE_API_KEY\n' "$(basename "$0")" >&2
+    printf '  and paste the new value at the hidden prompt.\n' >&2
+    exit 2
+    ;;
+esac
+
 case "$KEY" in
   *[!A-Z_]*|'')
-    printf 'refusing %s: expected an UPPER_SNAKE_CASE environment variable name\n' "$KEY" >&2
+    printf 'refusing that argument: expected an UPPER_SNAKE_CASE environment variable name, for\n' >&2
+    printf 'example APPWRITE_API_KEY. No value has been read or written.\n' >&2
     exit 2
     ;;
 esac
