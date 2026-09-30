@@ -12,6 +12,22 @@ import { RawTelemetryPayload, TransformationRecord } from '../models/telemetry';
 import { DurableStore } from './durableStore';
 import { TelemetryLogger } from '../utils/telemetryLogger';
 
+/** Shared read bounds, so both adapters cap a page identically. */
+export const DEFAULT_READ_LIMIT = 100;
+export const MAX_READ_LIMIT = 500;
+
+export function boundedLimit(limit?: number): number {
+  if (limit === undefined || !Number.isFinite(limit)) return DEFAULT_READ_LIMIT;
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_READ_LIMIT);
+}
+
+/** Newest first by `createdAt`, falling back to the end of the list when it is absent. */
+function bounded<T extends { createdAt?: string; timestamp?: string }>(rows: T[], limit?: number): T[] {
+  const size = boundedLimit(limit);
+  const ordered = [...rows].sort((a, b) => String(b.createdAt ?? b.timestamp ?? '').localeCompare(String(a.createdAt ?? a.timestamp ?? '')));
+  return ordered.slice(0, size);
+}
+
 export class LocalStore {
   /**
    * Persists a telemetry event under the ADR-001 composite key [tenant_id, idempotency_key].
@@ -47,15 +63,22 @@ export class LocalStore {
     DurableStore.appendAudit({ ...entry, logId: DurableStore.id('audit', JSON.stringify(entry)) });
   }
 
-  public getTransformationsByTenant(tenantId: string): TransformationRecord[] {
-    return DurableStore.list('transformations').filter((item) => item.tenantId === tenantId) as unknown as TransformationRecord[];
+  /**
+   * Newest first, and bounded. The local store is a full in-memory list, so a limit here is a slice
+   * rather than a datastore `limit` query -- but the ordering and the cap still match the Appwrite
+   * adapter, so a caller cannot see a different shape of answer depending on the backend.
+   */
+  public getTransformationsByTenant(tenantId: string, limit?: number): TransformationRecord[] {
+    const rows = (DurableStore.list('transformations') as unknown as TransformationRecord[])
+      .filter((item) => item.tenantId === tenantId);
+    return bounded(rows, limit);
   }
 
-  public getAllTransformations(): TransformationRecord[] {
-    return DurableStore.list('transformations') as unknown as TransformationRecord[];
+  public getAllTransformations(limit?: number): TransformationRecord[] {
+    return bounded(DurableStore.list('transformations') as unknown as TransformationRecord[], limit);
   }
 
-  public getAuditLogs(tenantId?: string): Array<Record<string, unknown>> {
-    return DurableStore.audits(tenantId);
+  public getAuditLogs(tenantId?: string, limit?: number): Array<Record<string, unknown>> {
+    return bounded(DurableStore.audits(tenantId) as Array<Record<string, unknown>>, limit);
   }
 }

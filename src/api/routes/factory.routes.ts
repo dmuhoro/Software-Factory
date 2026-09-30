@@ -45,8 +45,8 @@ router.get('/ready', (_req: Request, res: Response) => {
   res.status(readiness.status === 'unhealthy' ? 503 : 200).json({ status: readiness.status, checks: readiness.checks });
 });
 
-router.get('/metrics', (_req: Request, res: Response) => {
-  const records = AppwriteService.getAllTransformations();
+router.get('/metrics', async (_req: Request, res: Response) => {
+  const records = await AppwriteService.getAllTransformations();
   const durations = records.map((record) => record.auditTrail.durationMs).sort((a, b) => a - b);
   const successes = records.filter((record) => record.status === 'COMPLETED').length;
   const p = (quantile: number) => (durations.length ? durations[Math.min(durations.length - 1, Math.floor(durations.length * quantile))] : 0);

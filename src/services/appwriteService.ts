@@ -37,16 +37,16 @@ export class AppwriteService {
     return resolveTelemetryStore().appendAuditLog(entry);
   }
 
-  public static getTransformationsByTenant(tenantId: string): TransformationRecord[] {
-    return resolveTelemetryStore().getTransformationsByTenant(tenantId);
+  public static async getTransformationsByTenant(tenantId: string, limit?: number): Promise<TransformationRecord[]> {
+    return resolveTelemetryStore().getTransformationsByTenant(tenantId, limit);
   }
 
-  public static getAllTransformations(): TransformationRecord[] {
-    return resolveTelemetryStore().getAllTransformations();
+  public static async getAllTransformations(limit?: number): Promise<TransformationRecord[]> {
+    return resolveTelemetryStore().getAllTransformations(limit);
   }
 
-  public static getAuditLogs(tenantId?: string): Array<Record<string, unknown>> {
-    return resolveTelemetryStore().getAuditLogs(tenantId);
+  public static async getAuditLogs(tenantId?: string, limit?: number): Promise<Array<Record<string, unknown>>> {
+    return resolveTelemetryStore().getAuditLogs(tenantId, limit);
   }
 
   /** Which backend is actually serving this process, for the startup banner and for operators. */
