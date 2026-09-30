@@ -84,8 +84,34 @@ export function resetAppwriteServices(): void {
   memoised = null;
 }
 
+/**
+ * Why a probe failed, as distinct from *that* it failed.
+ *
+ * This exists because the check's advice used to be the same for every failure: "export
+ * APPWRITE_API_KEY, or accept the local store". When the key was set and Appwrite rejected it,
+ * that advice was impossible to act on, and a diagnostic that cannot be acted on teaches the
+ * operator to ignore the diagnostic. Four causes need four different instructions, and only the
+ * status code tells them apart.
+ */
+export type AppwriteFailureKind =
+  /** A required variable is missing or is a known placeholder. Nothing was attempted. */
+  | 'not-configured'
+  /** 401. Appwrite refused the credential itself: wrong project, no scopes, or revoked. */
+  | 'unauthorized'
+  /** 403. The credential is accepted but is not permitted this operation. */
+  | 'forbidden'
+  /** 404. The project or database named in the configuration does not exist. */
+  | 'not-found'
+  /** The request never completed: timeout, DNS, refused connection. */
+  | 'network'
+  /** Authenticated, but the database or a table is absent. */
+  | 'not-provisioned'
+  | 'none';
+
 export interface AppwriteReachability {
   reachable: boolean;
+  /** Structured cause. `none` when the probe succeeded. */
+  failure: AppwriteFailureKind;
   /** True only when Appwrite answered and authenticated. */
   authenticated: boolean;
   projectId: string;
@@ -112,6 +138,7 @@ export async function checkAppwriteReachable(env: NodeJS.ProcessEnv = process.en
   const base: AppwriteReachability = {
     reachable: false,
     authenticated: false,
+    failure: 'not-configured',
     projectId: settings.projectId,
     endpoint: settings.endpoint,
     detail: '',
@@ -151,7 +178,11 @@ export async function checkAppwriteReachable(env: NodeJS.ProcessEnv = process.en
       { attempts, label: 'appwrite reachability probe' },
     );
   } catch (error) {
-    return { ...base, detail: describeFailure(error) + ` (after ${attempts} attempts)` };
+    return {
+      ...base,
+      failure: classifyFailure(error),
+      detail: describeFailure(error) + ` (after ${attempts} attempts)`,
+    };
   }
 }
 
@@ -194,6 +225,9 @@ async function probeOnce(
       return {
         ...base,
         reachable: true,
+        // Authenticated successfully. The credential is fine; the database is not there. Collapsing
+        // this into a generic failure is what sends an operator to rotate a working key.
+        failure: 'not-provisioned',
         detail: `authenticated against project ${settings.projectId}; database "${settings.databaseId}" does not exist. `
           + `This project contains: ${names.length > 0 ? names.join(', ') : '(none)'}. `
           + 'Provisioning is a separate, explicit step -- this check never creates anything.',
@@ -210,6 +244,7 @@ async function probeOnce(
     return {
       ...base,
       reachable: true,
+      failure: 'none',
       detail: `authenticated against project ${settings.projectId}; database "${settings.databaseId}" exists `
         + `(${names.length} visible); table "${settings.collections.tenants}" readable (${found} row(s) returned)`,
     };
@@ -329,6 +364,36 @@ class TransportProbeFailure extends Error {
 }
 
 /** Turns an unknown thrown value into one line that names the cause rather than just "fetch failed". */
+/**
+ * Maps a transport error onto a cause an operator can act on.
+ *
+ * The status code is read from the error chain because the SDK wraps it: the first `401` seen from
+ * the CLI arrives as a top-level Appwrite exception, while the same 401 seen through the retry
+ * helper arrives with the code one or two `cause` links down. Reading only the top level made the
+ * classification depend on which caller happened to surface the error.
+ */
+export function classifyFailure(error: unknown): AppwriteFailureKind {
+  let code: number | undefined;
+  let cursor: unknown = error;
+  for (let depth = 0; cursor && depth < 6; depth += 1) {
+    const candidate = (cursor as { code?: unknown })?.code;
+    if (typeof candidate === 'number' && candidate >= 400 && candidate < 600) code = candidate;
+    const cause = (cursor as { cause?: unknown })?.cause;
+    // A cause may be an Error, and an Error's `code` is sometimes a string like 'ETIMEDOUT'
+    // rather than an HTTP status. Those are network failures, not authorization ones.
+    if (typeof cause === 'object' && cause !== null && 'code' in cause
+        && typeof (cause as { code?: unknown }).code === 'string') {
+      return 'network';
+    }
+    cursor = cause;
+  }
+  if (code === 401) return 'unauthorized';
+  if (code === 403) return 'forbidden';
+  if (code === 404) return 'not-found';
+  if (code === undefined) return 'network';
+  return 'unknown' as AppwriteFailureKind;
+}
+
 function describeFailure(error: unknown): string {
   const parts: string[] = [];
   let cursor: unknown = error;

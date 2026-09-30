@@ -51,12 +51,58 @@ async function main(): Promise<number> {
   }
 
   console.log(`\n${RED}FAIL${RESET}  ${result.detail}`);
-  console.log('\n  This is the honest state, and it is better than the one this check replaced:');
-  console.log('  an unconfigured integration that reports itself as unconfigured.');
-  console.log('\n  To fix, either:');
-  console.log('    - export APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID and APPWRITE_API_KEY, or');
-  console.log('    - accept that this deployment runs on the local durable store and the Appwrite');
-  console.log('      adapter is unused. That is a supported mode; it is not a configured one.');
+
+  // Advice that matches the cause. This used to print the same two suggestions for every failure,
+  // including "export APPWRITE_API_KEY" when the key was already exported and Appwrite had just
+  // rejected it. Advice an operator cannot act on is worse than no advice, because the next thing
+  // they do is stop reading the output of this command -- which is the failure mode the probe's own
+  // comment warns about when it explains why a valid key can look broken.
+  const advice: Record<string, string[]> = {
+    'not-configured': [
+      'export APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID and APPWRITE_API_KEY, or',
+      'accept that this deployment runs on the local durable store and the Appwrite',
+      'adapter is unused. That is a supported mode; it is not a configured one.',
+    ],
+    unauthorized: [
+      `Appwrite received the key and refused it (401), so the variables are set correctly and the`,
+      `credential is the problem. In order of likelihood:`,
+      '',
+      `  1. The key has no scopes assigned. Appwrite creates a key with an empty scope set, and an`,
+      `     empty scope set is rejected on every data-plane call with exactly this error. Open the`,
+      `     project console, then Overview > Integrations > API keys, edit this key, and grant the`,
+      `     scopes this product needs to read and write tables in ${result.expected.databaseId}.`,
+      '  2. The key belongs to a different project than the one in APPWRITE_PROJECT_ID.',
+      '  3. The key was revoked or is still propagating after being created.',
+      '',
+      'Do not rotate the key again before checking its scopes; rotation cannot fix a missing grant.',
+    ],
+    forbidden: [
+      'The key authenticated but is not permitted this operation (403), which means the key is',
+      'valid and its scope set is too narrow. Add the missing scope for this project in the',
+      'Appwrite console rather than replacing the credential.',
+    ],
+    'not-found': [
+      'The endpoint answered but the project or database named here does not exist (404). Check',
+      `APPWRITE_PROJECT_ID and APPWRITE_DATABASE_ID against the console. Provisioning is a`,
+      'separate, explicit step; this check never creates anything.',
+    ],
+    network: [
+      'The request never completed, so nothing can be concluded about the key. This endpoint has',
+      'been intermittent from this host. Retry, and only treat it as a credential problem if it',
+      'persists alongside a successful call to a known-good project.',
+    ],
+    'not-provisioned': [
+      'The credential works. The database has not been provisioned in this project yet. Run the',
+      'provisioner explicitly, and re-run this check.',
+    ],
+    unknown: [
+      'Appwrite answered with a status this check does not classify. The raw detail above names it;',
+      'read it before changing anything.',
+    ],
+  };
+
+  console.log('');
+  for (const line of advice[result.failure] ?? advice.unknown ?? []) console.log(`  ${line}`);
   return 1;
 }
 
