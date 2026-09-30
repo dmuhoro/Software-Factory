@@ -55,7 +55,20 @@ spec:
                     app.kubernetes.io/name: software-factory-runtime
       containers:
         - name: runtime-engine
-          image: gcr.io/b2b-software-factory/runtime:v4.8.0
+          # Published by .github/workflows/publish.yml. The previous value here,
+          # gcr.io/b2b-software-factory/runtime:v4.8.0, named an image that had never been pushed
+          # to anywhere, so the deployment could only ever end in ImagePullBackOff. GCR was also
+          # unreachable in practice: publishing to it needs a service-account credential this
+          # repository does not have, whereas GHCR authenticates with the workflow's own
+          # GITHUB_TOKEN and costs nothing for a public package.
+          #
+          # At release time, replace this tag with the digest the publish job reported, i.e.
+          # ghcr.io/dmuhoro/software-factory/runtime@sha256:<digest>. A tag is a name and can be
+          # moved; a digest is the artifact. Pinning is what makes "roll back to the version that
+          # worked" true, and what makes the running image auditable against the commit that
+          # built it. No digest is written here today because none has been published yet, and
+          # inventing one would be a claim nothing could check.
+          image: ghcr.io/dmuhoro/software-factory/runtime:v4.8.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
