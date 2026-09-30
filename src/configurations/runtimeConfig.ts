@@ -17,6 +17,8 @@ export type ConfigSeverity = 'error' | 'warning';
 export interface ConfigIssue { variable: string; severity: ConfigSeverity; message: string; }
 
 export interface RuntimeConfig {
+  /** Which persistence backend this process writes to. One per process, never both. */
+  storageBackend: 'local' | 'appwrite';
   nodeEnv: 'production' | 'development' | 'test';
   port: number;
   isProduction: boolean;
@@ -121,6 +123,28 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
   const issues: ConfigIssue[] = [];
   const nodeEnv = env.NODE_ENV === 'production' ? 'production' : env.NODE_ENV === 'test' ? 'test' : 'development';
   const isProduction = nodeEnv === 'production';
+
+  // STORAGE_BACKEND is validated here, at startup, rather than at the first write.
+  //
+  // The failure this prevents is specific: `STORAGE_BACKEND=appwirte` (a typo) silently resolving
+  // to the local disk. The process would start, advertise that it was configured for cloud
+  // persistence, and write every customer record somewhere no one is monitoring. An operator has
+  // to see this at boot, in the banner, before there is a record to lose.
+  const storageBackendRaw = trimmed(env.STORAGE_BACKEND);
+  let storageBackend: 'local' | 'appwrite' = 'local';
+  const storageBackendInput = storageBackendRaw.toLowerCase();
+  if (storageBackendInput === '' || storageBackendInput === 'local') {
+    storageBackend = 'local';
+  } else if (storageBackendInput === 'appwrite') {
+    storageBackend = 'appwrite';
+  } else {
+    issues.push({
+      variable: 'STORAGE_BACKEND',
+      severity: 'error',
+      message: `STORAGE_BACKEND must be "local" or "appwrite"; got ${JSON.stringify(env.STORAGE_BACKEND)}. `
+        + 'The service refuses to guess which store to write to, because guessing is how records get lost.',
+    });
+  }
 
   const apiKey = trimmed(env.FACTORY_API_KEY);  if (apiKey === '') {
     issues.push({
@@ -238,6 +262,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
 
   return {
     nodeEnv,
+    storageBackend,
     isProduction,
     port: parsePort(env.PORT),
     insecureLocalBypass: !isProduction && env.ALLOW_INSECURE_LOCAL === 'true' && apiKey === '',
@@ -259,6 +284,7 @@ export function warningsOf(config: RuntimeConfig): ConfigIssue[] { return config
 export function describeConfig(config: RuntimeConfig): string {
   const lines = [
     `  mode            ${config.nodeEnv}`,
+    `  storage         ${config.storageBackend}${config.storageBackend === 'local' ? ' (offline durable store)' : ' (Appwrite pilot backend)'}`,
     `  port            ${config.port}`,
     `  data directory  ${config.dataDir}`,
     `  workspace root  ${config.workspaceRoot}`,

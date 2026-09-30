@@ -17,7 +17,8 @@ export type OperationalErrorCode =
   | 'ENRICHMENT_DEGRADED'
   | 'ENRICHMENT_UNAVAILABLE'
   | 'LEDGER_UNAVAILABLE'
-  | 'DEPENDENCY_TIMEOUT';
+  | 'DEPENDENCY_TIMEOUT'
+  | 'TENANT_NOT_ONBOARDED';
 
 export interface OperationalErrorOptions {
   /** The unmodified upstream failure. Logged, never returned. */
