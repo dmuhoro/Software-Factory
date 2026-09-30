@@ -63,7 +63,7 @@ env:
 
 jobs:
   publish:
-    name: publish ${{ matrix.image.name }}
+    name: publish ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -176,7 +176,7 @@ jobs:
           echo "Published ${{ steps.tags.outputs.image }}"
           echo "Digest: ${REGISTRY}/${{ matrix.package }}@${digest}"
           {
-            echo "### Published \`${{ matrix.image.name }}\`"
+            echo "### Published \`${{ matrix.name }}\`"
             echo ""
             echo "- tag: \`${{ steps.tags.outputs.tag }}\`"
             echo "- digest: \`${digest}\`"

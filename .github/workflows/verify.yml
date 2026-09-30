@@ -16,6 +16,42 @@ permissions:
   contents: read
 
 jobs:
+  # The workflow lint. This job exists because `.github/workflows/integrations.yml` was invalid
+  # for its entire life -- it referenced the `secrets` context in a job-level `if`, where GitHub
+  # does not allow it, so every run failed in zero seconds with no jobs -- and nothing noticed.
+  # A workflow that never runs is indistinguishable from a workflow with nothing to do, and a
+  # review gate that never runs is worse than an absent one, because people believe it ran.
+  #
+  # Linting is the only thing that catches this class of defect before it ships: a YAML parse
+  # check cannot, because the file is valid YAML and invalid Actions.
+  workflows:
+    name: workflow definitions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: lint every workflow
+        # Pinned to a release tag, not a branch or `@master`: this job is trusted input for every
+        # other job, and a moving ref would make that trust unreviewable.
+        uses: docker://rhysd/actionlint:1.7.7
+      - name: every workflow file is valid YAML
+        run: |
+          set -euo pipefail
+          found=0
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -e "$f" ] || continue
+            found=1
+            python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$f"
+            echo "parsed: $f"
+          done
+          # Zero files would mean the glob matched nothing, which is a broken gate rather than a
+          # clean repository. A check that passes because it found nothing to check is the exact
+          # failure this job was added to stop.
+          if [ "$found" -eq 0 ]; then
+            echo "::error::no workflow files found; the gate would pass without checking anything"
+            exit 1
+          fi
+
   typescript:
     name: typescript (build, types, tests, live harnesses)
     runs-on: ubuntu-latest

@@ -12,11 +12,22 @@
 # external reviewer was in the loop. These integrations are the missing review layer, and
 # they are only worth adding if they report honestly when disconnected.
 #
-# Required repository secrets, each mapping to exactly one job:
-#   CODERABBIT_API_KEY        -> coderabbit
-#   SONAR_TOKEN + SONAR_HOST_URL -> sonarqube
-#   SNYK_TOKEN                -> snyk
-#   DATADOG_API_KEY           -> datadog-metrics
+# Each integration needs TWO things, and setting only one of them is worse than setting neither:
+#
+#   repository variable (non-secret)   repository secret
+#   ---------------------------        ---------------------------------
+#   CODERABBIT_ENABLED=true            CODERABBIT_API_KEY
+#   SONAR_ENABLED=true                 SONAR_TOKEN (+ SONAR_HOST_URL)
+#   SNYK_ENABLED=true                  SNYK_TOKEN
+#   DATADOG_ENABLED=true               DATADOG_API_KEY
+#
+# The variable is what the job-level `if` reads, because the secrets context is not available
+# there. This file was invalid for its entire life because it referenced `secrets` in a job-level
+# `if`, so GitHub rejected it and every run failed in zero seconds with no jobs. Nothing in the
+# repository noticed, because a workflow that never runs looks exactly like a workflow with
+# nothing to do. The variable gates the job; the first step in the job then asserts the secret is
+# really there, so an enabled-but-unset pair fails loudly instead of skipping its own work and
+# reporting success. `actionlint` now runs in verify.yml, which is what keeps this from recurring.
 #
 # None of them is required for a fork PR to pass. See the `if:` conditions; they are written
 # so a contributor without access to the secrets still gets a full, honest verification run
@@ -43,10 +54,24 @@ jobs:
   # configures nothing and says so. Skipped is the honest outcome for a fork PR.
   coderabbit:
     name: CodeRabbit review
-    if: ${{ github.event_name == 'pull_request' && secrets.CODERABBIT_API_KEY != '' }}
+    if: ${{ github.event_name == 'pull_request' && vars.CODERABBIT_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Assert CODERABBIT_API_KEY is actually present
+        # The job gate reads a repository variable because the secrets context is not available
+        # in a job-level `if` -- referencing it there makes GitHub reject the entire workflow, so
+        # the file silently never ran. That is the bug this step exists to close: the variable can
+        # be set while the secret is not, and without this check the job would skip its own work
+        # and report success for having verified nothing.
+        env:
+          SECRET_VALUE: ${{ secrets.CODERABBIT_API_KEY }}
+        run: |
+          if [ -z "${SECRET_VALUE}" ]; then
+            echo "::error::CODERABBIT_ENABLED is enabled but CODERABBIT_API_KEY is not set. Enable the variable and the secret together, or the job reports a pass that means nothing."
+            exit 1
+          fi
+          echo "CODERABBIT_API_KEY is present"
       - uses: actions/checkout@v4
         with:
           # The MCP knowledge server is the point of the integration: CodeRabbit reviews with
@@ -80,10 +105,24 @@ jobs:
   # Runs on push and on same-repo PRs only. Without a token this reports skipped, not passed.
   sonarqube:
     name: SonarQube analysis
-    if: ${{ secrets.SONAR_TOKEN != '' }}
+    if: ${{ vars.SONAR_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Assert SONAR_TOKEN is actually present
+        # The job gate reads a repository variable because the secrets context is not available
+        # in a job-level `if` -- referencing it there makes GitHub reject the entire workflow, so
+        # the file silently never ran. That is the bug this step exists to close: the variable can
+        # be set while the secret is not, and without this check the job would skip its own work
+        # and report success for having verified nothing.
+        env:
+          SECRET_VALUE: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "${SECRET_VALUE}" ]; then
+            echo "::error::SONAR_ENABLED is enabled but SONAR_TOKEN is not set. Enable the variable and the secret together, or the job reports a pass that means nothing."
+            exit 1
+          fi
+          echo "SONAR_TOKEN is present"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # SonarQube needs history to attribute new-code blame correctly
@@ -114,10 +153,24 @@ jobs:
   # scan that reports every devDependency turns a security signal into noise people mute.
   snyk:
     name: Snyk dependency scan
-    if: ${{ secrets.SNYK_TOKEN != '' }}
+    if: ${{ vars.SNYK_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Assert SNYK_TOKEN is actually present
+        # The job gate reads a repository variable because the secrets context is not available
+        # in a job-level `if` -- referencing it there makes GitHub reject the entire workflow, so
+        # the file silently never ran. That is the bug this step exists to close: the variable can
+        # be set while the secret is not, and without this check the job would skip its own work
+        # and report success for having verified nothing.
+        env:
+          SECRET_VALUE: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "${SECRET_VALUE}" ]; then
+            echo "::error::SNYK_ENABLED is enabled but SNYK_TOKEN is not set. Enable the variable and the secret together, or the job reports a pass that means nothing."
+            exit 1
+          fi
+          echo "SNYK_TOKEN is present"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -140,10 +193,24 @@ jobs:
   # invented measurement this repository's constitution forbids.
   datadog-metrics:
     name: Datadog release metrics
-    if: ${{ secrets.DATADOG_API_KEY != '' }}
+    if: ${{ vars.DATADOG_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Assert DATADOG_API_KEY is actually present
+        # The job gate reads a repository variable because the secrets context is not available
+        # in a job-level `if` -- referencing it there makes GitHub reject the entire workflow, so
+        # the file silently never ran. That is the bug this step exists to close: the variable can
+        # be set while the secret is not, and without this check the job would skip its own work
+        # and report success for having verified nothing.
+        env:
+          SECRET_VALUE: ${{ secrets.DATADOG_API_KEY }}
+        run: |
+          if [ -z "${SECRET_VALUE}" ]; then
+            echo "::error::DATADOG_ENABLED is enabled but DATADOG_API_KEY is not set. Enable the variable and the secret together, or the job reports a pass that means nothing."
+            exit 1
+          fi
+          echo "DATADOG_API_KEY is present"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

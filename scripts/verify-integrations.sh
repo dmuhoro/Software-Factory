@@ -43,22 +43,58 @@ else
   pass "4 jobs declared, each with a condition and steps"
 fi
 
-section "Every credential-gated job is conditioned on a secret"
-# Each of these must be gated. An ungated SonarQube or Snyk job fails the whole workflow for
-# a fork PR, and a repository that punishes outside contributions with red CI will not get
-# outside contributions.
-for job_secret in "coderabbit:CODERABBIT_API_KEY" "sonarqube:SONAR_TOKEN" "snyk:SNYK_TOKEN" "datadog-metrics:DATADOG_API_KEY"; do
-  JOB="${job_secret%%:*}"
-  SECRET="${job_secret##*:}"
+section "No job-level condition may reference the secrets context"
+# This is the check that would have caught the bug this gate spent its life endorsing.
+# GitHub does not make the `secrets` context available in a job-level `if`. A workflow that
+# references it there is rejected as a whole: every run fails in zero seconds, no jobs execute,
+# and the file looks perfectly healthy in review. `.github/workflows/integrations.yml` did
+# exactly that, so the review layer had never once run, while the gate below was reporting that
+# all four jobs were correctly gated -- because it was asserting the very pattern GitHub forbids.
+#
+# A gate must check the effect, not the shape of the text. Valid YAML is not a valid workflow.
+for wf in .github/workflows/*.yml; do
+  [ -e "$wf" ] || continue
+  offenders="$(python3 -c "
+import sys, yaml
+doc = yaml.safe_load(open(sys.argv[1]))
+bad = []
+for name, job in (doc.get('jobs') or {}).items():
+    cond = str((job or {}).get('if', ''))
+    if 'secrets.' in cond:
+        bad.append(name)
+print(','.join(bad))
+" "$wf" 2>/dev/null)"
+  if [ -n "$offenders" ]; then
+    fail "$wf gates job(s) $offenders on secrets.* at job level, which GitHub rejects: the whole workflow fails to run"
+  else
+    pass "$(basename "$wf") uses no job-level secrets context"
+  fi
+done
+
+section "Every credential-gated job is enabled by a variable and asserts its secret"
+# Each integration needs both halves. The variable is the job gate, because `vars` *is* available
+# in a job-level `if`; the secret is asserted in a step, because `secrets` is available there and
+# nowhere earlier. Gating on the variable alone would skip the job when the secret is missing and
+# report success for having verified nothing, so the secret's presence is checked explicitly.
+for pair in "coderabbit:CODERABBIT_ENABLED:CODERABBIT_API_KEY" \
+            "sonarqube:SONAR_ENABLED:SONAR_TOKEN" \
+            "snyk:SNYK_ENABLED:SNYK_TOKEN" \
+            "datadog-metrics:DATADOG_ENABLED:DATADOG_API_KEY"; do
+  JOB="$(printf '%s' "$pair" | cut -d: -f1)"
+  VAR="$(printf '%s' "$pair" | cut -d: -f2)"
+  SECRET="$(printf '%s' "$pair" | cut -d: -f3)"
   if python3 -c "
 import yaml
 d = yaml.safe_load(open('$WF'))
-cond = d['jobs']['$JOB'].get('if', '')
-assert 'secrets.$SECRET' in cond, cond
+job = d['jobs']['$JOB']
+cond = str(job.get('if', ''))
+assert 'vars.$VAR' in cond, 'gate is ' + repr(cond)
+body = yaml.safe_dump(job)
+assert 'secrets.$SECRET' in body, 'the secret is never referenced inside the job'
 " 2>/dev/null; then
-    pass "$JOB is gated on secrets.$SECRET"
+    pass "$JOB is gated on vars.$VAR and asserts secrets.$SECRET"
   else
-    fail "$JOB is not gated on secrets.$SECRET; it would run without the credential"
+    fail "$JOB is not gated on vars.$VAR with a secrets.$SECRET assertion; it would either run without the credential or skip silently"
   fi
 done
 
