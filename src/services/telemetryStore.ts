@@ -25,9 +25,13 @@ import type { AppwriteSettings } from '../configurations/appwrite.config';
 import { requireAppwriteConfig } from '../configurations/appwrite.config';
 import type { RawTelemetryPayload, TransformationRecord } from '../models/telemetry';
 import { documentIdFor, getAppwriteServices, withRetry } from './appwriteClient';
-import { LocalStore } from './localTelemetryStore';
+import { Query } from 'node-appwrite';
+import { LocalStore, boundedLimit } from './localTelemetryStore';
 import { TelemetryLogger } from '../utils/telemetryLogger';
 import { OperationalError } from '../utils/operationalError';
+
+/** Used where a value is genuinely absent, so "missing" never reads as "recent". */
+const EPOCH = new Date(0).toISOString();
 
 export type StorageBackend = 'local' | 'appwrite';
 
@@ -36,9 +40,22 @@ export interface TelemetryStore {
   recordTelemetryEvent(payload: RawTelemetryPayload): Promise<{ documentId: string; deduplicated: boolean }>;
   recordTransformation(record: TransformationRecord): Promise<void>;
   appendAuditLog(entry: Record<string, unknown>): Promise<void>;
-  getTransformationsByTenant(tenantId: string): TransformationRecord[];
-  getAllTransformations(): TransformationRecord[];
-  getAuditLogs(tenantId?: string): Array<Record<string, unknown>>;
+  /**
+   * Reads are async because they are I/O.
+   *
+   * They used to be synchronous, which is not a style preference: a synchronous signature cannot
+   * be satisfied by a network datastore, so the Appwrite adapter had to answer from an in-process
+   * cache. A restarted process therefore reported an empty history while the rows sat in the
+   * database, and there was no way to fix that without changing the signature. This is the change
+   * that makes a real read path possible.
+   *
+   * Ordering is newest-first by the store's own recorded time, and the limit is applied by the
+   * datastore rather than by slicing in memory, so a large history cannot pull an unbounded
+   * number of rows into the process to answer a page request.
+   */
+  getTransformationsByTenant(tenantId: string, limit?: number): Promise<TransformationRecord[]>;
+  getAllTransformations(limit?: number): Promise<TransformationRecord[]>;
+  getAuditLogs(tenantId?: string, limit?: number): Promise<Array<Record<string, unknown>>>;
 }
 
 /**
@@ -77,16 +94,16 @@ export class LocalTelemetryStore implements TelemetryStore {
     return this.delegate.appendAuditLog(entry);
   }
 
-  public getTransformationsByTenant(tenantId: string): TransformationRecord[] {
-    return this.delegate.getTransformationsByTenant(tenantId);
+  public async getTransformationsByTenant(tenantId: string, limit?: number): Promise<TransformationRecord[]> {
+    return this.delegate.getTransformationsByTenant(tenantId, limit);
   }
 
-  public getAllTransformations(): TransformationRecord[] {
-    return this.delegate.getAllTransformations();
+  public async getAllTransformations(limit?: number): Promise<TransformationRecord[]> {
+    return this.delegate.getAllTransformations(limit);
   }
 
-  public getAuditLogs(tenantId?: string): Array<Record<string, unknown>> {
-    return this.delegate.getAuditLogs(tenantId);
+  public async getAuditLogs(tenantId?: string, limit?: number): Promise<Array<Record<string, unknown>>> {
+    return this.delegate.getAuditLogs(tenantId, limit);
   }
 }
 
@@ -205,8 +222,6 @@ export class AppwriteTelemetryStore implements TelemetryStore {
       updatedAt: record.updatedAt,
     }, `record transformation ${rowId}`);
 
-    this.cache.set(rowId, record);
-
     await this.appendAuditLog({
       tenantId: record.tenantId,
       actorId: 'service:software_factory_runtime',
@@ -222,7 +237,6 @@ export class AppwriteTelemetryStore implements TelemetryStore {
     // share a timestamp and a checksum, and collapsing them would delete evidence of one of them.
     // This is the one write that is not idempotent, which is exactly why it does not pretend to be.
     const rowId = this.documentId('audit', String(entry.tenantId ?? 'system'), randomUUID());
-    this.auditCache.set(rowId, { logId: rowId, ...entry });
     try {
       await this.withRetry(() => this.services.tables.createRow({
         databaseId: this.databaseId,
@@ -242,29 +256,99 @@ export class AppwriteTelemetryStore implements TelemetryStore {
     }
   }
 
-  public getTransformationsByTenant(tenantId: string): TransformationRecord[] {
-    return this.getAllTransformations().filter((item) => item.tenantId === tenantId);
+  /**
+   * Reads go to the datastore.
+   *
+   * This previously answered from an in-process cache that only this backend populated on write.
+   * The consequence was not merely staleness: a restarted process reported an empty history while
+   * the rows were sitting in the database, and the cache made that indistinguishable from a tenant
+   * that had never sent anything. The signature has to change for this to be fixable at all,
+   * because a synchronous read cannot perform network I/O -- the cache existed to satisfy a
+   * constraint, not as an optimisation.
+   *
+   * The cache is gone rather than left warm. A write-through cache that nothing reads is dead code
+   * that implies a second source of truth, and the failure it creates is the split brain that
+   * ADR-009 exists to prevent.
+   */
+  public async getTransformationsByTenant(tenantId: string, limit?: number): Promise<TransformationRecord[]> {
+    const rows = await this.listTransformations([Query.equal('tenantId', tenantId)], limit);
+    return rows.map((row) => this.toTransformationRecord(row));
+  }
+
+  public async getAllTransformations(limit?: number): Promise<TransformationRecord[]> {
+    const rows = await this.listTransformations([], limit);
+    return rows.map((row) => this.toTransformationRecord(row));
+  }
+
+  public async getAuditLogs(tenantId?: string, limit?: number): Promise<Array<Record<string, unknown>>> {
+    // The tenant filter is applied by the datastore, never in memory after the fact. A filter the
+    // caller can forget is isolation one refactor away from gone, and this is the boundary a direct
+    // query would bypass.
+    const queries: string[] = [Query.orderDesc('ts'), Query.limit(boundedLimit(limit))];
+    if (tenantId) queries.unshift(Query.equal('tenantId', tenantId));
+
+    const response = await this.withRetry(() => this.services.tables.listRows({
+      databaseId: this.databaseId,
+      tableId: this.tables.auditLogs,
+      queries,
+    }), 'list audit logs');
+
+    return (response.rows ?? []) as Array<Record<string, unknown>>;
+  }
+
+  private async listTransformations(extra: string[], limit?: number): Promise<Array<Record<string, unknown>>> {
+    const response = await this.withRetry(() => this.services.tables.listRows({
+      databaseId: this.databaseId,
+      tableId: this.tables.aiTransformations,
+      queries: [...extra, Query.orderDesc('createdAt'), Query.limit(boundedLimit(limit))],
+    }), 'list transformations');
+
+    return (response.rows ?? []) as Array<Record<string, unknown>>;
+  }
+
+  /** Rebuilds the record from its row. A malformed JSON column is a corrupt row, not a default. */
+  private toTransformationRecord(row: Record<string, unknown>): TransformationRecord {
+    return {
+      id: String(row.transformId ?? row.$id ?? ''),
+      tenantId: String(row.tenantId ?? ''),
+      niche: String(row.niche ?? '') as TransformationRecord['niche'],
+      eventType: String(row.eventType ?? ''),
+      status: String(row.status ?? '') as TransformationRecord['status'],
+      rawPayloadId: String(row.rawPayloadId ?? ''),
+      structuredOutput: this.parseColumn<TransformationRecord['structuredOutput']>(row.structuredOutputJson, row, 'structuredOutputJson'),
+      // An absent audit trail is a legacy row written before the column existed. The epoch is
+      // used rather than "now", so a missing value sorts as oldest instead of masquerading as
+      // recent and outranking real history.
+      auditTrail: this.parseColumn<TransformationRecord['auditTrail']>(row.auditTrailJson, row, 'auditTrailJson')
+        ?? { startedAt: EPOCH, completedAt: EPOCH, durationMs: 0, retryAttempts: 0, circuitBreakerStatus: 'UNKNOWN' as never },
+      errorMessage: row.errorMessage ? String(row.errorMessage) : undefined,
+      errorCode: row.errorCode ? String(row.errorCode) : undefined,
+      createdAt: String(row.createdAt ?? EPOCH),
+      updatedAt: String(row.updatedAt ?? EPOCH),
+    };
   }
 
   /**
-   * Synchronous by signature, which is a real constraint: the existing route handlers call this
-   * without awaiting. Reading Appwrite requires a network call, so this returns the local view and
-   * says so in the log. Serving reads from the local store while writes go to Appwrite would be a
-   * split brain, so the Appwrite backend serves reads from an in-process cache that this backend
-   * populates on write. Reads are therefore eventually consistent, and that is documented rather
-   * than hidden -- a caller that cannot tolerate staleness needs a new route signature, not a
-   * silent lie.
+   * Parses a JSON column, or refuses the row.
+   *
+   * Returning `{}` for a corrupt column would turn data loss into a plausible-looking empty
+   * result, which is the failure this repository keeps refusing to ship. A row that cannot be read
+   * is an error the operator can see.
    */
-  public getAllTransformations(): TransformationRecord[] {
-    return [...this.cache.values()];
+  private parseColumn<T>(value: unknown, row: Record<string, unknown>, column: string): T | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value !== 'string') return value as T;
+    try {
+      return JSON.parse(value) as T;
+    } catch (error) {
+      throw new OperationalError(
+        'LEDGER_UNAVAILABLE',
+        `Transformation row ${String(row.$id ?? 'unknown')} has an unreadable ${column}; refusing to report it as empty`,
+        503,
+        { cause: error },
+      );
+    }
   }
-
-  public getAuditLogs(tenantId?: string): Array<Record<string, unknown>> {
-    return [...this.auditCache.values()].filter((entry) => (tenantId ? entry.tenantId === tenantId : true));
-  }
-
-  private readonly cache = new Map<string, TransformationRecord>();
-  private readonly auditCache = new Map<string, Record<string, unknown>>();
 
   /** Appwrite caps document ids at 36 characters; `deterministicId` returns 42. */
   private documentId(prefix: string, ...parts: string[]): string {

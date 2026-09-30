@@ -24,7 +24,7 @@ test('durable persistence survives store reload and preserves tenant partition',
   assert.equal(first.documentId, second.documentId);
   assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, 'software-factory.json'), 'utf8')).telemetry[first.documentId].tenantId, 'tenant_re_8841');
   DurableStore.resetForTests();
-  assert.equal(AppwriteService.getAllTransformations().length, 0);
+  assert.equal((await AppwriteService.getAllTransformations()).length, 0);
   assert.equal(DurableStore.list('telemetry').length, 1);
 });
 
