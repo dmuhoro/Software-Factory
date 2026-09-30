@@ -21,7 +21,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      # Full history, deliberately. The release gate inspects the branch's own commits to check
+      # they carry an authorship footer, and a shallow clone cannot answer that: the merge commit
+      # GitHub synthesises for a pull request has its parents grafted away, so it looks like an
+      # ordinary commit with no footer and the gate fails for a reason that has nothing to do with
+      # the change. The gate now skips with a reason on a shallow checkout rather than guessing,
+      # but fetching the history is what lets it actually run.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
