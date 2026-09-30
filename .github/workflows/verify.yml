@@ -34,6 +34,9 @@ jobs:
         # Pinned to a release tag, not a branch or `@master`: this job is trusted input for every
         # other job, and a moving ref would make that trust unreviewable.
         uses: docker://rhysd/actionlint:1.7.7
+      - name: the Appwrite scope split is still least-privilege
+        run: bash scripts/verify-appwrite-scopes.sh
+
       - name: every workflow file is valid YAML
         run: |
           set -euo pipefail
