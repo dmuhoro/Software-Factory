@@ -33,6 +33,10 @@ import { Query } from 'node-appwrite';
 
 import { requireAppwriteConfig } from '../src/configurations/appwrite.config';
 import { documentIdFor, getAppwriteServices, withRetry } from '../src/services/appwriteClient';
+import { AppwriteTelemetryStore } from '../src/services/telemetryStore';
+import { IndustryNiche } from '../src/models/tenant';
+import type { RawTelemetryPayload } from '../src/models/telemetry';
+import type { OperationalError } from '../src/utils/operationalError';
 
 interface Check {
   name: string;
@@ -156,6 +160,73 @@ async function main(): Promise<number> {
   record('the deterministic id namespace separates tenants',
     documentIdFor('doc_telem', TENANT_A, IDEMPOTENCY_KEY) !== documentIdFor('doc_telem', TENANT_B, IDEMPOTENCY_KEY),
     'the same idempotency key under two tenants produces two different row ids, so one tenant\'s replay cannot overwrite another\'s event');
+
+  // --- 6. an unknown tenant is refused at the datastore ------------------------------------
+  // This check existed as a claim in this file's header while nothing actually exercised it. The
+  // header documented protection the code did not provide, which is worse than an absent promise:
+  // it told a reader the orphan-write hole was closed. It is now asserted, and the store enforces
+  // it, so a row can no longer reference a tenant that was never onboarded.
+  const strangerId = 'e2e_probe_stranger';
+  const strangerKey = 'e2e-stranger-key-0001';
+  const strangerRowId = documentIdFor('doc_telem', strangerId, strangerKey);
+  const beforeStranger = await countFor(strangerId).then((r) => r.total).catch(() => 0);
+
+  // The raw table write is done first, on purpose, to show what the store is protecting against.
+  // Appwrite has no foreign key on tenantId, so the table will happily accept an orphan. Proving
+  // that here stops anyone later "simplifying" the store's tenant check away on the assumption
+  // that the database already handles it.
+  let orphanAccepted = false;
+  try {
+    await createRow(strangerRowId, {
+      tenantId: strangerId, idempotencyKey: strangerKey, niche: NICHE, eventType: 'LEAD_CREATED',
+      ts: new Date().toISOString(), payloadJson: '{}', metadataJson: '{}', persistedAt: new Date().toISOString(),
+    }, 'raw orphan write');
+    orphanAccepted = true;
+  } catch {
+    orphanAccepted = false;
+  }
+
+  // Then the product's real write path is asked to do the same thing, and must refuse.
+  const store = new AppwriteTelemetryStore(settings);
+  let refused = false;
+  let detail = '';
+  try {
+    await store.recordTelemetryEvent({
+      tenantId: strangerId,
+      idempotencyKey: strangerKey,
+      niche: IndustryNiche.CUSTOM_B2B,
+      eventType: 'LEAD_CREATED',
+      timestamp: new Date().toISOString(),
+      payload: {},
+      metadata: {
+        idempotencyKey: strangerKey,
+        sourceSystem: 'e2e-probe',
+        region: 'fra',
+        clientVersion: '0.0.0-probe',
+      },
+    } as RawTelemetryPayload);
+    detail = `the store ACCEPTED an event for unregistered tenant "${strangerId}"`;
+  } catch (error) {
+    refused = true;
+    detail = `the store refused it: ${(error as OperationalError).code ?? (error as Error).name}`;
+  }
+
+  // The orphan written above must not be left behind by a failing probe.
+  if (orphanAccepted) {
+    try {
+      await withRetry(() => tables.deleteRow({
+        databaseId: settings.databaseId, tableId: settings.collections.telemetryEvents, rowId: strangerRowId,
+      }), { attempts, label: 'remove orphan row' });
+    } catch { /* the assertion below reports the truth either way */ }
+  }
+  const afterStranger = await countFor(strangerId).then((r) => r.total).catch(() => 0);
+
+  record('the raw table has no foreign key, so the store must be the one that refuses',
+    orphanAccepted,
+    `a direct write for unregistered tenant "${strangerId}" was ${orphanAccepted ? 'accepted as an orphan' : 'rejected by the table itself'}. The store, not the database, is the enforcement point.`);
+  record('an event for a tenant that was never onboarded is refused at the datastore boundary',
+    refused && afterStranger === 0,
+    `${detail}. Row count for that tenant is ${afterStranger}, so nothing was left behind.`);
 
   // --- verdict ------------------------------------------------------------------------------
   const failed = checks.filter((c) => !c.pass);

@@ -57,6 +57,18 @@ jobs:
       - name: Layer 4 - durable tenant registry
         run: npm run verify:layer4
 
+      # The storage seam was wired in and nothing in CI ran it, which is the same mistake the
+      # Layer 4 comment above describes: a gate that exists only on a laptop is not a gate. This
+      # step needs no credentials -- it asserts the two unconditional properties, that a bad
+      # STORAGE_BACKEND refuses to boot and that a real authenticated request is served.
+      - name: Storage backend selection
+        run: npm run verify:storage
+
+      # Credential material in the index. Also credential-free, and cheap, so there is no reason
+      # for it to be anything other than a required step.
+      - name: No secret material
+        run: npm run verify:secrets
+
       # A release is described in five places. This is what notices when they stop
       # agreeing, and it is cheap enough to run on every change rather than at tag time.
       # Pre-release mode skips the tag and clean-tree checks, which describe a release and
