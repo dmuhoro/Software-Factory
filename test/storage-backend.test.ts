@@ -452,3 +452,30 @@ test('a corrupt JSON column is an error, not a plausible empty record', async ()
       && /xform_corrupt/.test((error as { message: string }).message),
   );
 });
+
+test('the Appwrite client is built from the environment it was resolved against, not the ambient one', async () => {
+  // A caller resolving the backend against an explicit environment must not get settings from that
+  // environment and a client pointed somewhere else. The two disagreeing is invisible: the process
+  // validates, starts, and then writes to whatever project the ambient key names.
+  const { AppwriteTelemetryStore, resolveTelemetryStore, resetTelemetryStore } = await import('../src/services/telemetryStore');
+
+  // With no ambient Appwrite variables at all, a client that reached for `process.env` could not be
+  // constructed. Constructing it here is the assertion.
+  const resolvedEnv = { ...VALID_ENV, STORAGE_BACKEND: 'appwrite' } as NodeJS.ProcessEnv;
+  assert.ok(new AppwriteTelemetryStore(appwriteSettings, undefined, resolvedEnv), 'must construct from the environment it was handed');
+
+  const previous = { ...process.env };
+  try {
+    for (const key of Object.keys(VALID_ENV)) delete process.env[key];
+    process.env.STORAGE_BACKEND = 'appwrite';
+    resetTelemetryStore();
+    assert.doesNotThrow(
+      () => resolveTelemetryStore(resolvedEnv),
+      'an explicit env must be honoured end to end, not only for the settings',
+    );
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
+    Object.assign(process.env, previous);
+    resetTelemetryStore();
+  }
+});

@@ -132,10 +132,22 @@ export class AppwriteTelemetryStore implements TelemetryStore {
    * way to test the tenant check is against the live project, which makes a cheap regression test
    * into a slow credentialed one -- and a slow test is a test that gets skipped.
    */
-  public constructor(settings: AppwriteSettings, services?: ReturnType<typeof getAppwriteServices>) {
+  public constructor(
+    settings: AppwriteSettings,
+    services?: ReturnType<typeof getAppwriteServices>,
+    env: NodeJS.ProcessEnv = process.env,
+  ) {
     // Constructed eagerly so an unconfigured process fails here, at startup, rather than on the
     // first customer request with a 500.
-    this.services = services ?? getAppwriteServices(process.env);
+    //
+    // `env` is threaded in rather than read from `process.env` directly. It used to be read
+    // directly, which meant a caller that resolved the backend against an explicit environment --
+    // a test harness, or a multi-tenant host that renders one config per request -- got settings
+    // from that environment but a client pointed at the ambient one. The two could disagree, and
+    // the mismatch is invisible: the process starts, validates, and then writes to whichever
+    // project the ambient key names. `services` still wins when supplied, so the injection seam
+    // used by the tests is unaffected.
+    this.services = services ?? getAppwriteServices(env);
     this.databaseId = settings.databaseId;
     this.tables = settings.collections;
     this.attempts = Math.max(settings.limits.retryAttempts, 3);
@@ -374,7 +386,8 @@ export function resolveTelemetryStore(env: NodeJS.ProcessEnv = process.env): Tel
     return resolved;
   }
   const settings = requireAppwriteConfig(env);
-  resolved = new AppwriteTelemetryStore(settings);
+  // The same `env` for the settings and the client, so the two cannot point at different projects.
+  resolved = new AppwriteTelemetryStore(settings, undefined, env);
   TelemetryLogger.info('Storage backend selected', { message: 'Appwrite pilot backend', metadata: { backend: 'appwrite', project: settings.projectId, database: settings.databaseId } });
   return resolved;
 }
