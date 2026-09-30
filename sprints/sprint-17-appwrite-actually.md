@@ -156,7 +156,57 @@ the answer belongs to the operator, not to the agent:
 
 ---
 
+## Sprint 17b: the project is live, and proven
+
+The pilot is no longer hypothetical. Appwrite project `6aaa99700007bd53480e` (region `fra`,
+server API 2.3.0) now holds database `b2b_software_factory` with four tables and thirty-one
+columns, created by `npm run appwrite:provision --apply` and created **zero** resources on a
+second run, which is the idempotency proof.
+
+`npm run appwrite:e2e` writes two tenants and their events to the real project and asserts seven
+properties. All seven pass:
+
+| Property | Evidence |
+|---|---|
+| Tenant registration is real | Row `e2e_probe_alpha` read back with `niche=CustomB2B` and a `createdAt` |
+| A replayed event does not duplicate | Row id `doc_telem_a671edca980c3d8aec0a21d434`; 1 row before the replay, 1 after |
+| The event round-trips intact | `payloadJson` parsed back to `probe=true` with the idempotency key intact |
+| Tenant queries are a real partition | alpha sees 1, beta sees 1, table holds 2; neither count exceeds the table |
+| Id namespaces separate tenants | One key under two tenants yields two different row ids |
+| The whole run is idempotent | Second run reports tenants "already present" and still 7/7 |
+| Auth and schema agree | The check reads `tenants` with the same credential the application uses |
+
+### The network is unreliable, and that is not a code defect
+
+The live path to Frankfurt fails intermittently, and measuring it was more useful than guessing:
+
+- `curl` 9/10 and Node 6/10 on the same endpoint in the same minute, so it is the path, not the client.
+- Cause is `ETIMEDOUT`, a connection timeout, not an Appwrite error and not a schema error.
+- `Connection: close` was tested and **rejected**: 7/10 against 9/10 for the default. The
+  hypothesis that the pooled connection was the problem was wrong, so it was not shipped.
+
+The response is `withRetry`: transport failures only, exponential backoff with jitter so
+correlated timeouts get real spacing, and an explicit `retries` argument that forces every caller
+to state its idempotency. During the first live e2e run it absorbed three consecutive transport
+failures and completed anyway, which is the whole reason it exists.
+
+### A self-inflicted regression, found by measurement
+
+Wrapping the probe error to give it a readable message broke the classifier, which matched the
+exact string `fetch failed`. Nothing was retried and the live check fell from 9/10 to 1/6.
+Classification is now computed once at construction from the untouched original, and a test pins
+it. A robustness layer that stops working when it is improved is worse than no layer.
+
+### Two provisioning bugs, both found by running it
+
+1. `--apply` against an empty project created the database and then returned early reporting that
+   nothing had changed. It looked like success. The fast path is now gated on `!apply`.
+2. The dry run probed tables in a database that did not exist, converting a 404 into
+   "PROVISIONING FAILED". A dry run that cannot describe what it would create is not a dry run.
+
+---
+
 ## Commits
 
-This sprint is three commits: the fail-closed configuration, the real client and its tests, and
-the verification command.
+Six commits: the fail-closed configuration; the real client and its tests; the verification
+command; the honest-check and flakiness fix; real idempotent provisioning; and the live e2e.

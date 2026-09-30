@@ -2,6 +2,29 @@
 
 All notable architectural and code modifications are documented here.
 
+## [Unreleased]
+
+### Appwrite pilot is live and proven end to end
+
+- Provisioned the real pilot project: `b2b_software_factory` with `tenants`, `telemetry_events`,
+  `ai_transformations` and `audit_logs` (4 tables, 31 columns), via a dry-run-by-default,
+  non-destructive, idempotent `npm run appwrite:provision`. A second `--apply` creates 0 resources.
+- `npm run appwrite:e2e` writes real tenants and events and asserts 7/7: registration round-trips,
+  a replayed event does not duplicate, payloads survive intact, tenant queries are a real
+  partition rather than a full scan, and the run is idempotent.
+- Fixed the reachability check reporting a working integration as broken: it probed `account.get()`,
+  which a valid *server* key is never scoped for, and returned a false 401. It now probes
+  `databases.list()`.
+- Added `withRetry`: transport failures only, exponential backoff with jitter, explicit caller
+  idempotency. Measured the underlying cause as `ETIMEDOUT` on the path to Frankfurt, affecting
+  curl and Node alike; rejected a `Connection: close` workaround that measured worse.
+- Memoised the Appwrite client. A fresh client per call failed ~1 in 6; one reused client
+  completed 20/20 in-process, because the SDK owns the connection pool.
+- Fixed a self-inflicted regression: wrapping the probe error silently disabled every retry,
+  taking the live check from 9/10 to 1/6. Pinned by a test.
+- Fixed `--apply` reporting "nothing was changed" after it had created the database.
+- De-identified test fixtures: a real key prefix and real project/account ids are no longer in source.
+
 ## [4.8.0-asserted-controls] - 2026-09-29
 
 The hardening that decides whether a control is real. Every item below shipped through at least
