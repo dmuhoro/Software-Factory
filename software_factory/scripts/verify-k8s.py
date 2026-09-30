@@ -7,6 +7,7 @@ Each assertion names the failure it prevents, so a future edit that reintroduces
 problem fails here rather than in production.
 """
 
+import json
 import sys
 import pathlib
 
@@ -124,6 +125,71 @@ for key, value in secret.get("stringData", {}).items():
         str(value)[:24],
     )
 
+# The deployment must run an immutable, pinned image. A floating tag means the artifact in
+# production is whatever was published last, which is not the artifact anything here verifies.
+def is_floating(reference):
+    """True if the image reference can change without the manifest changing.
+
+    A digest is immutable. A tag is only pinned if it is something other than latest, main or
+    master, and a reference with no tag at all resolves to :latest by default.
+
+    The first version of this was `reference.rpartition("@")[0].endswith((":latest", ...))`,
+    which returns True for nothing. `rpartition` on a tag-only reference yields ('', '',
+    'gcr.io/x/runtime:latest'), so the tag was dropped before the test and the check passed
+    for every image including :latest. A guard that cannot fail is not a guard, and the
+    negative control is the only reason that was caught rather than shipped.
+    """
+    if "@sha256:" in reference:
+        return False
+    last_segment = reference.rsplit("/", 1)[-1]
+    if ":" not in last_segment:
+        return True  # no tag means :latest
+    return last_segment.rsplit(":", 1)[1] in {"latest", "main", "master"}
+
+
+image = container.get("image", "")
+check(bool(image), "the runtime container must declare an image")
+check(
+    not is_floating(image),
+    "the deployment must reference a pinned image tag or digest, not a floating tag",
+    image,
+)
+# Pinned is necessary and not sufficient. `gcr.io/.../runtime:v3.2.0` passes the check above
+# and is immutable, while the software in the repository is 4.7.0: production would run a
+# three-year-old binary that no gate has ever inspected, and every check here stays green
+# because the reference never changes. That is precisely the NC-4/NC-5 failure mode -- an
+# assertion that cannot fail -- so the tag is now required to name the release it ships.
+#
+# The version comes from package.json, which scripts/verify-release.sh already treats as the
+# reference site. One source: version -> image tag -> manifest, with the middle link asserted.
+def read_version():
+    root = pathlib.Path(__file__).resolve().parents[2]
+    return json.loads((root / "package.json").read_text())["version"]
+
+
+VERSION = read_version()
+if "@sha256:" in image:
+    check(
+        True,
+        "the deployment pins an immutable digest (a digest is versioned by content)",
+        image.rsplit("@", 1)[-1][:23],
+    )
+else:
+    tag = image.rsplit(":", 1)[-1]
+    check(
+        tag.lstrip("v") == VERSION,
+        f"the deployment must run the image for the current release (v{VERSION})",
+        f"{image} (tag {tag})",
+    )
+# The pod's runAsUser must match the uid the image creates. software_factory/Dockerfile makes
+# 10001 and scripts/verify-image.sh asserts the container reports it; a mismatch here means the
+# pod crashes on start, which is cheap to catch in a manifest and expensive in a rollout.
+check(
+    pod_security.get("runAsUser") == 10001,
+    "runAsUser must match the uid 10001 the image creates",
+    str(pod_security.get("runAsUser")),
+)
+
 # cert-manager was asked for a certificate; without a tls block nothing binds it.
 ingress = docs["ingress.yaml"][0]
 check(
@@ -142,6 +208,81 @@ check(
 netpol = docs["networkpolicy.yaml"][0]
 check("Ingress" in netpol["spec"]["policyTypes"], "NetworkPolicy must cover ingress")
 check("Egress" in netpol["spec"]["policyTypes"], "NetworkPolicy must cover egress")
+
+# ── NC-5: what the egress rules actually permit ───────────────────────────────────────────
+#
+# The checks above assert that Egress is in policyTypes. That is the defect NC-5 lived in:
+# this file declared egress coverage and asserted nothing about the destinations, so
+# `cidr: 0.0.0.0/0` passed all 51 checks and shipped through every release. A policy that
+# covers egress while permitting every host is not a restriction, and the comment above the
+# rule -- "replace with a CIDR allowlist before production" -- is documentation of an
+# intention, not a control.
+#
+# Parsed structurally rather than grepped, so a wildcard mentioned in a comment cannot be
+# confused for a rule, and a rule expressed in a way the author did not anticipate still
+# gets counted.
+WILDCARDS = {"0.0.0.0/0", "::/0"}
+for doc in docs["networkpolicy.yaml"]:
+    for rule in doc.get("spec", {}).get("egress", []) or []:
+        for peer in rule.get("to", []) or []:
+            block = peer.get("ipBlock")
+            if not block:
+                continue
+            cidr = str(block.get("cidr", "")).strip()
+            check(
+                cidr not in WILDCARDS,
+                "egress must not allow the whole internet; "
+                "an allow-all rule lets a compromised process exfiltrate tenant data",
+                cidr,
+            )
+            # A short prefix is the same defect with a narrower netmask: /8 reaches every
+            # private network in range, which in many clusters includes the control plane.
+            if "/" in cidr:
+                try:
+                    prefix = int(cidr.rsplit("/", 1)[1])
+                except ValueError:
+                    prefix = None
+                if prefix is not None:
+                    check(
+                        prefix >= 24,
+                        "egress CIDR prefix must be /24 or longer to identify a host, not a network",
+                        cidr,
+                    )
+
+# The runtime resolves generativelanguage.googleapis.com on every model call. Egress with no
+# DNS rule denies all of them, so the absence is a total outage that looks like a security
+# fix. Asserted by locating the rule that targets the DNS pods, not by looking for the number
+# 53 anywhere in the file -- which this manifest's own comments also contain.
+dns_rule = next(
+    (
+        rule
+        for rule in netpol["spec"].get("egress", []) or []
+        if any(
+            (peer.get("podSelector") or {}).get("matchLabels", {}).get("k8s-app") == "kube-dns"
+            for peer in rule.get("to", []) or []
+        )
+    ),
+    None,
+)
+check(dns_rule is not None, "NetworkPolicy must permit DNS egress to kube-dns")
+if dns_rule is not None:
+    dns_ports = {str(p.get("port")) for p in dns_rule.get("ports", []) or []}
+    check(
+        "53" in dns_ports,
+        "the DNS egress rule must permit port 53",
+        str(sorted(dns_ports)),
+    )
+
+# Ingress must be scoped to a namespace, or any pod in any namespace can reach the tenant
+# ingestion endpoint and a compromised sidecar elsewhere becomes an isolation bypass.
+for rule in netpol["spec"].get("ingress", []) or []:
+    for peer in rule.get("from", []) or []:
+        check(
+            bool(peer.get("namespaceSelector")),
+            "ingress peers must be namespace-scoped; an unscoped peer reaches the runtime "
+            "from anywhere in the cluster",
+            str(sorted(peer)),
+        )
 
 # Every referenced namespace must be the one this set declares.
 for name in ("deployment.yaml", "hpa.yaml", "ingress.yaml", "configmap.yaml", "networkpolicy.yaml", "secret.example.yaml"):

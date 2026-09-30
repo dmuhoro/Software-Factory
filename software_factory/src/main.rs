@@ -1,10 +1,5 @@
-use axum::{
-    middleware,
-    routing::{get, post},
-    Router,
-};
-use software_factory::middleware::tenant_guard::{parse_tenant_keys, require_tenant_auth};
-use software_factory::{routes, AppState};
+use software_factory::middleware::tenant_guard::parse_tenant_keys;
+use software_factory::{build_router, AppState};
 use std::net::SocketAddr;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
@@ -61,34 +56,26 @@ async fn main() -> anyhow::Result<()> {
         "Provisioned per-tenant credentials at the request boundary"
     );
 
-    let state = AppState::with_tenant_keys(
+    // main is the only place that legitimately owns the process environment, so this is
+    // where the persistence key is read. The AppState constructor takes it as a parameter
+    // so that the state of the service is a function of its inputs rather than of ambient
+    // process state.
+    let appwrite_key = required_env("APPWRITE_API_KEY")?;
+    let state = AppState::with_full_config(
         gemini_key,
         appwrite_endpoint,
         appwrite_project_id,
         tenant_keys,
+        appwrite_key,
     );
 
-    // 2. Build Axum high-throughput routing pipeline.
+    // 2. Build the routing pipeline.
     //
-    // The tenant guard is layered over the router here, which is the only layer that is on
-    // the real request path. It previously existed in `middleware/tenant_guard.rs` and was
-    // never applied, so the telemetry endpoint accepted writes for any tenant from any
-    // caller. `route_layer` is used rather than `layer` so the guard runs after routing
-    // has matched, and public paths are skipped inside the guard.
-    let app = Router::new()
-        .route("/health", get(routes::health::health_check))
-        .route("/ready", get(routes::health::readiness_check))
-        .route(
-            "/api/v1/telemetry/ingest",
-            post(routes::telemetry::ingest_telemetry),
-        )
-        .route("/api/v1/tenants/me", get(routes::telemetry::current_tenant))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            require_tenant_auth,
-        ))
-        .layer(TraceLayer::new_for_http())
-        .with_state(state);
+    // `build_router` is the single definition of this pipeline and lives in the library so
+    // the test suite exercises the router that actually serves traffic. It was inline here
+    // before, which meant the tests were testing a copy of it and a negative control against
+    // this file could not fail.
+    let app = build_router(state).layer(TraceLayer::new_for_http());
 
     let port = std::env::var("PORT")
         .ok()

@@ -168,28 +168,28 @@ test('L2: configuration refuses placeholder or malformed tenant credentials', as
 
   const placeholder = resolveRuntimeConfig({
     NODE_ENV: 'production',
-    FACTORY_API_KEY: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    FACTORY_API_KEY: 'test-only-key-not-a-real-credential',
     FACTORY_TENANT_CREDENTIALS: `${ALICE}:replace-with-provider-secret`,
   } as NodeJS.ProcessEnv);
   assert.ok(errorsOf(placeholder).some((issue) => /placeholder credential/.test(issue.message)));
 
   const malformed = resolveRuntimeConfig({
     NODE_ENV: 'production',
-    FACTORY_API_KEY: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    FACTORY_API_KEY: 'test-only-key-not-a-real-credential',
     FACTORY_TENANT_CREDENTIALS: 'no-separator-here',
   } as NodeJS.ProcessEnv);
   assert.ok(errorsOf(malformed).some((issue) => /Malformed tenant credential/.test(issue.message)));
 
   const short = resolveRuntimeConfig({
     NODE_ENV: 'production',
-    FACTORY_API_KEY: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    FACTORY_API_KEY: 'test-only-key-not-a-real-credential',
     FACTORY_TENANT_CREDENTIALS: `${ALICE}:tooshort`,
   } as NodeJS.ProcessEnv);
   assert.ok(errorsOf(short).some((issue) => /at least 24 characters/.test(issue.message)));
 
   const good = resolveRuntimeConfig({
     NODE_ENV: 'production',
-    FACTORY_API_KEY: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    FACTORY_API_KEY: 'test-only-key-not-a-real-credential',
     FACTORY_TENANT_CREDENTIALS: `${ALICE}:a-sufficiently-long-credential`,
   } as NodeJS.ProcessEnv);
   assert.equal(errorsOf(good).length, 0);
@@ -201,7 +201,7 @@ test('L2: the startup banner never prints a credential value', async () => {
   const secret = 'a-very-secret-tenant-credential-value';
   const config = resolveRuntimeConfig({
     NODE_ENV: 'production',
-    FACTORY_API_KEY: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    FACTORY_API_KEY: 'test-only-key-not-a-real-credential',
     FACTORY_TENANT_CREDENTIALS: `${ALICE}:${secret}`,
   } as NodeJS.ProcessEnv);
   const banner = describeConfig(config);

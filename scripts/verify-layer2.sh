@@ -1,4 +1,9 @@
 #!/bin/bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Ambient shell config must not decide whether a layer test passes. See scripts/verify-env.sh.
+# shellcheck source=scripts/verify-env.sh
+. "$HERE/verify-env.sh"
+
 # LAYER 2 END-TO-END VERIFICATION — tenant isolation and quota enforcement.
 #
 # The Phase 1 audit proved that a single leaked FACTORY_API_KEY granted every tenant's
@@ -39,6 +44,7 @@ start_server() {
   # wrapping subshell, so the EXIT trap kills the wrapper and leaks a listening server
   # that squats the port and 401s the next run. With exec the recorded pid IS node.
   ( cd "$ROOT" && exec env NODE_ENV=production PORT="$port" FACTORY_API_KEY="$PLATFORM_KEY" \
+      FACTORY_TENANT_SEED_DEMO=true \
       FACTORY_TENANT_CREDENTIALS="$ALICE:$ALICE_KEY,$BOB:$BOB_KEY" \
       FACTORY_DATA_DIR="$data" FACTORY_WORKSPACE_ROOT="$ws" \
       "$@" node "$BIN" ) >> "$logfile" 2>&1 &

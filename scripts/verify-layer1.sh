@@ -1,4 +1,9 @@
 #!/bin/bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Ambient shell config must not decide whether a layer test passes. See scripts/verify-env.sh.
+# shellcheck source=scripts/verify-env.sh
+. "$HERE/verify-env.sh"
+
 # LAYER 1 VERIFICATION
 # Proves each P0 defect found in the Phase 1 audit is closed, by exercising the real
 # HTTP surface of the built server. Every section uses its own port, data dir and
@@ -50,8 +55,10 @@ start_server() {
   # `exec` is required: backgrounding `cd ... && env ... node` makes $! the pid of the
   # wrapping subshell, so stop_server and the EXIT trap kill the wrapper and leak a
   # listening server that squats the port and fails the next run with EADDRINUSE.
+  # FACTORY_TENANT_SEED_DEMO is explicit: these harnesses need the demo partitions, and a
+  # deployment that was not asked for them must not silently inherit three fake customers.
   ( cd "$ROOT" && exec env NODE_ENV=production PORT="$port" \
-      FACTORY_API_KEY="$KEY" FACTORY_DATA_DIR="$data" FACTORY_WORKSPACE_ROOT="$ws" \
+      FACTORY_API_KEY="$KEY" FACTORY_TENANT_SEED_DEMO=true FACTORY_DATA_DIR="$data" FACTORY_WORKSPACE_ROOT="$ws" \
       "$@" node "$BIN" ) >> "$logfile" 2>&1 &
   echo $! > "$ROOT/srv-$port.pid"
   # Disown so the kill does not make bash print a "Killed" job notice.

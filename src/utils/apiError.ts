@@ -101,6 +101,8 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LEDGER_COLLECTION_INVALID: { status: 500, message: 'The ledger could not be interpreted.', retryAfterSeconds: 5 },
   LEDGER_COLLECTION_UNKNOWN: { status: 500, message: 'The ledger contains an unknown collection.', retryAfterSeconds: 5 },
   LEDGER_VERSION_UNSUPPORTED: { status: 500, message: 'The ledger version is not supported by this build.', retryAfterSeconds: 5 },
+  LEDGER_VERSION_FUTURE: { status: 500, message: 'The ledger was written by a newer build and cannot be safely read.', retryAfterSeconds: 5 },
+  LEDGER_VERSION_INVALID: { status: 500, message: 'The ledger version is not a valid version number.', retryAfterSeconds: 5 },
 
   // ── Caller supplied something invalid ──────────────────────────────────────
   AGENT_TASK_IDS_MUST_BE_UNIQUE: { status: 400, message: 'Task ids must be unique within an agent run.' },
@@ -118,6 +120,19 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   MODEL_PROVIDER_URL_INVALID: { status: 400, message: 'The provider URL is not permitted.' },
   MODEL_PROVIDER_HOST_NOT_ALLOWED: { status: 403, message: 'That provider host is not on the allowlist.' },
   MODEL_PROVIDER_ADDRESS_NOT_ALLOWED: { status: 403, message: 'That provider address is not permitted for outbound calls.' },
+
+  // A niche the platform recognises but cannot serve. 403 rather than 404: the niche exists
+  // and is a legitimate part of the taxonomy, the service is declining to act on it. It is
+  // NOT a 400, because the caller's payload is correct -- reporting a bad request here would
+  // send an integrator to fix a document that was never the problem. It is NOT a 501 either,
+  // because this is a product boundary rather than an absent implementation detail, and 501
+  // invites a retry that will never succeed.
+  //
+  // The message is fixed and public: it must not echo the caller's payload, and it must not
+  // enumerate which niches ARE served, because that is an invitation to probe the boundary.
+  // The detailed reason travels in the `details` field of the thrown response, which the
+  // handler classifies rather than forwards.
+  NICHE_NOT_SERVED: { status: 403, message: 'This platform does not serve that industry niche.' },
   OUTCOME_NOTE_REQUIRED: { status: 400, message: 'An outcome note is required.' },
   PROJECT_ID_REQUIRED: { status: 400, message: 'A project id is required.' },
   READINESS_CRITERION_NOT_RECOGNIZED: { status: 400, message: 'That readiness criterion is not recognized.' },
@@ -199,6 +214,11 @@ const LEDGER_UNAVAILABLE: ReadonlySet<string> = new Set([
   'FACTORY_LEDGER_NOT_FOUND',
   'LEDGER_ROOT_NOT_AN_OBJECT',
   'LEDGER_RECORD_ID_REQUIRED',
+  // A registry record that cannot be decoded means the service does not know who its
+  // tenants are. That is the same class of fault as an unreadable ledger -- the process
+  // cannot honestly serve -- so it belongs with the codes that refuse traffic rather than
+  // degrading to a generic 500 with no operator signal.
+  'TENANT_RECORD_ID_INVALID',
 ]);
 
 /**

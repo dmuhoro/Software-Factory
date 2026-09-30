@@ -51,11 +51,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # The tag is derived from package.json rather than typed here, because the manifest gate
+      # now requires the deployed tag to equal the software version. A literal tag in this file
+      # is a place for the two to disagree, and they did: the deployment was on v3.2.0 while
+      # the software was 4.7.0, with `push: false` so no CI run ever published the tag the
+      # manifest referenced.
+      - name: Derive the image tag from the software version
+        id: version
+        run: echo "tag=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Build Container Image
         uses: docker/build-push-action@v5
         with:
           context: software_factory
-          push: false
-          tags: gcr.io/b2b-software-factory/runtime:latest
+          # Publishing needs a registry credential this repository does not carry. Until one is
+          # configured this builds and verifies only, and says so, rather than implying that
+          # the release image was published.
+          push: ${{ secrets.GCR_PUSH != '' }}
+          tags: |
+            gcr.io/b2b-software-factory/runtime:v${{ steps.version.outputs.tag }}
+            gcr.io/b2b-software-factory/runtime:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

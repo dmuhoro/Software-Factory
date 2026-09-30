@@ -1,0 +1,213 @@
+# Publish the runtime images to a registry.
+#
+# Why this exists: `k8s/deployment.yaml` referenced `gcr.io/...:v4.8.0`, a tag that had never
+# been pushed. The image gate proved both Dockerfiles *build*; nothing proved an image was
+# *published*. So the deployment described an artifact that did not exist, and the only way to
+# find out was to apply the manifest and watch ImagePullBackOff.
+#
+# The registry is GHCR rather than GCR, and that is a decision rather than a preference:
+#
+#   - GCR needs a service-account key or workload-identity binding, which means a secret this
+#     repository does not have and that someone has to provision out of band. Until that exists,
+#     a GCR publish workflow is a workflow that cannot run.
+#   - GHCR authenticates with the workflow's built-in `GITHUB_TOKEN`, scoped `packages: write`.
+#     There is no credential to leak, rotate, or store, and the cost is free for a public package.
+#
+# So this path works today, and the GCR path can be added later behind the same tags if a
+# private registry is ever required. Both images are published, because there are two and
+# publishing only one would leave the other described but absent.
+#
+# Honesty rules this file follows, the same as integrations.yml:
+#
+#   - Tags are never reused. A mutable tag means the thing a deployment recorded is no longer
+#     the thing it deployed, which is how "rollback to a known good version" stops being true.
+#     Releases are immutable and additionally referenced by digest.
+#   - The digest is the output. The manifest can record `image@sha256:...` and mean something
+#     verifiable; a tag is only a name.
+#   - Nothing is published from a commit that has not passed verification, and that gate is
+#     checked below rather than assumed. An image is a build of a commit; a commit that has not
+#     passed its gates has not earned an image. Note that `needs:` cannot express this: it orders
+#     jobs inside one workflow, not across two, so the check asks the API directly. An earlier
+#     draft of this file claimed a `needs:` gate it did not have.
+#   - A failed publish fails. There is no continue-on-error, because a release that reports
+#     success without a digest is a release nobody can verify.
+
+name: publish
+
+on:
+  # A version tag is the release path: v4.8.0 -> 4.8.0.
+  push:
+    tags:
+      - 'v*'
+  # A manual run publishes a SHA-tagged build, for rehearsing the path without cutting a release.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (defaults to the commit SHA)'
+        required: false
+        type: string
+
+# One publication at a time. Two concurrent runs of this workflow would race on the same tags and
+# the same package, and a partially written manifest list is worse than a failed publish.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # The package lives under a repository-scoped path -- ghcr.io/<owner>/<repo>/<package> -- not
+  # ghcr.io/<owner>/<package>. The owner-only form collides the moment a second repository in the
+  # same organisation publishes an image called `runtime`: GHCR packages are scoped to the owner,
+  # so the second repository is refused or overwrites the first.
+  #
+  # This workflow published to ghcr.io/dmuhoro/runtime while software_factory/k8s/deployment.yaml
+  # pulled ghcr.io/dmuhoro/software-factory/runtime. Both files are individually plausible, so
+  # neither lint nor the image gate saw it, and a deployment of this branch would have reached
+  # ImagePullBackOff behind a green pipeline. The manifest is authoritative -- it is what actually
+  # gets applied -- so the workflow writes exactly what the manifest asks for.
+  NAMESPACE: ${{ github.repository_owner }}
+  PACKAGE_PREFIX: ${{ github.event.repository.name }}
+
+jobs:
+  publish:
+    name: publish ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    strategy:
+      # One image failing must not hide the other's outcome, and the two are independent builds.
+      fail-fast: false
+      matrix:
+        include:
+          - name: runtime
+            context: ./software_factory
+            dockerfile: software_factory/Dockerfile
+            package: runtime
+          - name: node
+            context: .
+            dockerfile: Dockerfile
+            package: node
+
+    steps:
+      - name: check out the source
+        uses: actions/checkout@v4
+
+      # The gate is a separate workflow, so it has to be asked for rather than ordered.
+      # `gh` is preinstalled on the runner, so this needs no third-party action and no mutable
+      # ref to audit -- an earlier draft used a `@master` action, which is a supply-chain hole
+      # in a job whose whole purpose is to be trusted.
+      # No `if` on the event name. An earlier draft gated this on `github.event_name == 'push'`,
+      # which meant a workflow_dispatch published from any commit without a single check having
+      # run -- while the step name and this workflow's own header claimed nothing unverified was
+      # ever published. A gate with a bypass in it is not a gate, and a bypass discovered later is
+      # indistinguishable from one that was always there. If an operator needs to re-publish, they
+      # re-run verify for that SHA first; refusing is the correct answer.
+      - name: refuse to publish a commit that has not passed verification
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # GITHUB_TOKEN cannot see the checks API for its own repository without the checks read
+          # scope, so the token used here is the one that can: the workflow token for a tag push
+          # does carry it, and if it ever stops doing so this fails loudly rather than passing.
+          runs="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}" --jq \
+            '.workflow_runs[] | select(.name == "verify") | "\(.status) \(.conclusion)"' || true)"
+          echo "verify runs for ${{ github.sha }}:"
+          echo "${runs:-  (none found)}"
+
+          if ! printf '%s\n' "$runs" | grep -q '^completed success$'; then
+            echo "::error::no successful 'verify' run for ${{ github.sha }}; refusing to publish an image from it"
+            echo "An image is a build of a commit. Cut the tag from a commit that has passed, or run the gate first."
+            exit 1
+          fi
+          echo "verification passed for ${{ github.sha }}; publishing"
+
+      - name: set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Not logged in, and not a secret. `GITHUB_TOKEN` is minted for this job and expires with it.
+      - name: log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: resolve the tags for this build
+        id: tags
+        run: |
+          set -euo pipefail
+          package="${{ matrix.package }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
+            tag="${{ inputs.tag }}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="sha-${{ github.sha }}"
+          else
+            # A tag ref like refs/tags/v4.8.0. The leading v is dropped so the image tag matches
+            # the version in package.json rather than being a second spelling of it.
+            tag="${GITHUB_REF_NAME#v}"
+          fi
+          case "$tag" in
+            *[!A-Za-z0-9._-]*|'')
+              echo "::error::refusing to publish a tag containing characters a registry rejects: $tag"
+              exit 1
+              ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "image=${REGISTRY}/${NAMESPACE}/${PACKAGE_PREFIX}/${package}:${tag}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${REGISTRY}/${NAMESPACE}/${PACKAGE_PREFIX}/${package}:${tag}"
+
+      - name: build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.tags.outputs.image }}
+          # A provenance attestation and an SBOM are free here, and they are the difference
+          # between "we built this" and "here is what is inside it". `mode=max` records the
+          # build inputs, not just the builder, so the digest can be traced to a commit.
+          provenance: mode=max
+          sbom: true
+          # Labels that answer "where did this image come from" without anyone having to guess
+          # or having to trust a registry's web page.
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.tags.outputs.tag }}
+
+      - name: report the digest
+        run: |
+          set -euo pipefail
+          digest="${{ steps.push.outputs.digest }}"
+          if [ -z "$digest" ]; then
+            echo "::error::the push reported no digest; nothing was published that can be verified"
+            exit 1
+          fi
+          echo "Published ${{ steps.tags.outputs.image }}"
+          echo "Digest: ${REGISTRY}/${{ matrix.package }}@${digest}"
+          {
+            echo "### Published \`${{ matrix.name }}\`"
+            echo ""
+            echo "- tag: \`${{ steps.tags.outputs.tag }}\`"
+            echo "- digest: \`${digest}\`"
+            echo "- commit: \`${{ github.sha }}\`"
+            echo ""
+            echo "Record the digest in the deployment manifest. A tag can be moved; a digest cannot."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Prove the registry has the artifact, rather than trusting the push step's own success
+      # message. A registry that accepted the upload and cannot serve it is a real failure mode,
+      # and it is invisible from inside the pushing job.
+      - name: verify the published image can be pulled
+        run: |
+          set -euo pipefail
+          ref="${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.PACKAGE_PREFIX }}/${{ matrix.package }}@${{ steps.push.outputs.digest }}"
+          echo "verifying $ref"
+          docker buildx imagetools inspect "$ref" > /dev/null
+          echo "the registry serves $ref"

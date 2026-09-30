@@ -3,7 +3,6 @@ import express from 'express';
 import path from 'node:path';
 import http from 'node:http';
 import fs from 'node:fs';
-import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './src/api';
 import { globalErrorHandler } from './src/api/middleware';
 import { classifyReadiness } from './src/services/healthService';
@@ -25,27 +24,68 @@ if (fatal.length > 0) {
 console.log(`[Software Factory] starting\n${describeConfig(config)}`);
 
 /**
- * Hashes and installs the configured per-tenant credentials.
+ * Hashes and installs the configured per-tenant credentials into the durable registry.
  *
  * Runs before the port is bound so a tenant is never told it is authenticated and then
  * fail on its first request. The plaintext is discarded here; only the scrypt digest
  * reaches the registry.
+ *
+ * A credential naming a tenant that does not exist is FATAL, not a warning. It used to log
+ * a warning and continue, which means an operator who mistyped an id saw a healthy start-up
+ * banner, a line of warning text nobody reads, and a tenant that could never authenticate.
+ * The operator's belief and the system's behaviour now disagree, and the process refuses
+ * rather than leaving the disagreement for someone to discover as an outage.
  */
 async function provisionTenantCredentials(): Promise<void> {
   const entries = Object.entries(config.tenantCredentials);
+  const unknown = entries.filter(([tenantId]) => !TenantService.getTenant(tenantId)).map(([tenantId]) => tenantId);
+  if (unknown.length > 0) {
+    throw new Error(
+      `FACTORY_TENANT_CREDENTIALS names ${unknown.length} tenant(s) that do not exist in the registry: ${unknown.join(', ')}. `
+      + 'Provision the tenant first, or remove the entry. Refusing to start, because a credential nobody can use is a silent outage.'
+    );
+  }
   for (const [tenantId, secret] of entries) {
-    if (!TenantService.getTenant(tenantId)) {
-      process.stderr.write(`[Software Factory] WARNING FACTORY_TENANT_CREDENTIALS names unknown tenant '${tenantId}'; the credential is not installed and that tenant cannot authenticate.\n`);
-      continue;
-    }
     await TenantService.provisionCredential(tenantId, secret);
   }
   if (entries.length > 0) {
-    process.stderr.write(`[Software Factory] provisioned ${Object.keys(config.tenantCredentials).length} tenant credential(s); digests only are retained.\n`);
+    process.stderr.write(`[Software Factory] provisioned ${entries.length} tenant credential(s); digests only are retained.\n`);
   }
+  // Drop the plaintext from the config object. The digests in the registry are now the only
+  // copy of these secrets in this process. JS strings are immutable so the buffer cannot be
+  // overwritten, but removing the last reference makes the material collectable instead of
+  // pinning every tenant's plaintext in memory for the life of the process.
+  for (const tenantId of Object.keys(config.tenantCredentials)) delete config.tenantCredentials[tenantId];
+}
+
+/**
+ * Exit code for "this ledger is temporarily not mine to write".
+ *
+ * 75 is EX_TEMPFAIL, which tells a supervisor or Kubernetes the condition is expected to
+ * clear on its own, so it retries. A contended writer lock is exactly that: the other
+ * process is live and will eventually exit. Reporting it as a generic failure tells the
+ * supervisor the same thing as a corrupt document -- restart now, forever, and never
+ * converge on the one instance that may hold the lock.
+ */
+function refuseWhileLedgerUnusable(reason: string): never {
+  process.stderr.write(`[Software Factory] refusing to serve while the ledger is unusable: ${reason}\n`);
+  process.exit(75);
 }
 
 async function startServer() {
+  // Load the tenant registry from the durable ledger before anything reads it. An
+  // unreadable registry aborts startup rather than leaving an empty cache that would make
+  // every provisioned tenant look deleted.
+  //
+  // This is the first thing to touch the ledger, so it is the first thing that can find a
+  // contended writer lock. It must classify that the same way the readiness pre-flight
+  // below does, or the same physical fault is reported with two different exit codes
+  // depending only on which check happened to run first.
+  try {
+    TenantService.bootstrap();
+  } catch (error) {
+    refuseWhileLedgerUnusable(error instanceof Error ? error.message : String(error));
+  }
   await provisionTenantCredentials();
 
   // Pre-flight: probe the durable ledger BEFORE binding a port. A corrupt ledger is
@@ -59,9 +99,7 @@ async function startServer() {
     // guarantee its own writes -- for example one that lost a race for the writer lock
     // and would overwrite the other writer's records. An orchestrator restarts on a
     // non-zero exit, which is the correct response; a 200 health check is not.
-    // 75 is EX_TEMPFAIL: the condition is expected to clear on its own.
-    process.stderr.write('[Software Factory] refusing to serve while the ledger is unusable\n');
-    process.exit(75);
+    refuseWhileLedgerUnusable('readiness pre-flight failed');
   } else if (readiness.status === 'degraded') {
     process.stderr.write('[Software Factory] running DEGRADED:\n');
     for (const check of readiness.details) {
@@ -83,6 +121,14 @@ async function startServer() {
     res.status(404).json({ status: 'error', code: 'ENDPOINT_NOT_FOUND', message: 'No such API endpoint.' });
   });
   if (!config.isProduction) {
+    // Imported dynamically, and not at the top of this file, because vite is a build-time
+    // dependency that the production server never executes. It was a static import, so the
+    // production bundle required it at module load to serve a SPA that does not exist in
+    // production -- which is what forced vite and its ~50MB of esbuild native binaries to be
+    // declared in `dependencies` rather than `devDependencies`, and what put them in the
+    // runtime image. The import moves here so the dependency can be classified honestly, and
+    // a production image stops shipping a bundler.
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {

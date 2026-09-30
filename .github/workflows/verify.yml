@@ -16,12 +16,59 @@ permissions:
   contents: read
 
 jobs:
+  # The workflow lint. This job exists because `.github/workflows/integrations.yml` was invalid
+  # for its entire life -- it referenced the `secrets` context in a job-level `if`, where GitHub
+  # does not allow it, so every run failed in zero seconds with no jobs -- and nothing noticed.
+  # A workflow that never runs is indistinguishable from a workflow with nothing to do, and a
+  # review gate that never runs is worse than an absent one, because people believe it ran.
+  #
+  # Linting is the only thing that catches this class of defect before it ships: a YAML parse
+  # check cannot, because the file is valid YAML and invalid Actions.
+  workflows:
+    name: workflow definitions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: lint every workflow
+        # Pinned to a release tag, not a branch or `@master`: this job is trusted input for every
+        # other job, and a moving ref would make that trust unreviewable.
+        uses: docker://rhysd/actionlint:1.7.7
+      - name: the Appwrite scope split is still least-privilege
+        run: bash scripts/verify-appwrite-scopes.sh
+
+      - name: every workflow file is valid YAML
+        run: |
+          set -euo pipefail
+          found=0
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -e "$f" ] || continue
+            found=1
+            python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$f"
+            echo "parsed: $f"
+          done
+          # Zero files would mean the glob matched nothing, which is a broken gate rather than a
+          # clean repository. A check that passes because it found nothing to check is the exact
+          # failure this job was added to stop.
+          if [ "$found" -eq 0 ]; then
+            echo "::error::no workflow files found; the gate would pass without checking anything"
+            exit 1
+          fi
+
   typescript:
     name: typescript (build, types, tests, live harnesses)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      # Full history, deliberately. The release gate inspects the branch's own commits to check
+      # they carry an authorship footer, and a shallow clone cannot answer that: the merge commit
+      # GitHub synthesises for a pull request has its parents grafted away, so it looks like an
+      # ordinary commit with no footer and the gate fails for a reason that has nothing to do with
+      # the change. The gate now skips with a reason on a shallow checkout rather than guessing,
+      # but fetching the history is what lets it actually run.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -51,6 +98,46 @@ jobs:
 
       - name: Layer 3 - error contract and writer lock
         run: npm run verify:layer3
+
+      # The tenancy harness was written but never added here, so 42 restart, revocation and
+      # migration checks could regress on main without CI noticing.
+      - name: Layer 4 - durable tenant registry
+        run: npm run verify:layer4
+
+      # The storage seam was wired in and nothing in CI ran it, which is the same mistake the
+      # Layer 4 comment above describes: a gate that exists only on a laptop is not a gate. This
+      # step needs no credentials -- it asserts the two unconditional properties, that a bad
+      # STORAGE_BACKEND refuses to boot and that a real authenticated request is served.
+      - name: Storage backend selection
+        run: npm run verify:storage
+
+      # Credential material in the index. Also credential-free, and cheap, so there is no reason
+      # for it to be anything other than a required step.
+      - name: No secret material
+        run: npm run verify:secrets
+
+      # A release is described in five places. This is what notices when they stop
+      # agreeing, and it is cheap enough to run on every change rather than at tag time.
+      # Pre-release mode skips the tag and clean-tree checks, which describe a release and
+      # cannot pass on a commit. The step is NOT wrapped in `|| true`: a check that cannot
+      # fail is not a check, and an earlier version of this step did exactly that.
+      - name: Release records agree
+        run: bash scripts/verify-release.sh --pre-release
+
+      # The integration gates need auditing too. An integration that reports a pass it did
+      # not earn is the same defect as the unasserted non-conformances this repository
+      # already shipped: a green check that means nothing was verified.
+      - name: Integration gates are honest
+        run: bash scripts/verify-integrations.sh
+
+      # The founder playbook instructed `bun install --frozen-lockfile` after bun.lock was
+      # deleted. The document whose entire purpose is the startup procedure did not start the
+      # product. Nothing read it to check that its commands exist.
+      - name: Documented commands exist
+        run: bash scripts/verify-docs.sh
+
+      - name: Knowledge base MCP server serves this repository
+        run: node scripts/kb-mcp-server.mjs --self-test
 
       - name: No server left listening
         run: |

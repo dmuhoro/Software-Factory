@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Ambient shell config must not decide whether a layer test passes. See scripts/verify-env.sh.
+# shellcheck source=scripts/verify-env.sh
+. "$HERE/verify-env.sh"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Layer 3: the error contract, proven against the running service.
 #
@@ -26,7 +31,7 @@ TENANT=tenant_log_5529
 PORT=4301; D=$ROOT/l3
 mkdir -p "$D/.data" "$D/ws"
 ( cd "$ROOT" && exec env NODE_ENV=production PORT="$PORT" \
-    FACTORY_API_KEY="$PLATFORM_KEY" FACTORY_TENANT_CREDENTIALS="$TENANT:$PLATFORM_KEY" \
+    FACTORY_API_KEY="$PLATFORM_KEY" FACTORY_TENANT_SEED_DEMO=true FACTORY_TENANT_CREDENTIALS="$TENANT:$PLATFORM_KEY" \
     FACTORY_DATA_DIR="$D/.data" FACTORY_WORKSPACE_ROOT="$D/ws" \
     node "$BIN" ) >> "$D/app.log" 2>&1 &
 echo $! > "$ROOT/srv-$PORT.pid"
@@ -95,7 +100,7 @@ echo "═══ L3-5  a second writer is refused, and the ledger survives it ═
 D2=$ROOT/l3-second
 mkdir -p "$D2/ws"
 ( cd "$ROOT" && exec env NODE_ENV=production PORT=4399 \
-    FACTORY_API_KEY="$PLATFORM_KEY" FACTORY_TENANT_CREDENTIALS="$TENANT:$PLATFORM_KEY" \
+    FACTORY_API_KEY="$PLATFORM_KEY" FACTORY_TENANT_SEED_DEMO=true FACTORY_TENANT_CREDENTIALS="$TENANT:$PLATFORM_KEY" \
     FACTORY_DATA_DIR="$D/.data" FACTORY_WORKSPACE_ROOT="$D2/ws" \
     node "$BIN" ) > "$D2/app.log" 2>&1
 second_rc=$?

@@ -18,7 +18,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const LEDGER_VERSION = 4 as const;
+export const LEDGER_VERSION = 5 as const;
+
+/**
+ * Oldest document this build can still read and migrate forward.
+ *
+ * Version 4 lacked the `tenants` collection. Bumping the version while refusing anything
+ * older would have routed every existing deployment through the corrupt-document recovery
+ * path, which quarantines the live ledger and resets it -- the schema change would have
+ * destroyed the data it was meant to preserve. A missing collection is coerced to empty by
+ * `hydrate`, so the migration is additive and needs no record rewrite.
+ */
+export const MIN_LEDGER_VERSION = 4 as const;
 
 export const LEDGER_COLLECTIONS = [
   'telemetry', 'transformations', 'factoryJobs', 'repositoryContexts', 'qualitySnapshots',
@@ -26,6 +37,7 @@ export const LEDGER_COLLECTIONS = [
   'clientWorkspaces', 'handovers', 'clientAcceptances', 'hostedDeployments', 'modelProviders',
   'agentRuns', 'worktrees', 'proofRecords', 'queueJobs', 'executionRuns',
   'deploymentObservations', 'mergeRecords', 'securityScans', 'projectAdapters',
+  'tenants',
 ] as const;
 
 export type LedgerCollection = (typeof LEDGER_COLLECTIONS)[number];
@@ -67,6 +79,7 @@ export interface DurableState {
   mergeRecords: Record<string, Record<string, unknown>>;
   securityScans: Record<string, Record<string, unknown>>;
   projectAdapters: Record<string, Record<string, unknown>>;
+  tenants: Record<string, Record<string, unknown>>;
 }
 
 /** Audit log is append-only but bounded; an unbounded array is a disk-exhaustion risk. */
@@ -90,12 +103,21 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Validates a parsed document and coerces missing collections to empty. */
+/**
+ * Validates a parsed document and coerces missing collections to empty.
+ *
+ * Version handling refuses in both directions. A document from a NEWER build is refused
+ * because this code cannot know what it would be dropping; a document from an UNSUPPORTED
+ * older build is refused because silently coercing it would invent a shape. A document
+ * between the two is migrated forward, which here means the new collection starts empty.
+ */
 function hydrate(loaded: unknown): DurableState {
   if (!isPlainObject(loaded)) throw new Error('LEDGER_ROOT_NOT_AN_OBJECT');
   const version = loaded.version;
-  if (version !== undefined && version !== LEDGER_VERSION) {
-    throw new Error(`LEDGER_VERSION_UNSUPPORTED:${String(version)}`);
+  if (version !== undefined) {
+    if (typeof version !== 'number' || !Number.isInteger(version)) throw new Error('LEDGER_VERSION_INVALID');
+    if (version > LEDGER_VERSION) throw new Error(`LEDGER_VERSION_FUTURE:${version}`);
+    if (version < MIN_LEDGER_VERSION) throw new Error(`LEDGER_VERSION_UNSUPPORTED:${version}`);
   }
   const collections = emptyCollections();
   for (const name of LEDGER_COLLECTIONS) {
@@ -218,6 +240,13 @@ export class DurableStore {
     if (!failure) {
       try {
         this.state = hydrate(parsed);
+        // A migrated document is rewritten so the file and the process agree on the version.
+        // Leaving it at the old version means every restart re-runs the migration, and an
+        // operator reading the file sees a version the running build no longer claims. It
+        // also means a later build that drops support for the old version breaks every
+        // ledger that was never actually migrated.
+        const onDisk = (parsed as Record<string, unknown>).version;
+        if (onDisk !== LEDGER_VERSION) this.persist();
         return this.state;
       } catch (error) {
         failure = (error as Error).message;
@@ -348,6 +377,15 @@ export class DurableStore {
    * so a subsequent upsert overwrites rather than duplicates. This is how the
    * ADR-001 composite unique index on `[tenant_id, idempotency_key]` is enforced:
    * replay protection is structural, not a lookup that can be raced or skipped.
+   *
+   * DO NOT change the separator in the line below, and do not "tidy" it into a visible
+   * character. It is a NUL byte on purpose: joining with '' would make ['ab','c'] and
+   * ['a','bc'] hash identically, so two different idempotency keys could collapse onto
+   * one document. The byte is also load-bearing across upgrades -- telemetry document ids
+   * are produced here, so altering the digest input would make every already-recorded
+   * idempotency key unreachable after a deploy and silently re-admit the replays it was
+   * written to reject. The NUL is why this file reads as binary to a naive `grep`; that
+   * is the cheaper problem.
    */
   public static deterministicId(prefix: string, ...parts: string[]): string {
     return `${prefix}_${crypto.createHash('sha256').update(parts.join(' ')).digest('hex').slice(0, 32)}`;
@@ -377,6 +415,18 @@ export class DurableStore {
   public static list(collection: LedgerCollection): Record<string, unknown>[] {
     if (!LEDGER_COLLECTIONS.includes(collection)) throw new Error(`LEDGER_COLLECTION_UNKNOWN:${collection}`);
     return Object.values(this.ensureLoaded()[collection]);
+  }
+
+  /**
+   * Like `list`, but with the record's actual storage key.
+   *
+   * A record that stores its own identity inside the value can disagree with the key it is
+   * filed under, and only this view exposes both. A caller that validates identity MUST use
+   * this rather than `list`, or the check compares the id to itself and can never fail.
+   */
+  public static entries(collection: LedgerCollection): Array<[string, Record<string, unknown>]> {
+    if (!LEDGER_COLLECTIONS.includes(collection)) throw new Error(`LEDGER_COLLECTION_UNKNOWN:${collection}`);
+    return Object.entries(this.ensureLoaded()[collection]);
   }
 
   public static has(collection: LedgerCollection, predicate: (record: Record<string, unknown>) => boolean): boolean {

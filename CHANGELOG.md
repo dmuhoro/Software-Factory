@@ -2,6 +2,206 @@
 
 All notable architectural and code modifications are documented here.
 
+## [Unreleased]
+
+### Gates that were passing without running
+
+- **`.github/workflows/integrations.yml` never executed.** Every job gated on a `secrets.*`
+  reference inside a job-level `if`, which GitHub rejects outright, so each run failed in under a
+  second with zero jobs. CodeRabbit had never reviewed a commit here, and the gate asserting it
+  was active was asserting the exact defect that stopped it running. Jobs now gate on
+  non-secret `vars.*_ENABLED` and assert their secret in a step;
+  `scripts/verify-integrations.sh` fails on any job-level `secrets.*` in any workflow, with a
+  negative control that reproduces the original five failures.
+- **The Appwrite read path was an in-memory cache**, so a restarted server reported an empty
+  history while the rows existed. Reads are now datastore-backed and async end to end, with the
+  tenant predicate pushed into `tables.listRows`, newest-first ordering, default limit 100 and a
+  hard maximum of 500. Corrupt JSON raises `LEDGER_UNAVAILABLE` instead of crashing. Reverting
+  this fails five tests; a fresh-instance test proves a row survives a restart.
+- **The Appwrite health check misdiagnosed a rejected credential** by advising that an
+  already-exported variable be exported. It now classifies `not-configured`, `unauthorized`,
+  `forbidden`, `not-found`, `network` and `not-provisioned`, each with its own advice, covered by
+  seven tests.
+- **Appwrite keys ship with an empty scope set**, which is refused on every data-plane call with
+  a 401 indistinguishable from a wrong project. The runtime and provisioner scope sets are now
+  documented in `.env.example` and enforced by `scripts/verify-appwrite-scopes.sh`, which fails
+  if the runtime key acquires schema-write scope. It takes four corrections to make that gate
+  honest, including one check that was passing without reading anything.
+- **`npm run appwrite:check` reported `api key: (unset)` on a correctly configured machine**,
+  because it read `process.env` only and worked solely for operators who remembered to source
+  `.env` first. It now loads `.env` itself; real environment variables still win.
+- **Two secret-handling defects.** `set-secret.sh` discarded a piped value with no trailing
+  newline, and printed its argument back on refusal — so pasting a key where a variable name
+  belonged leaked the whole key to the terminal. A credential-shaped argument is now redacted,
+  with an explanation of where argv leaks and an instruction to rotate.
+  `scripts/verify-argv-leak-control.sh` proves it: six checks fail against the old handler.
+- **`k8s/deployment.yaml` pointed at a `gcr.io` tag that was never published.** Added a GHCR
+  publish workflow using `GITHUB_TOKEN`, with SBOM, provenance, digest reporting and a pullability
+  check, gated on verification having passed.
+- **Added `npm run verify:full`**: static gates, tests, the local storage contract and the live
+  Appwrite layer, in dependency order, in one command. It distinguishes configured-and-working
+  from configured-and-broken, which fails, from unconfigured, which skips.
+
+### The gap between a control plane and an operating system
+
+- **`docs/OPERATIONS.md` records the largest gap in the product.** The agent path asks a model
+  for an implementation and then fails the job with `PROPOSAL_REQUIRES_TOOL_APPLIER`
+  (`src/services/agentExecutionService.ts:11`). Nothing applies a model proposal to disk. A real
+  traversal-guarded file writer exists at `factoryJobService.ts:87`, but it writes a
+  caller-supplied payload. The scheduler, worktree isolation, approvals, policy gates and
+  rollback with health checks are all built; the actuation step between a proposal and a change
+  is not. The document fixes the constraints that build must preserve.
+
+### Appwrite pilot is live and proven end to end
+
+- Provisioned the real pilot project: `b2b_software_factory` with `tenants`, `telemetry_events`,
+  `ai_transformations` and `audit_logs` (4 tables, 31 columns), via a dry-run-by-default,
+  non-destructive, idempotent `npm run appwrite:provision`. A second `--apply` creates 0 resources.
+- `npm run appwrite:e2e` writes real tenants and events and asserts 9/9: registration round-trips,
+  a replayed event does not duplicate, payloads survive intact, tenant queries are a real
+  partition rather than a full scan, the run is idempotent, and an event for a tenant that was
+  never onboarded is refused at the datastore boundary.
+- `STORAGE_BACKEND` now selects the persistence backend explicitly (`local` or `appwrite`). There is
+  no fallback and no dual write: an unrecognised value stops the process with a named reason, and
+  the startup banner states the active backend. `AppwriteService` was named for Appwrite while
+  writing to the local `DurableStore`; it is now a facade over a `TelemetryStore` port, which is
+  what makes the choice visible and testable. Recorded in ADR-009.
+- The Appwrite adapter refuses an event for a tenant that was never onboarded. `telemetry_events`
+  has no foreign key and the live probe demonstrates the table accepting an orphan row, which is
+  well-formed and refers to nothing, so no later read would surface it.
+- Added `npm run verify:storage` (and `:live`) to CI and to `verify:release`. The load-bearing check
+  is differential: the same request from the same tenant is served twice, and local accepts while
+  Appwrite refuses with `TENANT_NOT_ONBOARDED`. Identical input, opposite outcome, so a banner
+  label cannot satisfy it.
+- Fixed two verification defects that made results depend on the operator's shell rather than the
+  code. `npm test` failed with `EACCES` on `/approved/worktrees` when the repository `.env` was
+  sourced, and all four layer harnesses failed with a correct `ALLOW_INSECURE_LOCAL` refusal for
+  the same reason. `test/setup-isolate-env.ts` and `scripts/verify-env.sh` make both hermetic; each
+  now passes with the `.env` sourced and unset.
+- The e2e script's header claimed the database rejects unknown tenants. Nothing tested it and the
+  store did not enforce it. The claim was the defect; both halves are now asserted.
+- Fixed the reachability check reporting a working integration as broken: it probed `account.get()`,
+  which a valid *server* key is never scoped for, and returned a false 401. It now probes
+  `databases.list()`.
+- Added `withRetry`: transport failures only, exponential backoff with jitter, explicit caller
+  idempotency. Measured the underlying cause as `ETIMEDOUT` on the path to Frankfurt, affecting
+  curl and Node alike; rejected a `Connection: close` workaround that measured worse.
+- Memoised the Appwrite client. A fresh client per call failed ~1 in 6; one reused client
+  completed 20/20 in-process, because the SDK owns the connection pool.
+- Fixed a self-inflicted regression: wrapping the probe error silently disabled every retry,
+  taking the live check from 9/10 to 1/6. Pinned by a test.
+- Fixed `--apply` reporting "nothing was changed" after it had created the database.
+- De-identified test fixtures: a real key prefix and real project/account ids are no longer in source.
+
+## [4.8.0-asserted-controls] - 2026-09-29
+
+The hardening that decides whether a control is real. Every item below shipped through at least
+one release, or was a gate that reported success without proving anything.
+
+### Security
+- **The Kubernetes egress policy permitted 443 to `0.0.0.0/0`,** and the manifest gate passed it
+  on all 57 checks. The gate asserted that a policy of type `Egress` existed. It never read what
+  the egress rules permitted, so a policy covering egress and allowing the entire internet
+  satisfied it. The comment in the file said "replace with a CIDR allowlist before production";
+  the comment was the only control, and it was free. The base policy now denies all egress except
+  DNS, and a deploy-time renderer resolves the two real hostnames to `/32` addresses. The
+  rendered policy is a DNS snapshot, not a durable hostname filter -- NetworkPolicy cannot filter
+  SNI, so the durable answer is an egress proxy or service mesh, and that remains open.
+- **The image gate claimed to walk the layer history for credentials and never did.** Every
+  no-credential check read the final container environment. `RUN echo "GEMINI_API_KEY=..." >
+  /tmp/leak` followed by `RUN rm /tmp/leak` leaves a credential in an intermediate layer while
+  the final environment looks clean. Both images are now inspected layer by layer, and the
+  live-value scan reports that it was skipped when no credential is set rather than passing
+  silently.
+- **The deployment would have run a three-year-old binary.** `deployment.yaml` pinned
+  `runtime:v3.2.0` -- immutable, so the existing gate passed -- while the software was 4.7.0. The
+  gate now requires the deployed tag to equal the current version, and CI derives that tag from
+  `package.json` instead of a literal that could disagree.
+- **`ci.yml` could not publish a release image at all:** `push: false` with a hardcoded
+  `:latest`. The tag is now derived from the version and pushing is gated on a credential this
+  repository does not carry, so the build verifies and publishes nothing until one is added.
+
+### Fixed
+- **The production image had never been built.** CI typechecked, unit-tested and HTTP-harnessed
+  the code and never built the thing that ships. The Rust runtime -- the image the deployment
+  actually runs -- did not build at all: `rust:1.78-alpine` ships Cargo 1.78, and the committed
+  `Cargo.lock` pins `rand_pcg 0.10.2`, which requires `edition2024`, unstabilized until 1.85.
+  It also copied no `Cargo.lock`, passed no `--locked`, swallowed a failed build with `|| true`,
+  and hardcoded `x86_64-unknown-linux-musl`, so it could not build on arm64.
+- **The image shipped a bundler.** Ten build-time packages were declared as production
+  dependencies, so `npm ci --omit=dev` installed vite and esbuild's native binaries into the
+  runtime image. Classification is now asserted against the built bundle: a package is a runtime
+  dependency only if `dist/server.cjs` requires it. Node image 119MB -> 86.6MB, Rust 36.9MB.
+- **The artifact was built from something other than the thing that was tested, in both
+  ecosystems.** `package-lock.json` and `bun.lock` described one manifest and resolved 63 of
+  313 shared packages differently, while CI ran `npm ci` and both Docker stages ran
+  `bun install --frozen-lockfile`. `bun.lock` is deleted; npm is canonical (ADR-007).
+- **The founder playbook could not start the product.** It instructed
+  `bun install --frozen-lockfile` after `bun.lock` was deleted, which fails outright. Migrated
+  to `npm ci`, and `scripts/verify-docs.sh` now extracts every command a live document tells a
+  reader to run and fails if it does not resolve.
+- **Governance records were not reconciled in the commit that changed the behaviour they
+  described.** NC-1/6/7 were resolved and left in the open table; NC-3/4/5 were resolved and
+  left in the open table. Six of nine resolutions across two waves. Every row must now be
+  classified as resolved or open and name the commit or wave that resolved it.
+- **An integration could report a pass it never earned.** A job whose steps are all
+  `continue-on-error` is green without verifying anything. `scripts/verify-integrations.sh`
+  rejects that shape across all four integrations.
+
+### Added
+- **`scripts/kb-mcp-server.mjs` serves the repository to AI reviewers over MCP.** CodeRabbit is
+  an MCP *client* -- its documentation states it "ingests data from your connected MCP servers,
+  not the other way around" -- so the repository serves its own context rather than calling out.
+  33 documents, read-only, every response carrying a `SOURCE:` line, refusing `.env` and the
+  tenant ledger, with containment re-checked after path normalisation. Six attack paths are
+  self-tested in CI. ADR-006.
+- **`scripts/generate-dashboard.mjs` generates delivery status from Git.** No figure is typed by
+  hand. It asserts its own coverage -- any `verify*` script it does not run is reported by name,
+  which immediately surfaced four omitted harnesses -- and lists what it cannot measure, with
+  owners, instead of printing a plausible number.
+- **Three ADRs:** ADR-006 (repository as knowledge base over MCP), ADR-007 (one package manager;
+  the lockfile is the build), ADR-008 (security controls are asserted, not documented).
+- **Secret-gated integrations:** CodeRabbit, SonarQube, Snyk, Datadog. Each is conditioned on
+  its own credential so a fork PR is not failed for a secret the contributor cannot have.
+- **Negative controls across every gate added in this release.** Three of the four ADR-007
+  controls passed on first run, and two controls in this release passed because the mutation
+  never applied. Both are recorded: a green negative control is as dangerous as a test that
+  never ran.
+
+### Added
+- **A real Appwrite integration.** `node-appwrite` 29.0.0 (0 vulnerabilities) installed, and
+  `src/services/appwriteClient.ts` created — the module did not exist. `npm run appwrite:check`
+  performs a live authenticated call and reports the outcome, so "integrated" is no longer an
+  assumption. Unconfigured, it exits 1 rather than reporting success. Proven live against
+  `fra.cloud.appwrite.io`: a real HTTP 401 on a deliberately invalid key, which establishes that
+  DNS, TLS, the SDK wiring and the project id all work and only the credential is missing.
+  Appwrite CLI 28.1.0 installed; `mcp.appwrite.io` merged into the OpenCode config with all
+  existing entries preserved. ADR-006, Sprint 17.
+
+### Fixed
+- **The shipped Appwrite configuration was fiction that looked real.**
+  `src/configurations/appwrite.config.ts` defaulted `apiKey` to
+  `standard_appwrite_api_key_secret` — a placeholder shaped like a genuine Appwrite credential —
+  `projectId` to a fabricated `b2b_software_factory_proj`, and `endpoint` to the global
+  `cloud.appwrite.io` rather than the regional endpoint this deployment uses, so a missing
+  variable sent tenant telemetry to the wrong jurisdiction. Meanwhile `AppwriteService`, the
+  class named after Appwrite, made no HTTP request and imported no SDK: it wrote to the local
+  file ledger. The Rust runtime refused to start without `APPWRITE_API_KEY` while the
+  TypeScript half invented one. Configuration is now fail-closed with no defaulted credential
+  or project id, and 8 tests guard it — including a source-level check that no `APPWRITE_*`
+  variable regains a string fallback.
+
+### Known open
+- **NC-2: TypeScript persistence is single-writer and single-replica.** By design, not by
+  oversight. Horizontal scaling requires a shared transactional store.
+- **The egress allowlist is a DNS snapshot.** Durable hostname filtering needs an egress proxy or
+  service mesh; a NetworkPolicy cannot filter SNI.
+- **Nothing is connected.** Every integration, the registry push, and live Gemini/Appwrite
+  verification require credentials absent from this environment. The dashboard reports each as
+  unmeasured with its owner rather than implying coverage.
+- **The v4.8.0 image is not in GCR.** The manifest now refuses to drift, but publishing remains
+  credential-blocked.
+
 ## [4.7.0-production-hardening] - 2026-09-29
 
 Layers 2 through 4 of the production hardening programme. Every item below was a defect

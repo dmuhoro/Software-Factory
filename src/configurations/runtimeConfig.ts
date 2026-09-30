@@ -17,6 +17,8 @@ export type ConfigSeverity = 'error' | 'warning';
 export interface ConfigIssue { variable: string; severity: ConfigSeverity; message: string; }
 
 export interface RuntimeConfig {
+  /** Which persistence backend this process writes to. One per process, never both. */
+  storageBackend: 'local' | 'appwrite';
   nodeEnv: 'production' | 'development' | 'test';
   port: number;
   isProduction: boolean;
@@ -29,6 +31,14 @@ export interface RuntimeConfig {
   allowedSecretRefs: string[];
   /** tenantId -> plaintext credential, available only at startup before hashing. */
   tenantCredentials: Record<string, string>;
+  /**
+   * Installs fabricated demo tenants into an empty registry on boot.
+   *
+   * Off unless explicitly requested. A factory that has onboarded nobody should have an
+   * empty registry and say so, rather than three invented customers with invented key
+   * identifiers that an operator has to notice and delete.
+   */
+  seedDemoTenants: boolean;
   /** Hosts a remote (non-local) model provider may reach. */
   allowedModelHosts: string[];
   issues: ConfigIssue[];
@@ -60,6 +70,7 @@ export const FACTORY_SETTING_NAMES: ReadonlySet<string> = new Set([
   'FACTORY_FRONTIER_API_KEY',
   'FACTORY_HOSTED_DEPLOYMENT_SECRET_REF',
   'FACTORY_TENANT_CREDENTIALS',
+  'FACTORY_TENANT_SEED_DEMO',
 ]);
 
 const MIN_PRODUCTION_KEY_LENGTH = 24;
@@ -112,6 +123,28 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
   const issues: ConfigIssue[] = [];
   const nodeEnv = env.NODE_ENV === 'production' ? 'production' : env.NODE_ENV === 'test' ? 'test' : 'development';
   const isProduction = nodeEnv === 'production';
+
+  // STORAGE_BACKEND is validated here, at startup, rather than at the first write.
+  //
+  // The failure this prevents is specific: `STORAGE_BACKEND=appwirte` (a typo) silently resolving
+  // to the local disk. The process would start, advertise that it was configured for cloud
+  // persistence, and write every customer record somewhere no one is monitoring. An operator has
+  // to see this at boot, in the banner, before there is a record to lose.
+  const storageBackendRaw = trimmed(env.STORAGE_BACKEND);
+  let storageBackend: 'local' | 'appwrite' = 'local';
+  const storageBackendInput = storageBackendRaw.toLowerCase();
+  if (storageBackendInput === '' || storageBackendInput === 'local') {
+    storageBackend = 'local';
+  } else if (storageBackendInput === 'appwrite') {
+    storageBackend = 'appwrite';
+  } else {
+    issues.push({
+      variable: 'STORAGE_BACKEND',
+      severity: 'error',
+      message: `STORAGE_BACKEND must be "local" or "appwrite"; got ${JSON.stringify(env.STORAGE_BACKEND)}. `
+        + 'The service refuses to guess which store to write to, because guessing is how records get lost.',
+    });
+  }
 
   const apiKey = trimmed(env.FACTORY_API_KEY);  if (apiKey === '') {
     issues.push({
@@ -229,6 +262,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
 
   return {
     nodeEnv,
+    storageBackend,
     isProduction,
     port: parsePort(env.PORT),
     insecureLocalBypass: !isProduction && env.ALLOW_INSECURE_LOCAL === 'true' && apiKey === '',
@@ -237,6 +271,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
     requestBodyLimit: trimmed(env.REQUEST_BODY_LIMIT) || '1mb',
     allowedSecretRefs,
     tenantCredentials,
+    seedDemoTenants: env.FACTORY_TENANT_SEED_DEMO === 'true',
     allowedModelHosts: listOf(env.FACTORY_MODEL_ALLOWED_HOSTS),
     issues,
   };
@@ -249,6 +284,7 @@ export function warningsOf(config: RuntimeConfig): ConfigIssue[] { return config
 export function describeConfig(config: RuntimeConfig): string {
   const lines = [
     `  mode            ${config.nodeEnv}`,
+    `  storage         ${config.storageBackend}${config.storageBackend === 'local' ? ' (offline durable store)' : ' (Appwrite pilot backend)'}`,
     `  port            ${config.port}`,
     `  data directory  ${config.dataDir}`,
     `  workspace root  ${config.workspaceRoot}`,
@@ -258,6 +294,7 @@ export function describeConfig(config: RuntimeConfig): string {
     `  model hosts     ${config.allowedModelHosts.length === 0 ? 'none permitted' : config.allowedModelHosts.join(', ')}`,
     // Counts only. Credential values must never reach a log line.
     `  tenant creds    ${Object.keys(config.tenantCredentials).length} provisioned`,
+    `  demo tenants    ${config.seedDemoTenants ? 'WILL BE INSTALLED into an empty registry' : 'not installed'}`,
   ];
   for (const issue of warningsOf(config)) lines.push(`  warning         ${issue.variable}: ${issue.message}`);
   for (const issue of errorsOf(config)) lines.push(`  ERROR           ${issue.variable}: ${issue.message}`);
