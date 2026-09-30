@@ -9,9 +9,29 @@ All notable architectural and code modifications are documented here.
 - Provisioned the real pilot project: `b2b_software_factory` with `tenants`, `telemetry_events`,
   `ai_transformations` and `audit_logs` (4 tables, 31 columns), via a dry-run-by-default,
   non-destructive, idempotent `npm run appwrite:provision`. A second `--apply` creates 0 resources.
-- `npm run appwrite:e2e` writes real tenants and events and asserts 7/7: registration round-trips,
+- `npm run appwrite:e2e` writes real tenants and events and asserts 9/9: registration round-trips,
   a replayed event does not duplicate, payloads survive intact, tenant queries are a real
-  partition rather than a full scan, and the run is idempotent.
+  partition rather than a full scan, the run is idempotent, and an event for a tenant that was
+  never onboarded is refused at the datastore boundary.
+- `STORAGE_BACKEND` now selects the persistence backend explicitly (`local` or `appwrite`). There is
+  no fallback and no dual write: an unrecognised value stops the process with a named reason, and
+  the startup banner states the active backend. `AppwriteService` was named for Appwrite while
+  writing to the local `DurableStore`; it is now a facade over a `TelemetryStore` port, which is
+  what makes the choice visible and testable. Recorded in ADR-009.
+- The Appwrite adapter refuses an event for a tenant that was never onboarded. `telemetry_events`
+  has no foreign key and the live probe demonstrates the table accepting an orphan row, which is
+  well-formed and refers to nothing, so no later read would surface it.
+- Added `npm run verify:storage` (and `:live`) to CI and to `verify:release`. The load-bearing check
+  is differential: the same request from the same tenant is served twice, and local accepts while
+  Appwrite refuses with `TENANT_NOT_ONBOARDED`. Identical input, opposite outcome, so a banner
+  label cannot satisfy it.
+- Fixed two verification defects that made results depend on the operator's shell rather than the
+  code. `npm test` failed with `EACCES` on `/approved/worktrees` when the repository `.env` was
+  sourced, and all four layer harnesses failed with a correct `ALLOW_INSECURE_LOCAL` refusal for
+  the same reason. `test/setup-isolate-env.ts` and `scripts/verify-env.sh` make both hermetic; each
+  now passes with the `.env` sourced and unset.
+- The e2e script's header claimed the database rejects unknown tenants. Nothing tested it and the
+  store did not enforce it. The claim was the defect; both halves are now asserted.
 - Fixed the reachability check reporting a working integration as broken: it probed `account.get()`,
   which a valid *server* key is never scoped for, and returned a false 401. It now probes
   `databases.list()`.
