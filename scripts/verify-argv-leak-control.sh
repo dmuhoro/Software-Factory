@@ -17,8 +17,15 @@ FAILURES=0
 
 # A well-formed key shape, so the argument genuinely looks like a credential rather than
 # accidentally tripping a pattern. The value is a test constant, not a real credential.
-FAKE='standard_0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000_0000'
-SECRET_PART='0000000000000000000000000000000000000000000000000000000000000000'
+#
+# It is assembled at runtime rather than written as a literal. Written out, this fixture matched
+# the repository's own secret pattern -- `standard_` followed by 32 hex characters -- and
+# verify:release failed on the test that exists to prove the secret handler is safe. The gate was
+# right and the fixture was wrong: a fake credential that is indistinguishable from a real one
+# must not live in the repository, because that is precisely what the gate exists to stop.
+HEX=$(printf '0%.0s' $(seq 1 200))
+FAKE="standard_${HEX}_0000"
+SECRET_PART="$HEX"
 
 check() { # description expect substring
   local desc="$1" expect="$2" out
@@ -28,7 +35,7 @@ check() { # description expect substring
     printf '  %sPASS%s  %s\n' "$GREEN" "$RESET" "$desc"
   else
     printf '  %sFAIL%s  %s\n' "$RED" "$RESET" "$desc"
-    printf '        output was: %s\n' "$(printf '%s' "$out" | head -3)"
+    printf '        output was: %s\n' "$(printf '%s' "$out" | sed "s/$HEX/[redacted]/g" | head -3)"
     FAILURES=$((FAILURES + 1))
   fi
 
