@@ -1,4 +1,9 @@
 #!/bin/bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Ambient shell config must not decide whether a layer test passes. See scripts/verify-env.sh.
+# shellcheck source=scripts/verify-env.sh
+. "$HERE/verify-env.sh"
+
 # LAYER 4 END-TO-END VERIFICATION — durable tenant registry.
 #
 # Layer 4 exists because the tenant registry was a `Map` literal in the source file, and

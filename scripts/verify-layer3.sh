@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Ambient shell config must not decide whether a layer test passes. See scripts/verify-env.sh.
+# shellcheck source=scripts/verify-env.sh
+. "$HERE/verify-env.sh"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Layer 3: the error contract, proven against the running service.
 #

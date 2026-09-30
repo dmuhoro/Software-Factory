@@ -1,4 +1,9 @@
 #!/bin/bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Ambient shell config must not decide whether a layer test passes. See scripts/verify-env.sh.
+# shellcheck source=scripts/verify-env.sh
+. "$HERE/verify-env.sh"
+
 # LAYER 1 VERIFICATION
 # Proves each P0 defect found in the Phase 1 audit is closed, by exercising the real
 # HTTP surface of the built server. Every section uses its own port, data dir and

@@ -1,4 +1,9 @@
 #!/bin/bash
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Ambient shell config must not decide whether a layer test passes. See scripts/verify-env.sh.
+# shellcheck source=scripts/verify-env.sh
+. "$HERE/verify-env.sh"
+
 # LAYER 2 END-TO-END VERIFICATION — tenant isolation and quota enforcement.
 #
 # The Phase 1 audit proved that a single leaked FACTORY_API_KEY granted every tenant's
