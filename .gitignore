@@ -25,3 +25,51 @@ agent/
 # artifacts/README.md instead, which is the part that actually matters for verification.
 artifacts/*.tar
 artifacts/*.sha256
+
+# --- Credential and secret material ------------------------------------------------------
+#
+# `.env*` above covers dotenv files. Everything below is secret material that does not live in a
+# dotenv file, and each entry is here because this project actually touches it -- not speculatively.
+#
+# Terraform state is the important one and the most commonly forgotten. `terraform.tfstate`
+# contains the *resolved values* of every variable, including the ones marked sensitive, because
+# "sensitive" only hides them in CLI output. A committed state file is a plaintext secret dump.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.auto.tfvars
+crash.log
+crash.*.log
+
+# Cloud provider credentials. The GCR push path in software_factory/.github/workflows/ci.yml is
+# gated on secrets.GCR_PUSH, and a developer testing that locally will end up with a service
+# account key file on disk. It must never be committable.
+service-account*.json
+*service_account*.json
+gcp-credentials*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+secrets/
+secrets.*
+*.secret
+*.secrets
+credentials.json
+
+# Appwrite CLI session state and provider tokens.
+appwrite.json
+.appwrite/
+
+# Cloudflare / Vercel / Netlify local credential caches.
+.dev.vars
+.vercel/
+.netlify/
+
+# Terraform plan output can contain secrets in cleartext.
+*.tfplan
