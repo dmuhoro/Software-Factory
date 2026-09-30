@@ -21,7 +21,7 @@
     "verify:docs": "bash scripts/verify-docs.sh",
     "verify:image": "bash scripts/verify-image.sh",
     "verify:integrations": "bash scripts/verify-integrations.sh",
-    "verify:secrets": "bash scripts/verify-no-secrets.sh",
+    "verify:secrets": "bash scripts/verify-no-secrets.sh && npm run --silent verify:secrets:argv",
     "verify:layer1": "npm run build && bash scripts/verify-layer1.sh",
     "verify:layer2": "npm run build && bash scripts/verify-layer2.sh",
     "verify:layer3": "npm run build && bash scripts/verify-layer3.sh",
@@ -32,7 +32,9 @@
     "verify:secrets:control": "bash scripts/verify-secret-gate-control.sh",
     "verify:storage": "bash scripts/verify-storage-backend.sh",
     "verify:storage:live": "bash scripts/verify-storage-backend.sh --require-appwrite",
-    "verify:scopes": "bash scripts/verify-appwrite-scopes.sh"
+    "verify:scopes": "bash scripts/verify-appwrite-scopes.sh",
+    "verify:full": "bash scripts/verify-full.sh",
+    "verify:secrets:argv": "bash scripts/verify-argv-leak-control.sh"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
