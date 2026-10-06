@@ -1,0 +1,60 @@
+{
+  "$comment": "Loop parameters for unattended execution. Data, not prose: doctrineService.ts validates every key and the loop refuses to start when one is missing or out of range.",
+  "version": 1,
+  "stages": ["plan", "implement", "verify", "commit", "report"],
+  "attempt": {
+    "maxPerUnit": 3
+  },
+  "unit": {
+    "maxAcceptanceCriteriaPerMilestone": 5,
+    "oneCommitPerUnit": true
+  },
+  "hardStop": {
+    "maxWallClockMinutes": 360,
+    "maxTotalAttempts": 90,
+    "maxCommits": 400,
+    "doctrineIntegrity": true,
+    "resourceExhaustion": true
+  },
+  "commit": {
+    "requireGroundTruth": true,
+    "requireVerifiedStatement": true,
+    "requireProvenanceFooter": true,
+    "subjectMaxLength": 72,
+    "refusePathPatterns": [
+      ".env",
+      ".env.*",
+      "*.pem",
+      "*.key",
+      "*.p12",
+      "*.pfx",
+      "*.jks",
+      "*.keystore",
+      "id_rsa*",
+      "id_ed25519*",
+      "credentials.json",
+      "secrets.*",
+      "*.secret",
+      "*.tfstate",
+      "*.tfstate.*",
+      "*.tfvars",
+      "*.tfplan",
+      "service-account*.json",
+      "*service_account*.json",
+      "gcp-credentials*.json",
+      "appwrite.json"
+    ]
+  },
+  "concurrency": {
+    "maxParallelDefault": 4,
+    "maxParallelCeiling": 8,
+    "minFreeMemMb": 512,
+    "maxLoadAvgPerCpu": 2.0
+  },
+  "verification": {
+    "requireCleanTreeAfterCommit": true,
+    "requireNonEmptyDiff": true,
+    "acceptNarratedEvidence": false,
+    "timeoutMs": 300000
+  }
+}

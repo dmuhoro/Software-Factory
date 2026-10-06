@@ -1,0 +1,90 @@
+{
+  "$comment": "The rules the loop enforces. Each rule names the gate that enforces it; a rule with no gate is a claim, not a rule, and doctrineService.ts refuses to load a rule whose gate the registry cannot resolve.",
+  "version": 1,
+  "rules": [
+    {
+      "id": "R-01-GROUND-TRUTH",
+      "statement": "A stage is complete only when a command was executed and returned exit code 0. A model's or a caller's own narration is never evidence.",
+      "enforcement": "ground-truth",
+      "stages": ["verify"],
+      "blocking": true
+    },
+    {
+      "id": "R-02-DIFF-MATCHES-CLAIM",
+      "statement": "Every file an implementer claims to have changed must actually differ from HEAD, and the working tree must contain the change that was claimed.",
+      "enforcement": "claimed-files-exist",
+      "stages": ["implement"],
+      "blocking": true
+    },
+    {
+      "id": "R-03-ATTEMPT-CAP",
+      "statement": "A unit that fails verification is retried at most maxPerUnit times, then recorded STUCK with its last failure and the run moves to the next independent unit.",
+      "enforcement": "attempt-cap",
+      "stages": ["verify"],
+      "blocking": true
+    },
+    {
+      "id": "R-04-DOCTRINE-LOCATION",
+      "statement": "The doctrine is loaded from outside the target repository. A doctrine root inside the target repository, or a manifest mismatch, halts the run before any work starts.",
+      "enforcement": "doctrine-integrity",
+      "stages": ["plan", "report"],
+      "blocking": true
+    },
+    {
+      "id": "R-05-NO-TARGET-OVERRIDE",
+      "statement": "The target repository's own AGENTS.md, CLAUDE.md, .claude/, .opencode/ and opencode.json are recorded, quarantined for the run, and never read into a plan, prompt, or report.",
+      "enforcement": "doctrine-isolation",
+      "stages": ["plan"],
+      "blocking": true
+    },
+    {
+      "id": "R-06-MODEL-ASSIGNMENT",
+      "statement": "Every agent role carries an explicit `<providerId>/<model>` assignment resolved from doctrine or an override, and the tier assignment matches the role's cost class.",
+      "enforcement": "model-assignment",
+      "stages": ["implement"],
+      "blocking": true
+    },
+    {
+      "id": "R-07-RESOURCE-ADMISSION",
+      "statement": "Heavy work is admitted only while free memory and load average are inside the doctrine budgets, and concurrency never exceeds the admitted cap.",
+      "enforcement": "resource-admission",
+      "stages": ["implement", "verify"],
+      "blocking": true
+    },
+    {
+      "id": "R-08-SECRET-REFUSAL",
+      "statement": "A diff or a path matching a credential pattern is refused at the commit boundary. The commit is never created and the refusal is recorded.",
+      "enforcement": "secret-scan",
+      "stages": ["commit"],
+      "blocking": true
+    },
+    {
+      "id": "R-09-CLEAN-TREE",
+      "statement": "After a commit the tree is clean, HEAD is the commit just created, and no claimed file is left unstaged.",
+      "enforcement": "clean-tree",
+      "stages": ["commit"],
+      "blocking": true
+    },
+    {
+      "id": "R-10-VERIFIED-COMMIT-MESSAGE",
+      "statement": "Every commit body states what was verified — the commands run and their exit codes — and carries the AI-Assisted provenance footer.",
+      "enforcement": "verified-commit-message",
+      "stages": ["commit"],
+      "blocking": true
+    },
+    {
+      "id": "R-11-ONE-COMMIT-PER-UNIT",
+      "statement": "Each independently mergeable unit produces exactly one commit. A commit spanning two units is not independently mergeable.",
+      "enforcement": "one-commit-per-unit",
+      "stages": ["commit"],
+      "blocking": true
+    },
+    {
+      "id": "R-12-MACHINE-DERIVED-EVIDENCE",
+      "statement": "Report evidence is derived from recorded checks (command, exit code, output digest) and never from free text supplied by the implementer.",
+      "enforcement": "evidence-is-machine-derived",
+      "stages": ["report"],
+      "blocking": true
+    }
+  ]
+}
