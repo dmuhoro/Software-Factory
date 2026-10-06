@@ -96,10 +96,38 @@ Two runs, one fixture: `feature-a.txt` must contain `alpha`, verified by `node c
 Verification: 27 loop tests + 11 ground-truth tests, `npm run lint`, `npm run doctrine:manifest`,
 and full `npm run verify` all green.
 
+## D6 verified (bwrap sandbox hardening) — layer L4, commit `cad80a3`
+
+Verification commands now run inside a bubblewrap container, enforced at the **execution
+boundary** (`groundTruthService.runCommand`) rather than in a gate that only tests call. The
+doctrine rule is `R-14-SANDBOXED-VERIFICATION`; `loop.json:sandbox` ships enabled with
+`backend: bwrap`, `enableNetwork: false`, and the whole config is validated by
+`parseLoopConfig`.
+
+What the container guarantees:
+
+- The **whole root is read-only**; `/home`, `/root` and `/tmp` are fresh tmpfs, so the host
+  home — and every credential that ever sat in it — is **not mounted by construction**.
+- Only the **repository is writable** (a bind mount); a configured `writableDir` that escapes
+  the repo is refused.
+- **No network** (`--unshare-net`), cleared environment, no new session, die-with-parent.
+- **Fail-closed**: an unknown backend, a missing `bwrap` binary, or an escaping writableDir
+  *refuses the command* — it is never run bare. A host without the sandbox cannot produce a
+  "verified" commit.
+
+The proof drives the real `runCommand`→`bwrap` path: a legitimate `node check-a.cjs` passes
+inside the container; a write to `/etc` is refused with `EROFS`; a write to a host `/tmp` path
+lands only in the container's tmpfs (the host file never appears); `fetch()` to the internet
+cannot succeed; and each refusal mode (missing binary, unknown backend, escaping dir) is
+observed with its exact reason. The mid-verify kill drill moved its marker into the repo's own
+`.git/` — because a sandboxed verification command can no longer touch the host, which is the
+entire point.
+
+Verification: 8 sandbox tests + the full 46-test loop/ground-truth/sandbox suite, verify-loop
+7/7, full `npm run verify` green.
+
 ## Remaining this sprint
 
-- **D6 (L4)**: bwrap sandbox for `groundTruthService.runCommand`, fail-closed doctrine sandbox
-  config.
 - **D3 (L5)**: real-repo pilot on Daftari — fail-close `scripts/check-i18n.ts`, resolve the
   `sat_score_1..5` dynamic keys, run the loop on local `pilot/sprint-22-loop`.
 - **D7 (L6)**: trust-tier policy document.
