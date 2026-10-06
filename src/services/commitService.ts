@@ -24,7 +24,7 @@ export interface CommitRequest {
   unitId: string;
   attempt: number;
   models: ModelAssignment[];
-  packageVersion: string;
+  loopVersion: string;
   refusePathPatterns: string[];
   requireGroundTruth: boolean;
   requireProvenanceFooter: boolean;
@@ -182,7 +182,7 @@ export function buildCommitMessage(request: CommitRequest, files: string[]): { s
   if (request.requireProvenanceFooter) {
     lines.push('');
     const models = request.models.map((model) => `${model.role}=${model.providerId}/${model.model}`).join(', ');
-    lines.push(`AI-Assisted: ${models}; loop=software-factory/${request.packageVersion}`);
+    lines.push(`AI-Assisted: ${models}; loop=software-factory/${request.loopVersion}`);
   }
   return { subject, message: `${lines.join('\n')}\n` };
 }
@@ -223,12 +223,18 @@ export function commitUnit(request: CommitRequest): CommitResult {
   return { sha, subject, message, files: committed };
 }
 
-export function readPackageVersion(repo: string): string {
-  try {
-    const raw = fs.readFileSync(path.join(repo, 'package.json'), 'utf8');
-    const parsed = JSON.parse(raw) as { version?: string };
-    return typeof parsed.version === 'string' && parsed.version ? parsed.version : '0.0.0';
-  } catch {
-    return '0.0.0';
+export function readLoopVersion(): string {
+  let dir = process.cwd();
+  for (let depth = 0; depth < 12; depth += 1) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as { name?: string; version?: string };
+      if (parsed.name === 'software-factory' && typeof parsed.version === 'string' && parsed.version) return parsed.version;
+    } catch {
+      // keep walking toward the factory root
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
+  return '0.0.0';
 }
