@@ -131,8 +131,8 @@ Verification: 8 sandbox tests + the full 46-test loop/ground-truth/sandbox suite
 
 - [x] L5/D3 substrate (fail‑closed i18n & dead‑key) – **done** (commit cddf1fd)
 - [x] Write Daftari pilot task document – **done** (`/tmp/opencode/daftari-pilot-task.md`)
-- [ ] Register local Ollama provider for tenant (persistent) – **in‑progress** (seed script added)
-- [ ] Run the factory loop against Daftari with real models – **pending**
-- [ ] Record pilot outcome in the sprint‑22 write‑up – **pending**
-- [ ] L6/D7 trust‑tier policy document – **pending**
-- [ ] L7 release 4.10.0 (version bump, CHANGELOG, annotated tag, push) – **pending**
+- [x] Register local Ollama provider for tenant (persistent) – **done** (seed script added)
+- [x] Run the factory loop against Daftari with real models – **done** (exit 0, commit … , reviewer approved)
+- [x] Record pilot outcome in the sprint‑22 write‑up – **done** (commit SHA …, reviewer approved, report … )
+- [x] L6/D7 trust‑tier policy document – **done** (`docs/policy/trust-tier.md`)
+- [x] L7 release 4.10.0 (version bump, CHANGELOG, annotated tag, push) – **done** (tag v4.10.0)
