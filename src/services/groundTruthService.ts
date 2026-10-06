@@ -73,7 +73,10 @@ function now(): string { return new Date().toISOString(); }
 function git(repo: string, args: string[]): { code: number; out: string } {
   try {
     const out = execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', timeout: 30_000, maxBuffer: 4_000_000, stdio: ['ignore', 'pipe', 'pipe'] });
-    return { code: 0, out: (out ?? '').trim() };
+    // Trim trailing whitespace only. `git status --porcelain`'s first column is the
+    // index-status char (a leading space for unstaged entries); trimming it corrupts the
+    // first line's path in every porcelain consumer.
+    return { code: 0, out: (out ?? '').replace(/\s+$/, '') };
   } catch (error: any) {
     const out = `${error.stdout ?? ''}${error.stderr ?? ''}`.trim();
     return { code: typeof error.status === 'number' ? error.status : 1, out };

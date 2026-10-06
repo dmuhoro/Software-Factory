@@ -82,6 +82,7 @@ function writeTask(name: string, milestone: string): string {
     '',
     '## Models',
     'models.implementer: stub/stub-code',
+    'models.reviewer: stub/stub-code',
     '',
     '## Milestones',
     milestone,
@@ -101,6 +102,8 @@ function porcelain(repo: string): string {
 // ── the model port: a local stub provider ──────────────────────────────────
 
 type Reply = { files: Array<{ path: string; content: string }> };
+type ReviewReply = { approved: boolean; findings: string[] };
+const REVIEW_MARKER = 'You are the reviewer for an unattended software delivery loop.';
 
 interface Stub {
   url: string;
@@ -108,7 +111,7 @@ interface Stub {
   close: () => Promise<void>;
 }
 
-async function startStub(responder: (prompt: string) => Reply | Promise<Reply>): Promise<Stub> {
+async function startStub(responder: (prompt: string) => Reply | ReviewReply | Promise<Reply | ReviewReply>): Promise<Stub> {
   const prompts: string[] = [];
   const server = http.createServer((request, response) => {
     let body = '';
@@ -121,7 +124,12 @@ async function startStub(responder: (prompt: string) => Reply | Promise<Reply>):
           const prompt = (parsed.messages ?? []).map((message) => message.content ?? '').join('\n');
           prompts.push(prompt);
           const reply = await responder(prompt);
-          const content = ['```json', JSON.stringify(reply), '```'].join('\n');
+          // A caller that returns a verdict answers the review itself; the implementer-focused
+          // fixtures get a default approval so the loop still advances.
+          const wrapped = prompt.includes(REVIEW_MARKER) && 'approved' in reply
+            ? reply
+            : prompt.includes(REVIEW_MARKER) ? { approved: true, findings: [] } : reply;
+          const content = ['```json', JSON.stringify(wrapped), '```'].join('\n');
           response.writeHead(200, { 'content-type': 'application/json' });
           response.end(JSON.stringify({ choices: [{ message: { content } }] }));
         } catch (error) {

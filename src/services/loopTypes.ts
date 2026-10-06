@@ -7,7 +7,7 @@
 import { proofDigest, type GroundTruthProof } from './groundTruthService';
 import type { ModelAssignment } from './doctrineService';
 
-export type LoopStage = 'plan' | 'implement' | 'verify' | 'commit' | 'report';
+export type LoopStage = 'plan' | 'implement' | 'verify' | 'review' | 'commit' | 'report';
 
 export type UnitStatus = 'pending' | 'running' | 'done' | 'stuck' | 'blocked';
 
@@ -24,6 +24,8 @@ export interface AttemptRecord {
   proofDigest?: string;
   /** Bounded tail of the failing command's output, for the operator reading the report. */
   outputTail?: string;
+  /** The review verdict this attempt earned, if it reached the review stage. */
+  review?: { approved: boolean; findings: string[]; reviewer: string };
 }
 
 export interface UnitRecord {

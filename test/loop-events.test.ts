@@ -33,6 +33,8 @@ const TENANT = 'events-tenant';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 type Reply = { files: Array<{ path: string; content: string }>; notes?: string };
+const REVIEW_MARKER = 'You are the reviewer for an unattended software delivery loop.';
+type ReviewReply = { approved: boolean; findings: string[] };
 
 function makeTarget(name: string, check: string, option?: string): string {
   const root = fs.mkdtempSync(path.join(state, `${name}-`));
@@ -60,6 +62,7 @@ function writeTask(name: string, marker: string): string {
     '',
     '## Models',
     'models.implementer: stub/stub-code',
+    'models.reviewer: stub/stub-code',
     '',
     '## Milestones',
     `### M1: Feature ${marker}`,
@@ -71,7 +74,7 @@ function writeTask(name: string, marker: string): string {
   return file;
 }
 
-async function withStub(responder: (prompt: string) => Reply, body: (stubUrl: string) => Promise<void>): Promise<void> {
+async function withStub(responder: (prompt: string) => Reply | ReviewReply, body: (stubUrl: string) => Promise<void>): Promise<void> {
   const server = http.createServer((request, response) => {
     let body = '';
     request.setEncoding('utf8');
@@ -80,7 +83,13 @@ async function withStub(responder: (prompt: string) => Reply, body: (stubUrl: st
       try {
         const parsed = JSON.parse(body || '{}') as { messages?: Array<{ content?: string }> };
         const prompt = (parsed.messages ?? []).map((message) => message.content ?? '').join('\n');
-        const content = ['```json', JSON.stringify(responder(prompt)), '```'].join('\n');
+        // Implementer-contract responders get a default review approval; a caller that returns a
+        // verdict answers for itself.
+        const reply = responder(prompt);
+        const wrapped = prompt.includes(REVIEW_MARKER) && 'approved' in reply
+          ? reply
+          : prompt.includes(REVIEW_MARKER) ? { approved: true, findings: [] } : reply;
+        const content = ['```json', JSON.stringify(wrapped), '```'].join('\n');
         response.writeHead(200, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ choices: [{ message: { content } }] }));
       } catch (error) {

@@ -109,6 +109,19 @@ test('a claimed file that was not actually changed fails the proof', () => {
   }
 });
 
+test('a modified tracked file that sorts first is still observed as claimed', () => {
+  const { repo, cleanup } = makeRepo();
+  try {
+    fs.writeFileSync(path.join(repo, 'README.md'), '# fixture\n- audit evidence appended\n');
+    const proof = collectGroundTruth({ repo, claimedFiles: ['README.md'], requireNonEmptyDiff: true, timeoutMs: 30_000 });
+    const check = proof.checks.find((item) => item.id === 'diff:claimed:README.md');
+    assert.equal(check?.passed, true, `the modified tracked file must be observed (got: ${check?.outputTail ?? check?.passed})`);
+    assert.equal(proof.observedFiles.includes('README.md'), true, `observed path must be intact (got: ${proof.observedFiles.join(', ')})`);
+  } finally {
+    cleanup();
+  }
+});
+
 test('an empty diff fails when doctrine demands a non-empty diff', () => {
   const { repo, cleanup } = makeRepo();
   try {

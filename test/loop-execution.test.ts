@@ -28,6 +28,7 @@ const { DurableStore } = await import('../src/services/durableStore');
 const { ExecutionLoopService } = await import('../src/services/executionLoopService');
 const { FrontierModelService } = await import('../src/services/frontierModelService');
 const { DoctrineService } = await import('../src/services/doctrineService');
+const { parseReviewerOutput } = await import('../src/services/reviewService');
 const { GATE_IDS } = await import('../src/services/gateIds');
 
 DurableStore.resetForTests();
@@ -79,6 +80,7 @@ function writeTask(name: string, milestones: string): string {
     '',
     '## Models',
     'models.implementer: stub/stub-code',
+    'models.reviewer: stub/stub-code',
     '',
     '## Milestones',
     milestones,
@@ -116,8 +118,10 @@ interface Stub {
 }
 
 type Reply = { files: Array<{ path: string; content: string }>; notes?: string };
+type ReviewReply = { approved: boolean; findings: string[] };
+const REVIEW_MARKER = 'You are the reviewer for an unattended software delivery loop.';
 
-async function startStub(responder: (prompt: string) => Reply): Promise<Stub> {
+async function startStub(responder: (prompt: string) => Reply | ReviewReply): Promise<Stub> {
   const prompts: string[] = [];
   const server = http.createServer((request, response) => {
     let body = '';
@@ -128,7 +132,14 @@ async function startStub(responder: (prompt: string) => Reply): Promise<Stub> {
         const parsed = JSON.parse(body || '{}') as { messages?: Array<{ content?: string }> };
         const prompt = (parsed.messages ?? []).map((message) => message.content ?? '').join('\n');
         prompts.push(prompt);
-        const content = ['```json', JSON.stringify(responder(prompt)), '```'].join('\n');
+        const reply = responder(prompt);
+        // A caller that knows how to answer a review returns a verdict itself; a caller written
+        // for the implementer's file-manifest contract gets a default approval so the loop still
+        // advances. Review-refusal scenarios are spelled out in their own tests.
+        const wrapped = prompt.includes(REVIEW_MARKER) && 'approved' in reply
+          ? reply
+          : prompt.includes(REVIEW_MARKER) ? { approved: true, findings: [] } : reply;
+        const content = ['```json', JSON.stringify(wrapped), '```'].join('\n');
         response.writeHead(200, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ choices: [{ message: { content } }] }));
       } catch (error) {
@@ -147,7 +158,7 @@ async function startStub(responder: (prompt: string) => Reply): Promise<Stub> {
   };
 }
 
-async function withStub(responder: (prompt: string) => Reply, body: (stub: Stub) => Promise<void>): Promise<void> {
+async function withStub(responder: (prompt: string) => Reply | ReviewReply, body: (stub: Stub) => Promise<void>): Promise<void> {
   const stub = await startStub(responder);
   FrontierModelService.register({ tenantId: TENANT, id: 'stub', kind: 'local', baseUrl: stub.url, modelIds: ['stub-code'] });
   try {
@@ -386,4 +397,104 @@ test('a halted run resumed from its checkpoint does not redo or re-commit the wo
     assert.equal(resumed.record.status, 'completed');
     assert.equal(resumed.record.hardStop, undefined, 'the simulated halt was not cleared');
   });
+});
+
+// ── the review stage ────────────────────────────────────────────────────────
+
+test('a reviewer rejection refuses the attempt and its findings steer the next attempt to a commit', async () => {
+  const repo = makeTarget('review-fix');
+  const task = writeTask('review-fix', `### M1: Feature alpha
+type: feat
+verify: node check-a.cjs
+- [ ] feature-a.txt exists and contains alpha
+`);
+
+  await withStub((prompt) => {
+    // The reviewer's own contract: the first verdict refuses an out-of-scope change.
+    if (prompt.includes(REVIEW_MARKER)) {
+      if (prompt.includes('follows a previous reviewer rejection')) return { approved: true, findings: [] };
+      return { approved: false, findings: ['out of scope: stray.log implements nothing any criterion asks for'] };
+    }
+    // The implementer's contract: attempt 1 ships an extra file, attempt 2 reads the findings
+    // as feedback and ships only what the criterion asked for.
+    if (prompt.includes('stray.log')) return { files: [{ path: 'feature-a.txt', content: 'alpha\n' }] };
+    return { files: [{ path: 'feature-a.txt', content: 'alpha\n' }, { path: 'stray.log', content: 'noise\n' }] };
+  }, async () => {
+    const outcome = await ExecutionLoopService.run({ repo, taskDocument: task, tenantId: TENANT });
+    const { record } = outcome;
+
+    assert.equal(outcome.exitCode, 0, `expected the corrected run to commit: ${record.hardStop ?? record.refusal ?? ''}`);
+    const unit = record.units[0];
+    assert.equal(unit.status, 'done');
+    assert.equal(unit.attempts.length, 2, 'one rejected attempt, one corrected attempt');
+
+    const rejected = unit.attempts[0];
+    assert.equal(rejected.stage, 'review');
+    assert.equal(rejected.passed, false);
+    assert.match(rejected.reason, /GATE_REFUSED/);
+    assert.equal(rejected.review?.approved, false);
+    assert.match(rejected.detail, /stray\.log/, 'the refusal quoted the reviewer finding');
+    assert.match(rejected.detail, /review-approve/, 'the refusal names the gate');
+
+    const approved = unit.attempts[1];
+    assert.equal(approved.stage, 'commit');
+    assert.equal(approved.passed, true);
+    assert.equal(approved.review?.approved, true);
+
+    // One commit, not two: the rejected tree never reached git.
+    assert.equal(record.commits.length, 1);
+    assert.equal(gitLines(repo, ['rev-list', '--count', 'HEAD'])[0], '2');
+    assert.equal(fs.existsSync(path.join(repo, 'stray.log')), false, 'the rejected file survived into the tree');
+    const message = execFileSync('git', ['-C', repo, 'log', '-1', '--format=%B'], { encoding: 'utf8' });
+    assert.match(message, /Review: approved by stub\/stub-code/, 'the commit body records who approved it');
+  });
+});
+
+test('an unregistered reviewer provider is refused at the review gate before the reviewer is dialled', async () => {
+  const repo = makeTarget('review-no-provider');
+  const task = path.join(state, 'review-no-provider-task.md');
+  // No models.reviewer override: the doctrine assigns the frontier tier, whose provider is not
+  // registered for this tenant. The loop must refuse at the review boundary, not hang the run.
+  fs.writeFileSync(task, [
+    '# Task: Ship one feature',
+    '',
+    '## Goal',
+    'Commit one verified feature without an operator present.',
+    '',
+    '## Models',
+    'models.implementer: stub/stub-code',
+    '',
+    '## Milestones',
+    `### M1: Feature alpha
+type: feat
+verify: node check-a.cjs
+- [ ] feature-a.txt exists and contains alpha
+`,
+    '',
+  ].join('\n'), 'utf8');
+
+  await withStub(() => ({ files: [{ path: 'feature-a.txt', content: 'alpha\n' }] }), async (stub) => {
+    const outcome = await ExecutionLoopService.run({ repo, taskDocument: task, tenantId: TENANT });
+    assert.equal(outcome.exitCode, 2, 'the unit must be stuck, not silently unguarded');
+    const unit = outcome.record.units[0];
+    assert.equal(unit.status, 'stuck');
+    for (const attempt of unit.attempts) {
+      assert.equal(attempt.stage, 'review');
+      assert.equal(attempt.passed, false);
+      assert.match(attempt.detail, /model-assignment/, `refusal names the gate: ${attempt.detail}`);
+      assert.match(attempt.detail, /reviewer/, 'refusal names the role');
+    }
+    const reviewPrompts = stub.prompts.filter((prompt) => prompt.includes(REVIEW_MARKER));
+    assert.deepEqual(reviewPrompts, [], 'the unregistered reviewer was dialled anyway');
+    assert.equal(gitLines(repo, ['rev-list', '--count', 'HEAD'])[0], '1', 'nothing was committed');
+  });
+});
+
+test('the reviewer output contract is strict: no findings on a rejection, and no loose shapes', () => {
+  assert.deepEqual(parseReviewerOutput('```json\n{"approved": true, "findings": []}\n```'), { approved: true, findings: [] });
+  assert.deepEqual(parseReviewerOutput('{"approved":false,"findings":["fix feature-a"]}'), { approved: false, findings: ['fix feature-a'] });
+  assert.throws(() => parseReviewerOutput('{"approved":false,"findings":[]}'), /REVIEW_REJECTED_WITHOUT_FINDINGS/, 'a rejection with no reason would starve the next attempt');
+  assert.throws(() => parseReviewerOutput('{"approved":"yes","findings":[]}'), /REVIEW_OUTPUT_MALFORMED/, 'approved must be a boolean');
+  assert.throws(() => parseReviewerOutput('{"approved":true,"findings":"ok"}'), /REVIEW_OUTPUT_MALFORMED/, 'findings must be an array');
+  assert.throws(() => parseReviewerOutput('i refuse'), /REVIEW_OUTPUT_MALFORMED/, 'prose is not a verdict');
 });
