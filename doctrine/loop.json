@@ -57,5 +57,12 @@
     "requireNonEmptyDiff": true,
     "acceptNarratedEvidence": false,
     "timeoutMs": 300000
+  },
+  "sandbox": {
+    "enabled": true,
+    "backend": "bwrap",
+    "enableNetwork": false,
+    "writableDirs": ["."],
+    "bwrapBinary": "bwrap"
   }
 }

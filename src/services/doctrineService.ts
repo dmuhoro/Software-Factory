@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isGateId } from './gateIds';
+import type { LoopSandboxConfig } from './loopTypes';
 
 /**
  * Anchor for finding this repository's own `doctrine/` directory.
@@ -46,6 +47,7 @@ export interface LoopConfig {
   commit: CommitConfig;
   concurrency: ConcurrencyConfig;
   verification: VerificationConfig;
+  sandbox: LoopSandboxConfig;
 }
 
 export type ModelTier = 'cheap' | 'frontier';
@@ -155,7 +157,7 @@ function reqStringArray(file: string, obj: Record<string, unknown>, key: string,
 
 export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   const file = 'loop.json';
-  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification']);
+  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox']);
   const version = reqNumber(file, raw, 'version', 1, 1_000_000);
   const stages = reqStringArray(file, raw, 'stages', 2, 10);
   if (stages.join(',') !== 'plan,implement,verify,review,commit,report') {
@@ -188,6 +190,16 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   const verification = raw.verification; if (!isPlainObject(verification)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:verification');
   requireKeys('loop.json:verification', verification, ['requireCleanTreeAfterCommit', 'requireNonEmptyDiff', 'acceptNarratedEvidence', 'timeoutMs'], ['requireCleanTreeAfterCommit', 'requireNonEmptyDiff', 'acceptNarratedEvidence', 'timeoutMs']);
 
+  const sandbox = raw.sandbox; if (!isPlainObject(sandbox)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:sandbox');
+  requireKeys('loop.json:sandbox', sandbox, ['enabled', 'backend', 'enableNetwork', 'writableDirs', 'bwrapBinary'], ['enabled', 'backend', 'enableNetwork', 'writableDirs', 'bwrapBinary']);
+  const backend = reqString('loop.json:sandbox', sandbox, 'backend', 40);
+  if (backend !== 'bwrap') throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:sandbox:backend must be bwrap');
+  const sandboxEnabled = reqBoolean('loop.json:sandbox', sandbox, 'enabled');
+  const enableNetwork = reqBoolean('loop.json:sandbox', sandbox, 'enableNetwork');
+  const writableDirs = reqStringArray('loop.json:sandbox', sandbox, 'writableDirs', 0, 50);
+  const bwrapBinary = reqString('loop.json:sandbox', sandbox, 'bwrapBinary', 400);
+  if (!sandboxEnabled && enableNetwork) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:sandbox: enableNetwork only means something when the sandbox is enabled');
+
   const config: LoopConfig = {
     version,
     stages,
@@ -219,6 +231,13 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
       requireNonEmptyDiff: reqBoolean('loop.json:verification', verification, 'requireNonEmptyDiff'),
       acceptNarratedEvidence: reqBoolean('loop.json:verification', verification, 'acceptNarratedEvidence'),
       timeoutMs: reqNumber('loop.json:verification', verification, 'timeoutMs', 1_000, 600_000),
+    },
+    sandbox: {
+      enabled: sandboxEnabled,
+      backend,
+      enableNetwork,
+      writableDirs,
+      bwrapBinary,
     },
   };
   if (config.concurrency.maxParallelCeiling < config.concurrency.maxParallelDefault) {

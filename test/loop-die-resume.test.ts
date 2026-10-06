@@ -326,11 +326,14 @@ verify: node check-a.cjs
 });
 
 test('SIGKILL while a verification command is running, then --resume: one commit, residue restored', async () => {
-  const marker = path.join(state, 'mid-verify-marker');
-  fs.rmSync(marker, { force: true });
+  // The marker path is relative (.git/mid-verify-marker) because verification commands now run
+  // inside the bwrap sandbox, where cwd is the repo and only the repo is writable. .git/ is
+  // ignored by porcelain, so the marker never trips the clean-tree gate, and the parent test
+  // polls the same file on the host through the repo bind.
   const repo = makeTarget('mid-verify', {
-    gateSleep: { check: gateSleep(marker, 6000), verify: 'node gate-sleep-a.cjs' },
+    gateSleep: { check: gateSleep('.git/mid-verify-marker', 6000), verify: 'node gate-sleep-a.cjs' },
   });
+  const marker = path.join(repo, '.git', 'mid-verify-marker');
   const task = writeTask('mid-verify', `### M1: Feature alpha
 type: feat
 verify: node gate-sleep-a.cjs

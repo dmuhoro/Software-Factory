@@ -5,7 +5,7 @@
     "README.md": "sha256:d19cd766f140dff0f62ab14f01d5b53533f2ed88a02abdf382af3d657741abcc",
     "agents/models.json": "sha256:85c12e4f460e3a31e5e301c7e1d5d4a9fdc77f795124582c634680276f261ed3",
     "hooks/hooks.json": "sha256:36c817e106b310830cf19026532be0bd7d033350f2de95e78e0d97b2764cacb5",
-    "loop.json": "sha256:cb6e0ae8ab074aa6bcb08b26417ec908420968e8c9f5368d9bae38bca33fb850",
-    "rules/rules.json": "sha256:d95305823340fdc1c6fd2139ea14fe197c46d95baf9e5677a72878a85b880f4b"
+    "loop.json": "sha256:03db703b5632023d8407aa0c9c32846827e8efef2d6b328d6fc00712e1462fb5",
+    "rules/rules.json": "sha256:35f850c11d3395d806ea0d177e7167316fe94486d86c2fa44fab7434c6d4fb68"
   }
 }

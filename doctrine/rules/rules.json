@@ -92,6 +92,13 @@
       "enforcement": "review-approve",
       "stages": ["review"],
       "blocking": true
+    },
+    {
+      "id": "R-14-SANDBOXED-VERIFICATION",
+      "statement": "Verification commands run inside an isolated sandbox: the system tree is read-only, the host home is never mounted, filesystem writes are confined to the repository, and the network is off unless the operator turned it on. A command that cannot be sandboxed fails closed — it is refused, never run bare.",
+      "enforcement": "ground-truth",
+      "stages": ["verify"],
+      "blocking": true
     }
   ]
 }
