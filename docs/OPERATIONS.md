@@ -98,7 +98,7 @@ which is how the system learns and how you see why. Fail closed, and fail loudly
 | **Observability** | `/metrics` Prometheus series exist | No dashboards, no alerts, no on-call. You would not know it broke. |
 | **Deployment** | GHCR workflow written, image never published | Never run end to end. Kubernetes manifest has no published image and no digest pin. |
 | **Dependency supply chain** | Policy gate exists | `skills-lock.json` not committed. Installs are not reproducible yet. |
-| **Testing** | 175 unit/integration, including 7 end-to-end loop scenarios that drive real git repositories and a stub model port | No end-to-end coverage of the inbox/agent-run API, and no fault-injection of the loop against a hostile target repository. |
+| **Testing** | 176 unit/integration, including 7 end-to-end loop scenarios that drive real git repositories and a stub model port, plus a live run against a real local model (qwen2.5-coder:3b) that produced two verified commits | No end-to-end coverage of the inbox/agent-run API, and no fault-injection of the loop against a hostile target repository. |
 | **Niches** | 3 operational, rest refuse honestly | Adding niches is gated on ADRs, correctly. `CustomB2B` should stay refusing. |
 | **Recovery** | Rollback with health check | No backup/restore drill, no disaster recovery runbook, no RPO/RTO target. |
 
