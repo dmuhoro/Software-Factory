@@ -197,6 +197,7 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LEDGER_ANOTHER_WRITER_ACTIVE: { status: 503, message: 'The ledger is held by another writer. Retry shortly.', retryAfterSeconds: 5 },
   MODEL_PROVIDER_NOT_AVAILABLE: { status: 503, message: 'The model provider is unavailable. Retry shortly.', retryAfterSeconds: 30 },
   MODEL_PROVIDER_REQUEST_TIMEOUT: { status: 503, message: 'The model provider timed out. Retry shortly.', retryAfterSeconds: 30 },
+  MODEL_PROVIDER_TIMEOUT_OUT_OF_RANGE: { status: 400, message: 'The model request timeout must be between 15000 and 600000 milliseconds.' },
   MODEL_PROVIDER_REQUEST_UNSUPPORTED: { status: 503, message: 'The model provider rejected the request shape.', retryAfterSeconds: 30 },
   RESOURCE_EXHAUSTED: { status: 503, message: 'The host is out of memory or load. Retry shortly.', retryAfterSeconds: 30 },
   ROLLBACK_TARGET_NOT_FOUND: { status: 409, message: 'No rollback target is available.' },

@@ -47,7 +47,7 @@ function usage(): string {
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { json: false, help: false };
+  const args: Args = { json: false, help: false, killAt: undefined };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = (): string => {
@@ -63,6 +63,7 @@ function parseArgs(argv: string[]): Args {
       case '--attempt-cap': args.attemptCap = Number(value()); break;
       case '--resume': args.resume = value(); break;
       case '--report-dir': args.reportDir = value(); break;
+      case '--kill-at': args.killAt = value(); break;
       case '--json': args.json = true; break;
       case '--help': case '-h': args.help = true; break;
       default: throw new Error(`FLAG_UNKNOWN:${flag}`);
@@ -102,6 +103,8 @@ async function main(): Promise<number> {
     process.stdout.write(`${usage()}\n`);
     return 0;
   }
+  if (args.killAt) process.env.KILL_AT = args.killAt;
+
   if (!args.repo || !args.task) {
     process.stderr.write(`FLAG_REQUIRED:--repo and --task are required\n${usage()}\n`);
     return 1;
@@ -128,6 +131,12 @@ async function main(): Promise<number> {
         const line = `watch     ${eventsPath}`;
         if (args.json) process.stderr.write(`${line}\n`);
         else process.stdout.write(`${line}\n`);
+      },
+      onEvent: (entry) => {
+        // Live JSONL event stream – one line per event, flushed immediately.
+        const line = JSON.stringify(entry);
+        process.stdout.write(`${line}\n`);
+        process.stdout.flush();
       },
     });
     if (args.json) process.stdout.write(`${JSON.stringify(outcome.record, null, 2)}\n`);

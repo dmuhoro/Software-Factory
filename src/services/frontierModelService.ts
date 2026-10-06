@@ -2,7 +2,11 @@ import { DurableStore } from './durableStore';
 import { egressJson, resolveSecretRef, validateProviderUrl } from '../utils/egressGuard';
 
 export type ModelProviderKind = 'openai-compatible' | 'gemini-native' | 'local';
-export interface ModelProvider { id: string; tenantId: string; kind: ModelProviderKind; baseUrl?: string; modelIds: string[]; secretRef?: string; enabled: boolean; createdAt: string; }
+export const MIN_MODEL_REQUEST_TIMEOUT_MS = 15_000;
+export const MAX_MODEL_REQUEST_TIMEOUT_MS = 600_000;
+export const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 120_000;
+
+export interface ModelProvider { id: string; tenantId: string; kind: ModelProviderKind; baseUrl?: string; modelIds: string[]; secretRef?: string; enabled: boolean; timeoutMs?: number; createdAt: string; }
 export interface ModelRequest { providerId: string; model: string; system: string; task: string; maxOutputTokens?: number; }
 
 /** Maximum task size accepted by a model provider. Bounded to protect the egress budget. */
@@ -26,7 +30,7 @@ function requireText(value: unknown, code: string, max: number): string {
  * the secret reference; every actual request re-validates at the socket boundary.
  */
 export class FrontierModelService {
-  public static register(input: { tenantId: string; id: string; kind?: ModelProviderKind; baseUrl?: string; modelIds?: string[]; secretRef?: string; enabled?: boolean }): ModelProvider {
+  public static register(input: { tenantId: string; id: string; kind?: ModelProviderKind; baseUrl?: string; modelIds?: string[]; secretRef?: string; enabled?: boolean; timeoutMs?: number }): ModelProvider {
     const kind = input.kind ?? 'openai-compatible';
     if (!['openai-compatible', 'gemini-native', 'local'].includes(kind)) throw new Error('MODEL_PROVIDER_KIND_NOT_RECOGNIZED');
     const id = requireText(input.id, 'MODEL_PROVIDER_ID_REQUIRED', 64);
@@ -34,11 +38,18 @@ export class FrontierModelService {
     // A local provider may be unauthenticated; a remote one must be reachable and permitted.
     if (input.baseUrl) validateProviderUrl(input.baseUrl, kind);
     if (input.secretRef !== undefined && input.secretRef !== '') resolveSecretRef(input.secretRef);
+    let timeoutMs: number | undefined;
+    if (input.timeoutMs !== undefined) {
+      if (!Number.isInteger(input.timeoutMs) || input.timeoutMs < MIN_MODEL_REQUEST_TIMEOUT_MS || input.timeoutMs > MAX_MODEL_REQUEST_TIMEOUT_MS) {
+        throw new Error(`MODEL_PROVIDER_TIMEOUT_OUT_OF_RANGE:${MIN_MODEL_REQUEST_TIMEOUT_MS}-${MAX_MODEL_REQUEST_TIMEOUT_MS}`);
+      }
+      timeoutMs = input.timeoutMs;
+    }
     const modelIds = Array.isArray(input.modelIds)
       ? [...new Set(input.modelIds.filter((model): model is string => typeof model === 'string' && model.trim() !== '').map((model) => model.trim().slice(0, 128)))]
       : [];
     if (modelIds.length > 256) throw new Error('MODEL_PROVIDER_MODEL_LIST_TOO_LARGE');
-    const provider: ModelProvider = { id, tenantId: input.tenantId, kind, baseUrl: input.baseUrl ? input.baseUrl.trim() : undefined, modelIds, secretRef: input.secretRef, enabled: input.enabled ?? true, createdAt: new Date().toISOString() };
+    const provider: ModelProvider = { id, tenantId: input.tenantId, kind, baseUrl: input.baseUrl ? input.baseUrl.trim() : undefined, modelIds, secretRef: input.secretRef, enabled: input.enabled ?? true, timeoutMs, createdAt: new Date().toISOString() };
     DurableStore.upsert('modelProviders', `${input.tenantId}:${id}`, provider as unknown as Record<string, unknown>);
     return provider;
   }
@@ -76,7 +87,7 @@ export class FrontierModelService {
       pathname: '/chat/completions',
       method: 'POST',
       secret,
-      timeoutMs: 120_000,
+      timeoutMs: provider.timeoutMs ?? DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
       body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, { role: 'user', content: task }], max_completion_tokens: maxOutputTokens }),
     });
     if (result.status !== 200) throw new Error(`MODEL_PROVIDER_REQUEST_FAILED:${result.status}`);
