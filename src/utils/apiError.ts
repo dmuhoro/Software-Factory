@@ -190,6 +190,7 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   MODEL_PROVIDER_NOT_AVAILABLE: { status: 503, message: 'The model provider is unavailable. Retry shortly.', retryAfterSeconds: 30 },
   MODEL_PROVIDER_REQUEST_TIMEOUT: { status: 503, message: 'The model provider timed out. Retry shortly.', retryAfterSeconds: 30 },
   MODEL_PROVIDER_REQUEST_UNSUPPORTED: { status: 503, message: 'The model provider rejected the request shape.', retryAfterSeconds: 30 },
+  RESOURCE_EXHAUSTED: { status: 503, message: 'The host is out of memory or load. Retry shortly.', retryAfterSeconds: 30 },
   ROLLBACK_TARGET_NOT_FOUND: { status: 409, message: 'No rollback target is available.' },
 
   // ── Repository is not usable as a repository ───────────────────────────────
