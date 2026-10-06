@@ -69,7 +69,10 @@ export class ResourceGovernorService {
 
   public static admit(requested?: number): Admission {
     const budgets = this.budgets();
-    const wanted = this.cap(requested);
+    // The raw ask is recorded as asked; `maxParallel` is what was actually granted. Silently
+    // reporting the capped number as the request would hide the fact that doctrine said no.
+    const raw = requested === undefined || !Number.isFinite(requested) ? budgets.maxParallelDefault : Math.max(1, Math.floor(requested));
+    const wanted = Math.min(raw, budgets.maxParallelCeiling);
     const reasons: string[] = [];
 
     let sample = { cpus: 1, freeMemMb: 0, loadAvgPerCpu: 0 };
@@ -86,13 +89,16 @@ export class ResourceGovernorService {
       reasons.push(`LOAD:loadavg-per-cpu=${sample.loadAvgPerCpu.toFixed(2)},budget=${budgets.maxLoadAvgPerCpu}`);
     }
 
-    // One worker per CPU at most, and never more than the admitted parallelism.
+    // One worker per CPU at most, and never more than the admitted parallelism. A refusal
+    // grants nothing: reporting a positive cap while saying `admitted: false` invites the
+    // caller to spawn anyway.
+    const admitted = reasons.length === 0;
     const cpuCap = Math.max(1, sample.cpus - 1);
-    const maxParallel = Math.min(wanted, cpuCap, budgets.maxParallelCeiling);
+    const maxParallel = admitted ? Math.min(wanted, cpuCap, budgets.maxParallelCeiling) : 0;
 
     return {
-      admitted: reasons.length === 0,
-      requested: wanted,
+      admitted,
+      requested: raw,
       maxParallel,
       cpus: sample.cpus,
       freeMemMb: sample.freeMemMb,

@@ -164,16 +164,21 @@ export function commitUnit(request: CommitRequest): CommitResult {
     throw fail('GROUND_TRUTH_REQUIRED', `refusing to commit unit ${request.unitId}: ${request.proof.checks.filter((item) => !item.passed).length} check(s) failed`);
   }
 
+  // Snapshot what was already staged so a refusal can undo only what this call staged — never
+  // an operator's own index.
+  const stagedBefore = new Set(stagedPaths(repo));
   git(repo, ['add', '-A']);
   const files = stagedPaths(repo);
   if (!files.length) throw fail('NOTHING_STAGED', `unit ${request.unitId} produced no change`);
 
-  assertNoSecretPaths(files, request.refusePathPatterns);
   try {
+    assertNoSecretPaths(files, request.refusePathPatterns);
     assertNoSecretContent(repo, files);
   } catch (error) {
     // An unstage is not a discard: the work stays on disk and the refusal is the record.
-    git(repo, ['reset', '-q']);
+    for (const file of files) {
+      if (!stagedBefore.has(file)) git(repo, ['reset', '-q', '--', file]);
+    }
     throw error;
   }
 
