@@ -1,0 +1,30 @@
+{
+  "$comment": "Per-agent model assignment. Every agent role names a tier and every tier names a `providerId/model` string resolvable against the registered model-provider registry (open-source, cloud, frontier, or local/Ollama). Swapping a backend means changing this file or the env override; no doctrine or pipeline code changes.",
+  "version": 1,
+  "tiers": {
+    "cheap": {
+      "purpose": "Drafting, execution, mechanical verification, reporting. Optimised for throughput and cost.",
+      "default": "local/qwen2.5-coder:14b"
+    },
+    "frontier": {
+      "purpose": "Architecture, planning, review, and every accept/reject decision. Optimised for judgement.",
+      "default": "frontier/claude-sonnet-4-5"
+    }
+  },
+  "roles": {
+    "architect": { "tier": "frontier" },
+    "planner": { "tier": "frontier" },
+    "drafter": { "tier": "cheap" },
+    "implementer": { "tier": "cheap" },
+    "reviewer": { "tier": "frontier" },
+    "verifier": { "tier": "cheap" },
+    "reporter": { "tier": "cheap" }
+  },
+  "overrides": {
+    "envByRole": "FACTORY_MODEL_ROLE_{ROLE}",
+    "envByTier": "FACTORY_MODEL_TIER_{TIER}",
+    "taskDocumentPath": "models.<role>"
+  },
+  "assignmentFormat": "<providerId>/<model>",
+  "requiredRoles": ["architect", "planner", "drafter", "implementer", "reviewer", "verifier", "reporter"]
+}

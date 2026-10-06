@@ -1,0 +1,26 @@
+{
+  "$comment": "Stage hooks. The loop executes these in order and refuses to enter a stage whose hook id the gate registry cannot resolve. This is what makes the doctrine enforced configuration rather than prose.",
+  "version": 1,
+  "stages": {
+    "plan": {
+      "before": ["doctrine-integrity", "doctrine-isolation", "resource-admission"],
+      "after": ["plan-is-executable"]
+    },
+    "implement": {
+      "before": ["resource-admission", "model-assignment"],
+      "after": ["claimed-files-exist"]
+    },
+    "verify": {
+      "before": ["resource-admission"],
+      "after": ["ground-truth", "attempt-cap"]
+    },
+    "commit": {
+      "before": ["ground-truth", "secret-scan"],
+      "after": ["clean-tree", "verified-commit-message", "one-commit-per-unit"]
+    },
+    "report": {
+      "before": ["doctrine-integrity"],
+      "after": ["evidence-is-machine-derived"]
+    }
+  }
+}
