@@ -42,6 +42,25 @@ The loop repeats until every unit is `DONE` or `STUCK`, or a hard stop fires.
 | COMMIT | The diff is scanned for credentials, committed, and the tree is re-checked clean. | `ground-truth`, `secret-scan`, `clean-tree`, `verified-commit-message`, `one-commit-per-unit` |
 | REPORT | A markdown report records every check, digest, and commit for the unit. | `doctrine-integrity`, `evidence-is-machine-derived` |
 
+### Budgets, admission, and how many units run at once
+
+`loop.json:concurrency` carries the host budgets: `minFreeMemMb`, `maxLoadAvgPerCpu`,
+`maxParallelDefault`, `maxParallelCeiling`. Every stage asks `resource-admission` before it does
+anything heavy. A refusal names the figure that broke (`MEMORY:free=…` or `LOAD:loadavg-per-cpu=…`)
+and grants a parallelism of zero — the run halts rather than continuing on a host that cannot
+take it. Environment may only tighten these numbers; `FACTORY_MIN_FREE_MEM_MB`,
+`FACTORY_MAX_LOADAVG_PER_CPU` and `FACTORY_MAX_PARALLEL` can lower a budget and never raise one.
+
+`concurrency:execution` states the mode the driver is permitted to use:
+
+| Value | Meaning |
+|---|---|
+| `sequential` | One unit at a time in the target's working tree, in dependency order. **This is what the loop does today.** |
+| `worktree-parallel` | Independent units prepared in separate git worktrees. **Not implemented.** The loop refuses to start in this mode rather than running sequential work under a parallel label. |
+
+The ceiling is therefore a real bound on a mode nobody has built yet, and an honest one today:
+the effective parallelism of a run is 1, which is inside it.
+
 ### Manual execution of the same loop
 
 Nothing below needs a model.

@@ -86,6 +86,7 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   REPOSITORY_CONTEXT_NOT_FOUND: { status: 404, message: 'No repository context for this project.' },
   SANDBOX_POLICY_NOT_FOUND: { status: 404, message: 'No such sandbox policy.' },
   TASK_DOCUMENT_NOT_FOUND: { status: 404, message: 'No such task document.' },
+  LOOP_RUN_NOT_FOUND: { status: 404, message: 'No such loop run.' },
   WORKTREE_NOT_FOUND: { status: 404, message: 'No such worktree.' },
 
   // ── Policy and state preconditions raised by the orchestration services ────
@@ -93,12 +94,19 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   AUTONOMY_ACTION_NOT_ALLOWED: { status: 403, message: 'This action is not permitted under the autonomy policy.' },
   COMPLETION_TASKS_PENDING: { status: 409, message: 'Completion tasks are still pending.' },
   INVALID_FACTORY_TRANSITION: { status: 409, message: 'That status transition is not allowed for a factory job.' },
+  EXECUTION_MODE_UNSUPPORTED: { status: 409, message: 'The doctrine asks for an execution mode this driver does not implement.' },
+  GATE_REFUSED: { status: 409, message: 'A stage gate refused to continue; the recorded run names the gate and the reason.' },
+  REPO_NOT_CLEAN: { status: 409, message: 'The repository has uncommitted changes. The loop starts only from a clean tree.' },
+  ATTEMPT_CAP_REACHED: { status: 409, message: 'This unit has used every attempt doctrine allows.' },
+  LOOP_RUN_INCOMPATIBLE: { status: 409, message: 'That run cannot be resumed: the task document, the doctrine or the repository changed after it started.' },
+  HARD_STOP: { status: 409, message: 'The run reached one of its hard stops and ended rather than continuing.' },
   AGENT_DEPENDENCY_NOT_FOUND: { status: 404, message: 'No such agent dependency.' },
   MODEL_PROVIDER_DISCOVERY_FAILED: { status: 502, message: 'The provider model list could not be retrieved.' },
   MODEL_PROVIDER_REDIRECT_NOT_ALLOWED: { status: 502, message: 'The provider redirected the request, which is not permitted.' },
   MODEL_PROVIDER_REQUEST_FAILED: { status: 502, message: 'The provider request did not succeed.' },
 
   // ── Ledger structural faults. The service cannot interpret its own data. ───
+  GATE_NOT_IMPLEMENTED: { status: 500, message: 'A stage gate named by the doctrine has no implementation.' },
   LEDGER_COLLECTION_INVALID: { status: 500, message: 'The ledger could not be interpreted.', retryAfterSeconds: 5 },
   LEDGER_COLLECTION_UNKNOWN: { status: 500, message: 'The ledger contains an unknown collection.', retryAfterSeconds: 5 },
   LEDGER_VERSION_UNSUPPORTED: { status: 500, message: 'The ledger version is not supported by this build.', retryAfterSeconds: 5 },
