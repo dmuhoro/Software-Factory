@@ -2,6 +2,25 @@
 
 All notable architectural and code modifications are documented here.
 
+## [Unreleased] - 2026-10-06
+
+### The loop gained a reviewer: a gate-passing-but-bad change now sticks
+
+- **A judgement-tier review stage now sits between verify and commit.** Stages are
+  `plan / implement / verify / review / commit / report`. A reviewer model reads the
+  working-tree diff *and* the attempt's ground-truth evidence and returns a strict
+  `{approved, findings}` verdict; the loop commits nothing until the `review-approve` gate
+  passes. Rejections feed the next attempt; three rejections STUCK the unit with no commit.
+- **Proof against a real model (gpt-oss:20b-cloud):** an honest change was approved and
+  committed; a gamed change that rewrote `check-a.cjs` to `process.exit(0);` — every gate
+  green, verification vacuous — was rejected all three attempts with the cheat named verbatim.
+- **Two real bugs the proof surfaced and fixed:** `git status --porcelain`'s leading
+  index-status column was being trimmed, corrupting the first changed path (`heck-a.cjs`) and
+  making the claimed-files gate refuse a genuinely modified tracked file; and the reviewer's
+  diff now renders untracked additions, which `git diff HEAD` omits.
+- The `local` provider base URL must include `/v1` (Ollama's OpenAI-compatible surface);
+  without it calls fail as `MODEL_PROVIDER_INVALID_RESPONSE`.
+
 ## [4.9.1-live-loop] - 2026-10-06
 
 ### The loop proved against a real model
