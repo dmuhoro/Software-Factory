@@ -34,15 +34,15 @@ function makeRepo(): string {
 test('doctrine loads whole: stages, attempt cap, rules with gates, hooks', () => {
   const doctrine = DoctrineService.load();
   const loop = doctrine.loop;
-  assert.equal(loop.stages.length, 5);
-  assert.deepEqual(loop.stages, ['plan', 'implement', 'verify', 'commit', 'report']);
+  assert.equal(loop.stages.length, 6);
+  assert.deepEqual(loop.stages, ['plan', 'implement', 'verify', 'review', 'commit', 'report']);
   assert.equal(loop.attempt.maxPerUnit, 3);
   assert.equal(loop.verification.acceptNarratedEvidence, false);
   assert.ok(loop.hardStop.maxWallClockMinutes > 0, 'a wall clock stop exists');
   assert.ok(loop.hardStop.maxTotalAttempts >= loop.attempt.maxPerUnit, 'total attempts bound the per-unit cap');
 
   const rules = DoctrineService.rules();
-  assert.ok(rules.length >= 12, `12 rules (got ${rules.length})`);
+  assert.ok(rules.length >= 13, `13 rules (got ${rules.length})`);
   for (const rule of rules) {
     assert.ok(rule.statement.length > 10, `rule ${rule.id} has a statement`);
     assert.ok(rule.enforcement.length > 0, `rule ${rule.id} names its gate`);

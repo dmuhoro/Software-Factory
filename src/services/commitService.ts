@@ -25,6 +25,8 @@ export interface CommitRequest {
   attempt: number;
   models: ModelAssignment[];
   loopVersion: string;
+  /** The review verdict that approved this change. When present, becomes the Review: source note. */
+  review?: { approved: boolean; reviewer: string };
   refusePathPatterns: string[];
   requireGroundTruth: boolean;
   requireProvenanceFooter: boolean;
@@ -179,6 +181,7 @@ export function buildCommitMessage(request: CommitRequest, files: string[]): { s
   lines.push(`Unit: ${request.unitId} (attempt ${request.attempt})`);
   lines.push(`Files: ${files.length}`);
   lines.push(`Proof: ${proofDigest(request.proof)}`);
+  if (request.review?.approved) lines.push(`Review: approved by ${request.review.reviewer}`);
   if (request.requireProvenanceFooter) {
     lines.push('');
     const models = request.models.map((model) => `${model.role}=${model.providerId}/${model.model}`).join(', ');

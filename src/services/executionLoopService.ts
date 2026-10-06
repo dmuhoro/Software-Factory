@@ -9,6 +9,7 @@ import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsol
 import { FrontierModelService } from './frontierModelService';
 import { ResourceGovernorService } from './resourceGovernorService';
 import { ImplementerService } from './implementerService';
+import { ReviewService } from './reviewService';
 import { commitUnit, readLoopVersion } from './commitService';
 import { collectGroundTruth, proofDigest, type GroundTruthProof } from './groundTruthService';
 import { detectVerificationProfile } from './verificationProfileService';
@@ -475,6 +476,28 @@ export class ExecutionLoopService {
         record.narrationRejected += proof.rejectedNarration.length;
         enter('verify', 'after', { proof });
 
+        // ── REVIEW ────────────────────────────────────────────────────────
+        // Between "it verifies" and "it ships" sits an adversarial read. The reviewer answers
+        // only `{approved, findings}`; the `review-approve` gate turns a no into a refused
+        // attempt, and the findings become the next attempt's feedback.
+        attempt.stage = 'review';
+        const reviewAssignment = DoctrineService.modelFor('reviewer', input.document.models);
+        enter('review', 'before', { taskOverrides: input.document.models, usedRoles: ['reviewer'] });
+        const review = await ReviewService.review({
+          tenantId: input.tenantId,
+          repo,
+          unit,
+          document: input.document,
+          assignment: reviewAssignment,
+          doctrineLines: DoctrineService.rules().map((rule) => `${rule.id}: ${rule.statement}`),
+          isolation,
+          proof,
+          timeoutMs: loop.verification.timeoutMs,
+          feedback,
+        });
+        attempt.review = { approved: review.approved, findings: review.findings, reviewer: `${review.providerId}/${review.model}` };
+        enter('review', 'after', { proof, review });
+
         // ── COMMIT ────────────────────────────────────────────────────────
         attempt.stage = 'commit';
         const headBefore = git(repo, ['rev-parse', 'HEAD']).out;
@@ -489,6 +512,7 @@ export class ExecutionLoopService {
           attempt: attempt.attempt,
           models: record.models,
           loopVersion: readLoopVersion(),
+          review: attempt.review,
           refusePathPatterns: loop.commit.refusePathPatterns,
           requireGroundTruth: loop.commit.requireGroundTruth,
           requireProvenanceFooter: loop.commit.requireProvenanceFooter,

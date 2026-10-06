@@ -1,7 +1,7 @@
 {
   "$comment": "Loop parameters for unattended execution. Data, not prose: doctrineService.ts validates every key and the loop refuses to start when one is missing or out of range.",
   "version": 1,
-  "stages": ["plan", "implement", "verify", "commit", "report"],
+  "stages": ["plan", "implement", "verify", "review", "commit", "report"],
   "attempt": {
     "maxPerUnit": 3
   },

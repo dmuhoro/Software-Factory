@@ -15,6 +15,7 @@ export const GATE_IDS = [
   'claimed-files-exist',
   'ground-truth',
   'attempt-cap',
+  'review-approve',
   'secret-scan',
   'clean-tree',
   'verified-commit-message',

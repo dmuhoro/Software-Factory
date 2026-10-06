@@ -43,6 +43,8 @@ export interface GateContext {
   tenantProviders?: Set<string>;
   /** Roles this run actually calls. Every role must resolve; only these must be provisioned. */
   usedRoles?: string[];
+  /** The review verdict for this attempt, required by `review-approve`. */
+  review?: { approved: boolean; findings: string[] };
 }
 
 export interface GateOutcome {
@@ -147,6 +149,16 @@ const REGISTRY: Record<GateId, GateFn> = {
     const attempt = ctx.run.units.find((unit) => unit.unitId === ctx.unit?.unitId)?.attempts.length ?? 0;
     if (attempt > cap) return { passed: false, detail: `unit ${ctx.unit?.unitId} has used ${attempt} attempts; the cap is ${cap}` };
     return { passed: true, detail: `attempt ${attempt} of ${cap}` };
+  },
+
+  'review-approve': (ctx) => {
+    const review = ctx.review;
+    if (!review) return { passed: false, detail: 'no review verdict was produced for this attempt' };
+    if (!review.approved) {
+      const findings = review.findings.length ? review.findings.join(' | ') : 'the reviewer gave no findings';
+      return { passed: false, detail: `reviewer refused the change: ${findings}` };
+    }
+    return { passed: true, detail: `${review.findings.length} finding(s) cleared; the change is approved for commit` };
   },
 
   'secret-scan': (ctx) => {

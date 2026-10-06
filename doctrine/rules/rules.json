@@ -85,6 +85,13 @@
       "enforcement": "evidence-is-machine-derived",
       "stages": ["report"],
       "blocking": true
+    },
+    {
+      "id": "R-13-REVIEW-APPROVAL",
+      "statement": "Every change is read by a judgement-tier reviewer before it is committed. A reviewer that does not approve the diff refuses that attempt, its findings become the next attempt's feedback, and nothing unreviewed reaches the commit boundary.",
+      "enforcement": "review-approve",
+      "stages": ["review"],
+      "blocking": true
     }
   ]
 }

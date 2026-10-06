@@ -158,8 +158,8 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification']);
   const version = reqNumber(file, raw, 'version', 1, 1_000_000);
   const stages = reqStringArray(file, raw, 'stages', 2, 10);
-  if (stages.join(',') !== 'plan,implement,verify,commit,report') {
-    throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:stages must be exactly plan,implement,verify,commit,report');
+  if (stages.join(',') !== 'plan,implement,verify,review,commit,report') {
+    throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:stages must be exactly plan,implement,verify,review,commit,report');
   }
 
   const attempt = raw.attempt; if (!isPlainObject(attempt)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:attempt');
