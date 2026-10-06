@@ -37,7 +37,7 @@ export const LEDGER_COLLECTIONS = [
   'clientWorkspaces', 'handovers', 'clientAcceptances', 'hostedDeployments', 'modelProviders',
   'agentRuns', 'worktrees', 'proofRecords', 'queueJobs', 'executionRuns',
   'deploymentObservations', 'mergeRecords', 'securityScans', 'projectAdapters',
-  'tenants',
+  'tenants', 'factoryLoopRuns',
 ] as const;
 
 export type LedgerCollection = (typeof LEDGER_COLLECTIONS)[number];
@@ -80,6 +80,7 @@ export interface DurableState {
   securityScans: Record<string, Record<string, unknown>>;
   projectAdapters: Record<string, Record<string, unknown>>;
   tenants: Record<string, Record<string, unknown>>;
+  factoryLoopRuns: Record<string, Record<string, unknown>>;
 }
 
 /** Audit log is append-only but bounded; an unbounded array is a disk-exhaustion risk. */

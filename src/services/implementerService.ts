@@ -27,6 +27,8 @@ export interface ImplementRequest {
   doctrineLines: string[];
   isolation: IsolationManifest;
   timeoutMs: number;
+  /** Why the previous attempt of this unit failed, quoted back to the model. */
+  feedback?: string;
 }
 
 export interface ImplementResult {
@@ -114,6 +116,7 @@ export function buildPrompts(request: ImplementRequest): { system: string; task:
     'Repository files (bounded inventory):',
     inventory.join('\n'),
     '',
+    request.feedback ? `Previous attempt of this unit was refused. Fix exactly this:\n${request.feedback}` : '',
     'Return the JSON file manifest now.',
   ].filter(Boolean).join('\n');
 
