@@ -12,7 +12,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 import { collectGroundTruth, proofDigest, verifiedStatement } from '../src/services/groundTruthService';
-import { buildCommitMessage, commitUnit, pathMatchesPattern, readPackageVersion, slugify, type CommitRequest } from '../src/services/commitService';
+import { buildCommitMessage, commitUnit, pathMatchesPattern, readLoopVersion, slugify, type CommitRequest } from '../src/services/commitService';
 import { DoctrineService } from '../src/services/doctrineService';
 
 function makeRepo(): { repo: string; cleanup: () => void } {
@@ -38,7 +38,7 @@ function request(repo: string, proof: ReturnType<typeof collectGroundTruth>, ove
     unitId: 'M1',
     attempt: 1,
     models: [{ role: 'implementer', tier: 'cheap', providerId: 'local', model: 'qwen2.5-coder:14b', source: 'doctrine' }],
-    packageVersion: readPackageVersion(repo),
+    loopVersion: readLoopVersion(),
     refusePathPatterns: loop.commit.refusePathPatterns,
     requireGroundTruth: loop.commit.requireGroundTruth,
     requireProvenanceFooter: loop.commit.requireProvenanceFooter,
@@ -160,6 +160,7 @@ test('a green run commits, and the message carries the proof and the provenance 
     assert.ok(result.message.includes(`Proof: ${proofDigest(proof)}`), 'the body carries the proof digest');
     assert.match(result.message, /AI-Assisted: implementer=local\/qwen2\.5-coder:14b/, 'the model that made the change is named');
     assert.match(result.message, /loop=software-factory\//, 'the loop version is named');
+    assert.doesNotMatch(result.message, /loop=software-factory\/0\.0\.0/, 'the footer names a real loop version, never a missing target package.json');
     assert.ok(result.files.includes('route.ts'));
 
     const committedBody = execFileSync('git', ['-C', repo, 'log', '-1', '--format=%B'], { encoding: 'utf8' });

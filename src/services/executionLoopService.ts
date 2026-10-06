@@ -9,7 +9,7 @@ import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsol
 import { FrontierModelService } from './frontierModelService';
 import { ResourceGovernorService } from './resourceGovernorService';
 import { ImplementerService } from './implementerService';
-import { commitUnit, readPackageVersion } from './commitService';
+import { commitUnit, readLoopVersion } from './commitService';
 import { collectGroundTruth, proofDigest, type GroundTruthProof } from './groundTruthService';
 import { detectVerificationProfile } from './verificationProfileService';
 import { decompose, loadTaskDocument, type WorkUnit } from './taskDocumentService';
@@ -441,7 +441,7 @@ export class ExecutionLoopService {
           unitId: unit.id,
           attempt: attempt.attempt,
           models: record.models,
-          packageVersion: readPackageVersion(repo),
+          loopVersion: readLoopVersion(),
           refusePathPatterns: loop.commit.refusePathPatterns,
           requireGroundTruth: loop.commit.requireGroundTruth,
           requireProvenanceFooter: loop.commit.requireProvenanceFooter,
