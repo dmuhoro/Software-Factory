@@ -140,6 +140,35 @@ export function slugify(value: string, max: number): string {
   return (slug || 'change').slice(0, Math.max(8, max));
 }
 
+/**
+ * Stages the working tree and scans what it staged for credential-shaped paths and content.
+ *
+ * Exported because the `secret-scan` hook runs this *before* the commit gate so a refusal is
+ * observed at its own stage, and `commitUnit` runs it again so the check cannot be skipped by
+ * reaching the commit through another path. `unstage()` puts the index back exactly as it found
+ * it for the paths this call staged — an operator's own staged work is never touched.
+ */
+export function stageAndScanSecrets(repo: string, refusePathPatterns: string[]): { files: string[]; unstage: () => void } {
+  const target = path.resolve(repo);
+  const stagedBefore = new Set(stagedPaths(target));
+  git(target, ['add', '-A']);
+  const files = stagedPaths(target);
+  const unstage = (): void => {
+    for (const file of files) {
+      if (!stagedBefore.has(file)) git(target, ['reset', '-q', '--', file]);
+    }
+  };
+  try {
+    assertNoSecretPaths(files, refusePathPatterns);
+    assertNoSecretContent(target, files);
+  } catch (error) {
+    // An unstage is not a discard: the work stays on disk and the refusal is the record.
+    unstage();
+    throw error;
+  }
+  return { files, unstage };
+}
+
 export function buildCommitMessage(request: CommitRequest, files: string[]): { subject: string; message: string } {
   const scope = request.scope.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'factory';
   const type = /^[a-z]+$/.test(request.type) ? request.type : 'feat';
@@ -164,23 +193,8 @@ export function commitUnit(request: CommitRequest): CommitResult {
     throw fail('GROUND_TRUTH_REQUIRED', `refusing to commit unit ${request.unitId}: ${request.proof.checks.filter((item) => !item.passed).length} check(s) failed`);
   }
 
-  // Snapshot what was already staged so a refusal can undo only what this call staged — never
-  // an operator's own index.
-  const stagedBefore = new Set(stagedPaths(repo));
-  git(repo, ['add', '-A']);
-  const files = stagedPaths(repo);
+  const { files, unstage } = stageAndScanSecrets(repo, request.refusePathPatterns);
   if (!files.length) throw fail('NOTHING_STAGED', `unit ${request.unitId} produced no change`);
-
-  try {
-    assertNoSecretPaths(files, request.refusePathPatterns);
-    assertNoSecretContent(repo, files);
-  } catch (error) {
-    // An unstage is not a discard: the work stays on disk and the refusal is the record.
-    for (const file of files) {
-      if (!stagedBefore.has(file)) git(repo, ['reset', '-q', '--', file]);
-    }
-    throw error;
-  }
 
   const { subject, message } = buildCommitMessage(request, files);
 
