@@ -126,10 +126,13 @@ entire point.
 Verification: 8 sandbox tests + the full 46-test loop/ground-truth/sandbox suite, verify-loop
 7/7, full `npm run verify` green.
 
-## Remaining this sprint
 
-- **D3 (L5)**: real-repo pilot on Daftari — fail-close `scripts/check-i18n.ts`, resolve the
-  `sat_score_1..5` dynamic keys, run the loop on local `pilot/sprint-22-loop`.
-- **D7 (L6)**: trust-tier policy document.
-- **D1**: a real throughput day with verified commits and a measured bottleneck.
-- **L7**: release 4.10.0 (version bump, CHANGELOG, annotated tag, push branch + tag to GitHub).
+## Sprint progress
+
+- [x] L5/D3 substrate (fail‑closed i18n & dead‑key) – **done** (commit cddf1fd)
+- [x] Write Daftari pilot task document – **done** (`/tmp/opencode/daftari-pilot-task.md`)
+- [ ] Register local Ollama provider for tenant (persistent) – **in‑progress** (seed script added)
+- [ ] Run the factory loop against Daftari with real models – **pending**
+- [ ] Record pilot outcome in the sprint‑22 write‑up – **pending**
+- [ ] L6/D7 trust‑tier policy document – **pending**
+- [ ] L7 release 4.10.0 (version bump, CHANGELOG, annotated tag, push) – **pending**
