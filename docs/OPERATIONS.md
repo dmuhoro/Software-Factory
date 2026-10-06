@@ -91,22 +91,25 @@ which is how the system learns and how you see why. Fail closed, and fail loudly
 
 | Layer | Today | Gap to daily-driver |
 |---|---|---|
-| **Agent execution** | Proposes; does not apply | **The tool applier.** Everything else is downstream of this. |
+| **Agent execution** | The unattended loop applies: guarded file writes, verification commands, one commit per unit (`npm run factory:run`). The inbox/agent-run API still proposes only. | **A hardened executor** for untrusted code (container/microVM). Everything else is downstream of this. |
 | **Storage** | Local + Appwrite, one backend, tested | `NC-2` multi-replica writes unresolved. Appwrite adapter needs a consistency ADR before it carries money. |
 | **Appwrite live** | Probe works; key currently rejected (401) | **Blocked on one console action:** grant scopes to the key. Nothing in code. |
 | **Auth** | Tenant IDs carried through services | No real identity provider. Anyone with a tenant ID has that tenant's access. **This blocks any external user.** |
 | **Observability** | `/metrics` Prometheus series exist | No dashboards, no alerts, no on-call. You would not know it broke. |
 | **Deployment** | GHCR workflow written, image never published | Never run end to end. Kubernetes manifest has no published image and no digest pin. |
 | **Dependency supply chain** | Policy gate exists | `skills-lock.json` not committed. Installs are not reproducible yet. |
-| **Testing** | 137 unit/integration | Zero end-to-end tests of the agent loop, because the agent loop does not act yet. |
+| **Testing** | 175 unit/integration, including 7 end-to-end loop scenarios that drive real git repositories and a stub model port | No end-to-end coverage of the inbox/agent-run API, and no fault-injection of the loop against a hostile target repository. |
 | **Niches** | 3 operational, rest refuse honestly | Adding niches is gated on ADRs, correctly. `CustomB2B` should stay refusing. |
 | **Recovery** | Rollback with health check | No backup/restore drill, no disaster recovery runbook, no RPO/RTO target. |
 
 ### The honest one-line assessment
 
 The **control plane is roughly 70% of the way to something you can trust.** The **actuation
-layer is roughly 0%.** A factory that plans brilliantly and never builds is a very expensive
-project manager, and right now the actuation is the missing half.
+layer now has one working path**: the unattended loop takes a task document to verified commits
+on a clean repository, with gates, an attempt cap and a report. That path is deliberately narrow
+— one unit at a time, a target the loop trusts enough to run its own commands in, and no
+boundary around untrusted code yet. A factory that can build *that* way, and only that way, is
+still short of unrestricted actuation, but it is no longer a project manager that never builds.
 
 ---
 
