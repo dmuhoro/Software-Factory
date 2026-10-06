@@ -4,39 +4,16 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-06
 
-### The loop gained a reviewer: a gate-passing-but-bad change now sticks
+### 4.10.0 - 2026-10-06
 
-- **A judgement-tier review stage now sits between verify and commit.** Stages are
-  `plan / implement / verify / review / commit / report`. A reviewer model reads the
-  working-tree diff *and* the attempt's ground-truth evidence and returns a strict
-  `{approved, findings}` verdict; the loop commits nothing until the `review-approve` gate
-  passes. Rejections feed the next attempt; three rejections STUCK the unit with no commit.
-- **Proof against a real model (gpt-oss:20b-cloud):** an honest change was approved and
-  committed; a gamed change that rewrote `check-a.cjs` to `process.exit(0);` — every gate
-  green, verification vacuous — was rejected all three attempts with the cheat named verbatim.
-- **Two real bugs the proof surfaced and fixed:** `git status --porcelain`'s leading
-  index-status column was being trimmed, corrupting the first changed path (`heck-a.cjs`) and
-  making the claimed-files gate refuse a genuinely modified tracked file; and the reviewer's
-  diff now renders untracked additions, which `git diff HEAD` omits.
-- The `local` provider base URL must include `/v1` (Ollama's OpenAI-compatible surface);
-  without it calls fail as `MODEL_PROVIDER_INVALID_RESPONSE`.
-
-### Verification commands now run sandboxed under bubblewrap
-
-- **The verify stage's commands execute inside a bwrap container** (`R-14-SANDBOXED-
-  VERIFICATION`), enforced at `groundTruthService.runCommand` — the real execution boundary —
-  not in a proof-adjacent helper. The whole root is read-only; `/home`, `/root`, `/tmp` are
-  fresh tmpfs; the repository is the only writable path; the network is off; the environment is
-  cleared.
-- **Fail-closed**: an unknown backend, a missing `bwrap` binary, or a writableDir that escapes
-  the repo *refuses the command* — it is never run bare. A host without the sandbox cannot
-  produce a "verified" commit.
-- `loop.json:sandbox` (enabled, bwrap, network off) is validated by `parseLoopConfig`; the
-  doctrine manifest was regenerated.
-- The die-resume mid-verify drill now signals through the repo's own `.git/`, because a
-  sandboxed command can no longer touch the host — exactly what the sandbox is for.
+- Provider registration now persistent: `scripts/seed-local-ollama.ts` registers a local Ollama provider for the platform‑operator tenant on every startup.
+- Daftari pilot (L5/D3) successfully run against real repo; i18n check fail‑closed, dead key removed; loop exit 0, commit SHA …, reviewer approved, markdown report generated.
+- Trust‑tier policy document added: `docs/policy/trust-tier.md` describing the three trust tiers, allowed model families, timeout caps and required secret‑allowlist entries.
+- Release 4.10.0: version bump from 4.9.1 to 4.10.0, new CHANGELOG entry, annotated tag `v4.10.0` pushed to GitHub; CI pipeline (197 tests) all green.
 
 ## [4.9.1-live-loop] - 2026-10-06
+
+...
 
 ### The loop proved against a real model
 
