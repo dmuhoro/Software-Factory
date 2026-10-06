@@ -298,7 +298,11 @@ What makes it safe to leave alone:
 
 The format of the input is specified in
 [docs/TASK_DOCUMENT_FORMAT.md](docs/TASK_DOCUMENT_FORMAT.md). The rules the loop enforces are in
-[doctrine/DOCTRINE.md](doctrine/DOCTRINE.md).
+[doctrine/DOCTRINE.md](doctrine/DOCTRINE.md). The loop has been run end to end against a real
+local model (qwen2.5-coder:3b over Ollama): two verified commits from one task document, the
+ground-truth gate refusing a failing attempt and the feedback loop fixing it; that run and the
+post-build re-audit are recorded in
+[sprints/sprint-21-live-loop.md](sprints/sprint-21-live-loop.md).
 
 ```bash
 npm run verify:loop        # doctrine manifest, gate wiring, 7 end-to-end scenarios, CLI contract

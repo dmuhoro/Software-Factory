@@ -2,7 +2,35 @@
 
 All notable architectural and code modifications are documented here.
 
-## [4.9.0-unattended-loop] - 2026-10-06
+## [4.9.1-live-loop] - 2026-10-06
+
+### The loop proved against a real model
+
+- **The unattended loop ran end to end against a real local model.** `qwen2.5-coder:3b` served
+  over Ollama at `http://127.0.0.1:11434/v1`, registered as a `local` provider for the `founder`
+  tenant. `npm run factory:run` took one task document and produced two verified commits
+  (`feat(m1): feature-alpha`, `feat(m2): feature-beta`) with no operator present.
+- **The gates did real work, not ceremony.** 36 gate checks executed; one refused. M1 needed all
+  three attempts: attempt 1 was refused for a malformed model reply, attempt 2 was refused by the
+  ground-truth gate because `node check-a.cjs` exited 1, and attempt 3 — fed the text of both
+  refusals — passed and committed. That is the attempt cap, the rollback, the feedback loop and
+  the ground-truth gate all behaving the way the doctrine promises, on a real model port.
+- **The commit footer misattributed the loop's own version.** `commitUnit` read the *target*
+  repository's `package.json`, so a target without one stamped commits with
+  `loop=software-factory/0.0.0`. It now reads Software Factory's own package (`readLoopVersion`,
+  walking up from the process root) and stamps the real factory version; the target's version has
+  never had anything to do with which loop built the commit.
+- The target's `AGENTS.md` was quarantined (1 file) and never entered a prompt; narration from
+  the run was recorded and discarded (1 claim).
+
+### Re-audit against the six directive requirements
+
+Post-build scores, with live evidence, in `sprints/sprint-21-live-loop.md`:
+model-agnostic 4/4, unattended-by-default 4/4, enforced doctrine 4/4, commit-frequency 3/4
+(structural 25/day cap exists; daily throughput not yet measured), dual-mode 4/4,
+self-governance 3/4 (checkpoint/resume exist; a long-run drill is outstanding).
+
+### Gates that were passing without running
 
 ### The loop that acts (mostly autonomously)
 
