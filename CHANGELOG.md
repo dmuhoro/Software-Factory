@@ -2,9 +2,44 @@
 
 All notable architectural and code modifications are documented here.
 
-## [Unreleased]
+## [4.9.0-unattended-loop] - 2026-10-06
+
+### The loop that acts (mostly autonomously)
+
+- **The unattended loop runs to verified commits.** One task document
+  (`docs/TASK_DOCUMENT_FORMAT.md`) drives PLAN -> IMPLEMENT -> VERIFY -> COMMIT -> REPORT per
+  work unit, in dependency order, with no mid-run check-ins. `## Verification` and per-milestone
+  `verify:` lines decide what proves each unit; a unit with no way to be proven is refused
+  before anything starts (`plan-is-executable`).
+- **Verification is machine-derived, never narrated.** A unit is complete only when its
+  verification command exits 0 in the target repository. The commit body records the commands,
+  their exit codes and a `Proof: sha256:` digest of the evidence file; a model's own account is
+  recorded and discarded. `evidence-is-machine-derived` refuses any run that claims evidence but
+  carries no proof-signed commit.
+- **The rulebook is data the program refuses without.** `doctrine/` holds stage order, attempt
+  cap, hard stops, model assignments, rules and hooks; `manifest.json` pins every file's sha256.
+  Thirteen gates live in one registry (`src/services/loopGates.ts`); both directions of
+  `doctrine/hooks.json` <-> gates are cross-checked by tests, so a gate a rule claims but no
+  stage runs, or a gate that runs but no rule claims, is a test failure.
+- **The target cannot supply its own rules.** The doctrine is loaded from outside the target
+  repository; the target's `AGENTS.md`, `.claude/`, `opencode.json` and friends are hashed into
+  a quarantine manifest and never read, and spawned processes run with
+  `OPENCODE_DISABLE_PROJECT_CONFIG=1`. Edited copies are detected by digest drift and refused
+  (`DOCTRINE_MANIFEST_MISMATCH`).
+- **Failure is bounded, rolled back, and reported.** Three attempts per unit, each quoting the
+  previous refusal back to the model after rolling the tree back to its pre-attempt snapshot;
+  then STUCK, and the run continues with the next independent unit. Attempt/report path is
+  granted through resource admission control. Hard stops (`LoopHardStop`) cover wall clock,
+  total attempts, commit counts, doctrine integrity and resource exhaustion; soft failure modes
+  refuse a run start (dirty tree, document, model registry) or classify a unit as non-retryable.
+- **Observable and provable.** `npm run factory:run -- --repo --task` with exit codes 0, 1, 2, 3
+  (all-committed, refused-start, some-stuck, hard-stop); `--resume <runId>` continues a halted
+  checkpoint without re-committing; every outcome writes `<runId>.md` and `<runId>.json`
+  reports. `npm run verify:loop` checks the doctrine manifest, the gate wiring, and seven
+  end-to-end scenarios that drive real git repositories against a stub model port.
 
 ### Gates that were passing without running
+
 
 - **`.github/workflows/integrations.yml` never executed.** Every job gated on a `secrets.*`
   reference inside a job-level `if`, which GitHub rejects outright, so each run failed in under a

@@ -142,6 +142,9 @@ Verified capabilities include:
 - Sandbox policies covering source boundaries, network, secret references, resource budgets, timeouts, and runtime images.
 - Post-deployment observation windows, health-failure records, rollback recommendations, and ordered worktree merge recovery.
 - Project-family adapters and deterministic secret/package quality gates.
+- An unattended execution loop driven by a strict task document: stage gates, three attempts per
+  unit then STUCK, one verified commit per unit, hard stops, checkpoint/resume, and a run report
+  written on every outcome.
 
 The system is **not yet an unrestricted autonomous production company**. A hardened container or microVM executor, a provider-specific hosted deployment adapter, production secret injection, and full local reality verification remain explicit boundaries and readiness gates.
 
@@ -251,6 +254,57 @@ A job cannot be delivered until required completion tasks are complete, evidence
 
 After delivery, record measurable results such as time saved, adoption, client acceptance, defects, incidents, or learning. These records are the input to future quality improvement.
 
+## Running the unattended loop
+
+The loop takes one task document and runs PLAN → IMPLEMENT → VERIFY → COMMIT → REPORT for every
+work unit in it, without asking anything, until each unit is committed, stuck, or the run hits a
+hard stop.
+
+```bash
+npm run factory:run -- --repo /path/to/target --task /path/to/task.md
+```
+
+| Exit code | Meaning |
+|---|---|
+| `0` | every unit committed, each under a verification command that exited 0 |
+| `1` | the run refused to start (dirty tree, bad document, doctrine drift) |
+| `2` | the run finished, and at least one unit is STUCK or BLOCKED |
+| `3` | the run halted at a hard stop (wall clock, attempts, commits, resources, doctrine) |
+
+Options: `--tenant`, `--attempt-cap` (lowers doctrine's cap, never raises it), `--resume <runId>`,
+`--report-dir`, `--json`. The run writes `<runId>.md` and `<runId>.json` to
+`FACTORY_LOOP_REPORT_DIR` (default `.data/loop-runs/`) whatever its outcome — including a
+refusal.
+
+What makes it safe to leave alone:
+
+- **The rulebook is configuration, not prose.** `doctrine/` holds the stage order, the attempt
+  cap (3), the hard stops, the commit policy, the model assignments per role, and a hook list
+  naming the gate that enforces each rule. `doctrine/manifest.json` pins every file's sha256; a
+  doctrine that no longer matches its manifest is refused before any work starts.
+- **Gates are code, and both directions are checked.** Every hook id resolves to an
+  implementation in `src/services/loopGates.ts`, every rule's enforcement gate is declared by
+  some stage, and a gate no stage declares is a test failure.
+- **The target cannot supply its own rules.** The doctrine lives outside the target repository;
+  the target's `AGENTS.md`, `.claude/`, `opencode.json` and friends are hashed into a quarantine
+  manifest and never read, and every process the loop spawns gets
+  `OPENCODE_DISABLE_PROJECT_CONFIG=1`.
+- **Evidence is executed, never narrated.** A unit is complete when its verification command ran
+  and exited 0. The commit body records those commands and their exit codes, plus a
+  `Proof: sha256:` digest; a model's own account is recorded and discarded.
+- **Failure is bounded and visible.** Three attempts per unit, each quoting the previous refusal
+  back to the model and rolling the tree back first; then STUCK, and the run continues with the
+  next independent unit.
+
+The format of the input is specified in
+[docs/TASK_DOCUMENT_FORMAT.md](docs/TASK_DOCUMENT_FORMAT.md). The rules the loop enforces are in
+[doctrine/DOCTRINE.md](doctrine/DOCTRINE.md).
+
+```bash
+npm run verify:loop        # doctrine manifest, gate wiring, 7 end-to-end scenarios, CLI contract
+npm run doctrine:manifest  # re-pin after editing doctrine/ (then re-review the diff)
+```
+
 ## Supported verification profiles
 
 The profile detector selects a repository-specific verification contract:
@@ -286,6 +340,7 @@ src/                    React application, API routes, services, models
 server.ts               Express production entrypoint
 src/services/           Durable jobs, workspace, execution, release, recovery, outcomes
 src/api/routes/         Authenticated tenant-scoped APIs
+doctrine/               Stage order, attempt cap, models per role, rules and hooks (outside the target)
 test/                   Deterministic unit and integration tests
 docs/                   Constitution, ADRs, contracts, and operating playbooks
 sprints/                Sequential implementation records
@@ -299,6 +354,7 @@ appwrite-functions/     Optional Appwrite integration functions
 - [Founder Operating Playbook](docs/FOUNDER_OPERATING_PLAYBOOK.md)
 - [Product Foundry Context](docs/PRODUCT_FOUNDRY_CONTEXT.md)
 - [Repository Context Index](docs/REPOSITORY_CONTEXT_INDEX.md)
+- [Task Document Format](docs/TASK_DOCUMENT_FORMAT.md)
 - [Machine-Building Contract](docs/MACHINE_BUILDING_CONTRACT.md)
 - [Sprint 12: Real-World Readiness](sprints/sprint-12-real-world-readiness.md)
 - [Sprint 14: Machine Building](sprints/sprint-14-machine-building.md)
