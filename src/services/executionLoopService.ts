@@ -472,6 +472,7 @@ export class ExecutionLoopService {
           narratedClaims: [result.narration],
           timeoutMs: loop.verification.timeoutMs,
           env: childEnv(isolation),
+          sandbox: loop.sandbox,
         });
         record.narrationRejected += proof.rejectedNarration.length;
         enter('verify', 'after', { proof });

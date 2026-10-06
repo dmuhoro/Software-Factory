@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import type { LoopSandboxConfig } from './loopTypes';
 
 /**
  * Ground truth.
@@ -62,6 +63,8 @@ export interface GroundTruthRequest {
   requireCleanTree?: boolean;
   timeoutMs: number;
   env?: NodeJS.ProcessEnv;
+  /** When enabled, every verification command runs inside the sandbox. Fail-closed. */
+  sandbox?: LoopSandboxConfig;
 }
 
 function digest(value: string): string {
@@ -84,8 +87,36 @@ function git(repo: string, args: string[]): { code: number; out: string } {
 }
 
 /** Runs a shell command inside the repository under the loop's scrubbed environment. */
-export function runCommand(repo: string, command: string, timeoutMs: number, env?: NodeJS.ProcessEnv): { exitCode: number; output: string; startedAt: string; completedAt: string } {
+export function runCommand(repo: string, command: string, timeoutMs: number, env?: NodeJS.ProcessEnv, sandbox?: LoopSandboxConfig): { exitCode: number; output: string; startedAt: string; completedAt: string } {
   const startedAt = now();
+  if (sandbox?.enabled) {
+    let argv: string[];
+    try {
+      const built = sandboxArgv(repo, sandbox, command, env);
+      if ('reason' in built) return { exitCode: 1, output: built.reason, startedAt, completedAt: now() };
+      argv = built.argv;
+    } catch (error) {
+      return { exitCode: 1, output: `refused: could not build the sandbox command: ${(error as Error).message}`, startedAt, completedAt: now() };
+    }
+    const binary = argv[0];
+    try {
+      const out = execFileSync(binary, argv.slice(1), {
+        cwd: repo,
+        encoding: 'utf8',
+        timeout: timeoutMs,
+        maxBuffer: 4_000_000,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return { exitCode: 0, output: (out ?? '').trim(), startedAt, completedAt: now() };
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') {
+        return { exitCode: 1, output: `refused: sandbox binary not found (${binary}); verification commands fail closed when the sandbox cannot start`, startedAt, completedAt: now() };
+      }
+      const output = `${error?.stdout ?? ''}${error?.stderr ?? ''}`.trim().slice(-400_000) || `sandbox: ${error?.message ?? 'execution failed'}`;
+      const exitCode = typeof error?.status === 'number' ? error.status : 1;
+      return { exitCode, output, startedAt, completedAt: now() };
+    }
+  }
   try {
     const out = execFileSync('sh', ['-c', command], {
       cwd: repo,
@@ -101,6 +132,47 @@ export function runCommand(repo: string, command: string, timeoutMs: number, env
     const exitCode = typeof error.status === 'number' ? error.status : (error.killed ? 124 : 1);
     return { exitCode, output, startedAt, completedAt: now() };
   }
+}
+
+/** Build the bubblewrap invocation for a verification command. Refuses, does not warn. */
+function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, env?: NodeJS.ProcessEnv): { ok: true; argv: string[] } | { ok: false; reason: string } {
+  const repoPath = path.resolve(repo);
+  if (sandbox.backend !== 'bwrap') {
+    return { ok: false, reason: `refused: sandbox backend "${sandbox.backend}" is not supported; only bwrap is accepted` };
+  }
+
+  const argv: string[] = [
+    sandbox.bwrapBinary,
+    '--unshare-user-try', '--unshare-pid', '--unshare-ipc', '--unshare-uts', '--unshare-cgroup',
+    ...(sandbox.enableNetwork ? [] : ['--unshare-net']),
+    '--die-with-parent', '--new-session',
+    '--dev', '/dev',
+    '--proc', '/proc',
+    '--ro-bind', '/', '/',
+    '--tmpfs', '/tmp',
+    '--tmpfs', '/run',
+    '--tmpfs', '/home',
+    '--tmpfs', '/root',
+  ];
+
+  for (const relative of sandbox.writableDirs ?? []) {
+    const resolved = path.resolve(repoPath, relative);
+    if (resolved !== repoPath && !resolved.startsWith(`${repoPath}${path.sep}`)) {
+      return { ok: false, reason: `refused: sandbox writableDirs may not escape the repository: ${relative}` };
+    }
+    argv.push('--bind', resolved, resolved);
+  }
+  argv.push('--bind', repoPath, repoPath);
+
+  argv.push('--clearenv');
+  argv.push('--setenv', 'HOME', '/tmp/loop');
+  argv.push('--setenv', 'PATH', env?.PATH ?? '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin');
+  for (const [key, value] of Object.entries(env ?? {})) {
+    if (key === 'PATH' || key === 'HOME') continue;
+    argv.push('--setenv', key, value);
+  }
+  argv.push('--chdir', repoPath, 'sh', '-c', command);
+  return { ok: true, argv };
 }
 
 function changedPaths(repo: string): string[] {
@@ -175,7 +247,7 @@ export function collectGroundTruth(request: GroundTruthRequest): GroundTruthProo
       checks.push(check(`cmd:${step.id}`, 'command', 1, { command: step.command ?? '', outputTail: 'empty command refused' }));
       continue;
     }
-    const result = runCommand(repo, step.command, request.timeoutMs, request.env);
+    const result = runCommand(repo, step.command, request.timeoutMs, request.env, request.sandbox);
     checks.push(check(`cmd:${step.id}`, 'command', result.exitCode, {
       command: step.command,
       outputDigest: digest(result.output),

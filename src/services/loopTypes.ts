@@ -9,6 +9,22 @@ import type { ModelAssignment } from './doctrineService';
 
 export type LoopStage = 'plan' | 'implement' | 'verify' | 'review' | 'commit' | 'report';
 
+/**
+ * The isolation boundary verification commands must execute inside. Fail-closed: when enabled,
+ * a command that cannot be sandboxed is refused, never run bare.
+ */
+export interface LoopSandboxConfig {
+  enabled: boolean;
+  /** The only value accepted today is `'bwrap'`; anything else refuses the command. */
+  backend: string;
+  /** When false, the sandbox brings no network into the container (bwrap --unshare-net). */
+  enableNetwork: boolean;
+  /** Extra host paths made writable inside the container, each resolved within the repo. */
+  writableDirs: string[];
+  /** The bubblewrap executable; test harnesses may point this at a missing path to prove fail-closed. */
+  bwrapBinary: string;
+}
+
 export type UnitStatus = 'pending' | 'running' | 'done' | 'stuck' | 'blocked';
 
 export interface AttemptRecord {
