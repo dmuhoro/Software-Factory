@@ -239,6 +239,20 @@ export function parseTaskDocument(markdown: string, sourcePath?: string): TaskDo
   }
   detectCycle(milestones);
 
+  // Checked here rather than at resolution time so the refusal carries the document's own line:
+  // a brief that names `models.implementer: local` with no separator is a malformed instruction,
+  // not a model the loop should try to guess at.
+  for (const [role, value] of Object.entries(models)) {
+    const slash = value.indexOf('/');
+    if (slash <= 0 || slash === value.length - 1) {
+      throw parseError(`models.${role} must be "<providerId>/<model>", got "${value}"`);
+    }
+    const providerId = value.slice(0, slash);
+    const model = value.slice(slash + 1);
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(providerId)) throw parseError(`models.${role} provider "${providerId}" is not a lowercase provider id`);
+    if (!model.trim() || /\s/.test(model) || model.length > 128) throw parseError(`models.${role} model "${model}" is not a valid model name`);
+  }
+
   return {
     title,
     goal,
@@ -301,7 +315,7 @@ export function decompose(document: TaskDocument, options: DecomposeOptions): Wo
           criteria: [criterion],
           dependsOn: index === 0 ? [] : [milestone.criteria[index - 1].id],
           type: milestone.type,
-          verify: milestone.verify,
+          verify: milestone.verify ?? document.defaultVerify,
         };
         units.push(unit);
         ids.push(unit.id);
@@ -314,7 +328,7 @@ export function decompose(document: TaskDocument, options: DecomposeOptions): Wo
         criteria: milestone.criteria,
         dependsOn: [],
         type: milestone.type,
-        verify: milestone.verify,
+        verify: milestone.verify ?? document.defaultVerify,
       };
       units.push(unit);
       ids.push(unit.id);
