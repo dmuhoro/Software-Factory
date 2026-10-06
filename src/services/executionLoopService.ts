@@ -197,9 +197,11 @@ export class ExecutionLoopService {
     const attemptCap = Math.min(Math.max(1, options.attemptCap ?? loop.attempt.maxPerUnit), loop.attempt.maxPerUnit);
 
     // The loop only starts where it can reason about every change: the run is the only writer.
-    const starting = treePaths(repo);
-    if (starting.tracked.size || starting.untracked.size) {
-      throw new Error(`REPO_NOT_CLEAN:${[...starting.tracked, ...starting.untracked].slice(0, 8).join(', ')}`);
+    if (!options.resumeRunId) {
+      const starting = treePaths(repo);
+      if (starting.tracked.size || starting.untracked.size) {
+        throw new Error(`REPO_NOT_CLEAN:${[...starting.tracked, ...starting.untracked].slice(0, 8).join(', ')}`);
+      }
     }
 
     const isolation = DoctrineIsolationService.stage(repo, options.env ?? {});
@@ -379,6 +381,11 @@ export class ExecutionLoopService {
     let feedback: string | undefined;
     let succeeded = false;
     let proof: GroundTruthProof | undefined;
+    // Record a commit exactly once per run, wherever the flow reaches it (immediate checkpoint,
+    // success block, or the keep-the-commit catch path).
+    const recordCommit = (unitId: string, sha: string, subject: string): void => {
+      if (!record.commits.some((item) => item.sha === sha)) record.commits.push({ unitId, sha, subject });
+    };
 
     while (unitRecord.attempts.length < attemptCap && !succeeded) {
       const attempt: AttemptRecord = {
@@ -392,6 +399,10 @@ export class ExecutionLoopService {
       };
       unitRecord.attempts.push(attempt);
       input.event('info', 'implement', `unit ${unit.id} attempt ${attempt.attempt}/${attemptCap} starting`);
+      // A run is the only writer of this tree, so an interrupted attempt's residue is not
+      // evidence. Start every attempt from the committed state so half-written files from a
+      // killed attempt can never leak into the next one.
+      rollback(repo, { tracked: new Set<string>(), untracked: new Set<string>() });
       const before = treePaths(repo);
       let committed: { sha: string; subject: string } | undefined;
 
@@ -484,6 +495,12 @@ export class ExecutionLoopService {
           subjectMaxLength: loop.commit.subjectMaxLength,
         });
         committed = { sha: commit.sha, subject: commit.subject };
+        // The commit is the durable fact. Checkpoint it now, before any further gate can run,
+        // so a kill between here and the success block never loses the commit or re-creates it.
+        recordCommit(unit.id, commit.sha, commit.subject);
+        unitRecord.commitSha = commit.sha;
+        unitRecord.commitSubject = commit.subject;
+        input.persist();
         const headAfter = git(repo, ['rev-parse', 'HEAD']).out;
         const range = git(repo, ['rev-list', '--count', `${headBefore}..${headAfter}`]).out;
         enter('commit', 'after', { proof, commitsInUnit: Number(range) || 0 });
@@ -500,7 +517,7 @@ export class ExecutionLoopService {
         unitRecord.proofDigest = attempt.proofDigest;
         unitRecord.proof = slimProof(proof);
         unitRecord.finishedAt = iso();
-        record.commits.push({ unitId: unit.id, sha: commit.sha, subject: commit.subject });
+        recordCommit(unit.id, commit.sha, commit.subject);
         input.event('info', 'commit', `unit ${unit.id} committed ${commit.sha.slice(0, 12)} — ${commit.subject}`);
       } catch (error) {
         const message = (error as Error).message;
@@ -515,7 +532,7 @@ export class ExecutionLoopService {
 
         // A commit that already landed is evidence, not something to erase. Keep it and stop.
         if (committed) {
-          record.commits.push({ unitId: unit.id, sha: committed.sha, subject: committed.subject });
+          recordCommit(unit.id, committed.sha, committed.subject);
           unitRecord.commitSha = committed.sha;
           unitRecord.commitSubject = committed.subject;
           unitRecord.proofDigest = proof ? proofDigest(proof) : undefined;
@@ -612,6 +629,22 @@ export class ExecutionLoopService {
     if (existing.doctrineDigest !== doctrineDigest) throw new Error(`LOOP_RUN_INCOMPATIBLE:${runId}: the doctrine changed since this run started`);
     if (existing.repo !== repo) throw new Error(`LOOP_RUN_INCOMPATIBLE:${runId}: the run belongs to another repository`);
     if (existing.status !== 'halted' && existing.status !== 'running') throw new Error(`LOOP_RUN_INCOMPATIBLE:${runId}: run is already ${existing.status}`);
+    // If the run was killed mid-work, it left residue: half-written files, staged changes. The
+    // run is the only writer of this tree, so that residue is not evidence — restore the tree to
+    // the last committed state, loudly, so no interrupted attempt leaks into the next one.
+    const starting = treePaths(repo);
+    const dirty = [...starting.tracked, ...starting.untracked];
+    if (dirty.length) {
+      rollback(repo, { tracked: new Set<string>(), untracked: new Set<string>() });
+      existing.restoredOnResume = { at: iso(), paths: dirty.slice(0, 200) };
+      existing.events.push({
+        at: iso(),
+        stage: 'run',
+        level: 'warn',
+        message: `resumed run was interrupted mid-work; restored ${dirty.length} path(s) to the last committed state`,
+      });
+    }
+    this.reconcileDanglingCommit(repo, existing);
     existing.status = 'running';
     existing.finishedAt = undefined;
     existing.hardStop = undefined;
@@ -621,6 +654,47 @@ export class ExecutionLoopService {
     }
     DurableStore.upsert('factoryLoopRuns', existing.runId, existing as unknown as Record<string, unknown>);
     return existing;
+  }
+
+  /**
+   * A kill that lands between `git commit` and the checkpointed persist leaves a run whose unit
+   * says "running" while the commit already sits on HEAD. Never duplicate that commit: reconcile
+   * it as done, using the machine-derived Proof digest the commit body itself records, and name
+   * that the commit was not re-made.
+   */
+  private static reconcileDanglingCommit(repo: string, record: LoopRunRecord): void {
+    const interrupted = record.units.filter((unit) => unit.status === 'running');
+    if (!interrupted.length) return;
+    const head = git(repo, ['rev-parse', 'HEAD']);
+    if (head.code !== 0 || !head.out) return;
+    const message = git(repo, ['log', '-1', '--format=%B']);
+    if (message.code !== 0) return;
+    const unitMatch = message.out.match(/^Unit: (\S+)/m);
+    const digest = message.out.match(/^Proof: (sha256:[0-9a-f]{64})/m);
+    if (!unitMatch || !digest) return;
+    const unit = interrupted.find((item) => item.unitId === unitMatch[1]);
+    if (!unit) return;
+    const subject = git(repo, ['log', '-1', '--format=%s']).out;
+    unit.status = 'done';
+    unit.commitSha = head.out;
+    unit.commitSubject = subject;
+    unit.proofDigest = digest[1];
+    unit.finishedAt = iso();
+    const attempt = unit.attempts.at(-1);
+    if (attempt) {
+      attempt.passed = true;
+      attempt.reason = 'reconciled-on-resume';
+      attempt.detail = 'the commit for this unit was found on HEAD with its Proof digest; it was not re-committed';
+    }
+    if (!record.commits.some((item) => item.sha === head.out)) {
+      record.commits.push({ unitId: unit.unitId, sha: head.out, subject });
+    }
+    record.events.push({
+      at: iso(),
+      stage: 'run',
+      level: 'info',
+      message: `unit ${unit.unitId} reconciled as done: its commit was found on HEAD (${head.out.slice(0, 12)}) with Proof ${digest[1]}`,
+    });
   }
 
   // ── the report ──────────────────────────────────────────────────────────
@@ -673,6 +747,7 @@ function renderReport(record: LoopRunRecord): string {
     `| Finished | ${record.finishedAt ?? '—'} |`,
     `| Quarantined instruction files | ${record.quarantineCount} |`,
     `| Event stream | \`${record.eventsPath ?? '—'}\` |`,
+    `| Resume restoration | ${record.restoredOnResume ? `${record.restoredOnResume.paths.length} path(s) restored from an interrupted attempt` : '—'} |`,
     `| Narration claims discarded | ${record.narrationRejected} |`,
     '',
     '## Units',

@@ -70,6 +70,8 @@ export interface LoopRunRecord {
   status: LoopStatus;
   /** Live JSONL stream of `events`, written as each event is produced. Since v4.10.0. */
   eventsPath?: string;
+  /** What a resumed run had to restore after an interruption, if anything. */
+  restoredOnResume?: { at: string; paths: string[] };
   startedAt: string;
   finishedAt?: string;
   repo: string;

@@ -192,9 +192,21 @@ const REGISTRY: Record<GateId, GateFn> = {
     if (!proof) {
       // Auditing evidence only matters when the report claims some. A run that verified nothing
       // says so, and a run that carries commits without their proof is the dishonest case.
-      return ctx.run.commits.length === 0
-        ? { passed: true, detail: `the report claims no evidence: 0 commits, ${ctx.run.units.filter((unit) => unit.status === 'stuck').length} unit(s) recorded STUCK` }
-        : { passed: false, detail: `${ctx.run.commits.length} commit(s) are reported with no machine-derived proof attached` };
+      if (ctx.run.commits.length === 0) {
+        return { passed: true, detail: `the report claims no evidence: 0 commits, ${ctx.run.units.filter((unit) => unit.status === 'stuck').length} unit(s) recorded STUCK` };
+      }
+      // A resumed run may reconcile committed units whose full check arrays died with a killed
+      // process. The commit body still carries the machine-derived Proof digest — the checks
+      // were content-addressed into it at commit time, so accepting the digest is not
+      // fabrication. This branch never fabricates timing: it only ever accepts digests.
+      const digestOnly = ctx.run.commits.every((commit) => {
+        const unit = ctx.run.units.find((item) => item.unitId === commit.unitId);
+        return Boolean(unit && unit.commitSha && unit.proofDigest && unit.status === 'done');
+      });
+      if (digestOnly) {
+        return { passed: true, detail: `${ctx.run.commits.length} commit(s) on HEAD carry their content-addressed Proof digests (reconciled after a lost checkpoint)` };
+      }
+      return { passed: false, detail: `${ctx.run.commits.length} commit(s) are reported with no machine-derived proof attached` };
     }
     if (!proof.checks.length) return { passed: false, detail: 'the proof contains no checks' };
     const malformed = proof.checks.filter((check) => typeof check.exitCode !== 'number' || !check.startedAt || !check.completedAt);
