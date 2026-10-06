@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isGateId } from './gateIds';
 
 /**
  * Anchor for finding this repository's own `doctrine/` directory.
@@ -32,7 +33,9 @@ export interface AttemptConfig { maxPerUnit: number }
 export interface UnitConfig { maxAcceptanceCriteriaPerMilestone: number; oneCommitPerUnit: boolean }
 export interface HardStopConfig { maxWallClockMinutes: number; maxTotalAttempts: number; maxCommits: number; doctrineIntegrity: boolean; resourceExhaustion: boolean }
 export interface CommitConfig { requireGroundTruth: boolean; requireVerifiedStatement: boolean; requireProvenanceFooter: boolean; subjectMaxLength: number; refusePathPatterns: string[] }
-export interface ConcurrencyConfig { maxParallelDefault: number; maxParallelCeiling: number; minFreeMemMb: number; maxLoadAvgPerCpu: number }
+/** How the driver is permitted to run units. `sequential` is what the loop does today. */
+export type ExecutionMode = 'sequential' | 'worktree-parallel';
+export interface ConcurrencyConfig { maxParallelDefault: number; maxParallelCeiling: number; minFreeMemMb: number; maxLoadAvgPerCpu: number; execution: ExecutionMode }
 export interface VerificationConfig { requireCleanTreeAfterCommit: boolean; requireNonEmptyDiff: boolean; acceptNarratedEvidence: boolean; timeoutMs: number }
 export interface LoopConfig {
   version: number;
@@ -78,6 +81,7 @@ export interface LoadedDoctrine {
   rules: RulesConfig;
   hooks: HooksConfig;
 }
+
 
 const MANIFEST = 'manifest.json';
 const JSON_FILES = ['loop.json', 'agents/models.json', 'rules/rules.json', 'hooks/hooks.json'] as const;
@@ -127,6 +131,12 @@ function reqBoolean(file: string, obj: Record<string, unknown>, key: string): bo
   return value;
 }
 
+function executionRaw(obj: Record<string, unknown>): Record<string, unknown> {
+  const value = obj.execution;
+  if (typeof value !== 'string' || !value.trim()) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:concurrency:execution must be a non-empty string');
+  return { execution: value };
+}
+
 function reqString(file: string, obj: Record<string, unknown>, key: string, max = 500): string {
   const value = obj[key];
   if (typeof value !== 'string' || !value.trim()) throw doctrineError('DOCTRINE_INVALID_VALUE', `${file}:${key} must be a non-empty string`);
@@ -169,7 +179,11 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   const refusePathPatterns = reqStringArray('loop.json:commit', commit, 'refusePathPatterns', 1, 200);
 
   const concurrency = raw.concurrency; if (!isPlainObject(concurrency)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:concurrency');
-  requireKeys('loop.json:concurrency', concurrency, ['maxParallelDefault', 'maxParallelCeiling', 'minFreeMemMb', 'maxLoadAvgPerCpu'], ['maxParallelDefault', 'maxParallelCeiling', 'minFreeMemMb', 'maxLoadAvgPerCpu']);
+  requireKeys('loop.json:concurrency', concurrency, ['maxParallelDefault', 'maxParallelCeiling', 'minFreeMemMb', 'maxLoadAvgPerCpu', 'execution'], ['maxParallelDefault', 'maxParallelCeiling', 'minFreeMemMb', 'maxLoadAvgPerCpu', 'execution']);
+  const execution = reqString('loop.json:concurrency', executionRaw(concurrency), 'execution', 40) as ExecutionMode;
+  if (execution !== 'sequential' && execution !== 'worktree-parallel') {
+    throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:concurrency:execution must be sequential or worktree-parallel');
+  }
 
   const verification = raw.verification; if (!isPlainObject(verification)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:verification');
   requireKeys('loop.json:verification', verification, ['requireCleanTreeAfterCommit', 'requireNonEmptyDiff', 'acceptNarratedEvidence', 'timeoutMs'], ['requireCleanTreeAfterCommit', 'requireNonEmptyDiff', 'acceptNarratedEvidence', 'timeoutMs']);
@@ -194,6 +208,7 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
       refusePathPatterns,
     },
     concurrency: {
+      execution,
       maxParallelDefault: reqNumber('loop.json:concurrency', concurrency, 'maxParallelDefault', 1, 64),
       maxParallelCeiling: reqNumber('loop.json:concurrency', concurrency, 'maxParallelCeiling', 1, 64),
       minFreeMemMb: reqNumber('loop.json:concurrency', concurrency, 'minFreeMemMb', 0, 1_000_000),
@@ -363,6 +378,16 @@ export class DoctrineService {
     for (const [stage, entry] of Object.entries(hooks.stages)) {
       if (!loop.stages.includes(stage)) throw doctrineError('DOCTRINE_INVALID_VALUE', `hooks/hooks.json declares unknown stage ${stage}`);
       if (entry.before.length + entry.after.length === 0) throw doctrineError('DOCTRINE_INVALID_VALUE', `hooks/hooks.json stage ${stage} declares no hooks`);
+    }
+    // A rule or a hook naming a gate that does not exist is a rule nobody enforces. Refusing
+    // here means the doctrine cannot be loaded in a shape that would let the loop run unguarded.
+    for (const [stage, entry] of Object.entries(hooks.stages)) {
+      for (const id of [...entry.before, ...entry.after]) {
+        if (!isGateId(id)) throw doctrineError('DOCTRINE_GATE_UNKNOWN', `hooks/hooks.json stage ${stage}: ${id}`);
+      }
+    }
+    for (const rule of rules.rules) {
+      if (!isGateId(rule.enforcement)) throw doctrineError('DOCTRINE_GATE_UNKNOWN', `rules/rules.json ${rule.id}: ${rule.enforcement}`);
     }
     const loaded: LoadedDoctrine = { root, digest, loop, models, rules, hooks };
     this.cached = { root, digest, loaded };

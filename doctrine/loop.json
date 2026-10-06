@@ -46,6 +46,7 @@
     ]
   },
   "concurrency": {
+    "execution": "sequential",
     "maxParallelDefault": 4,
     "maxParallelCeiling": 8,
     "minFreeMemMb": 512,

@@ -14,6 +14,8 @@ import test from 'node:test';
 import { DoctrineService } from '../src/services/doctrineService';
 import { DoctrineIsolationService } from '../src/services/doctrineIsolationService';
 import { ResourceGovernorService } from '../src/services/resourceGovernorService';
+import { GATE_IDS, type GateId } from '../src/services/gateIds';
+import { assertRegistryComplete, registeredGateIds } from '../src/services/loopGates';
 
 function makeRepo(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loop-doctrine-'));
@@ -225,4 +227,26 @@ test('the governor caps to doctrine and refuses when the host is short', () => {
     else process.env.FACTORY_MAX_PARALLEL = raised;
   }
   assert.equal(ResourceGovernorService.budgets().maxParallelCeiling, budgets.maxParallelCeiling, 'restored');
+});
+
+// The wiring between the rulebook and the code. Three ways it rots silently, each refused here:
+// a hook naming a gate nobody wrote, a rule whose gate no stage ever runs, and a gate that
+// exists but is declared by nothing — which reads as protection and delivers none.
+test('every gate doctrine names is implemented, and every implemented gate is named', () => {
+  const doctrine = DoctrineService.load();
+  const hooked = new Set<string>();
+  for (const entry of Object.values(doctrine.hooks.stages)) {
+    for (const id of entry.before) hooked.add(id);
+    for (const id of entry.after) hooked.add(id);
+  }
+
+  assertRegistryComplete();
+  const unimplemented = [...hooked].filter((id) => !registeredGateIds().includes(id as GateId));
+  assert.deepEqual(unimplemented, [], 'a stage hook has no implementation');
+
+  const neverRun = doctrine.rules.rules.filter((rule) => !hooked.has(rule.enforcement)).map((rule) => rule.id);
+  assert.deepEqual(neverRun, [], 'a rule declares an enforcement gate that no stage executes');
+
+  const orphans = GATE_IDS.filter((id) => !hooked.has(id));
+  assert.deepEqual(orphans, [], 'a gate exists that no stage declares');
 });
