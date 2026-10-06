@@ -21,6 +21,21 @@ All notable architectural and code modifications are documented here.
 - The `local` provider base URL must include `/v1` (Ollama's OpenAI-compatible surface);
   without it calls fail as `MODEL_PROVIDER_INVALID_RESPONSE`.
 
+### Verification commands now run sandboxed under bubblewrap
+
+- **The verify stage's commands execute inside a bwrap container** (`R-14-SANDBOXED-
+  VERIFICATION`), enforced at `groundTruthService.runCommand` — the real execution boundary —
+  not in a proof-adjacent helper. The whole root is read-only; `/home`, `/root`, `/tmp` are
+  fresh tmpfs; the repository is the only writable path; the network is off; the environment is
+  cleared.
+- **Fail-closed**: an unknown backend, a missing `bwrap` binary, or a writableDir that escapes
+  the repo *refuses the command* — it is never run bare. A host without the sandbox cannot
+  produce a "verified" commit.
+- `loop.json:sandbox` (enabled, bwrap, network off) is validated by `parseLoopConfig`; the
+  doctrine manifest was regenerated.
+- The die-resume mid-verify drill now signals through the repo's own `.git/`, because a
+  sandboxed command can no longer touch the host — exactly what the sandbox is for.
+
 ## [4.9.1-live-loop] - 2026-10-06
 
 ### The loop proved against a real model
