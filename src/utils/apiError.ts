@@ -85,6 +85,7 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   QUEUE_JOB_NOT_FOUND: { status: 404, message: 'No such queue job.' },
   REPOSITORY_CONTEXT_NOT_FOUND: { status: 404, message: 'No repository context for this project.' },
   SANDBOX_POLICY_NOT_FOUND: { status: 404, message: 'No such sandbox policy.' },
+  TASK_DOCUMENT_NOT_FOUND: { status: 404, message: 'No such task document.' },
   WORKTREE_NOT_FOUND: { status: 404, message: 'No such worktree.' },
 
   // ── Policy and state preconditions raised by the orchestration services ────
