@@ -122,9 +122,16 @@ async function main(): Promise<number> {
       attemptCap: args.attemptCap,
       resumeRunId: args.resume,
       reportDir: args.reportDir,
+      onStart: (eventsPath) => {
+        // The stream is live from the first gate check; print where to watch it before the run
+        // moves on. JSON callers get the line on stderr so stdout remains a single document.
+        const line = `watch     ${eventsPath}`;
+        if (args.json) process.stderr.write(`${line}\n`);
+        else process.stdout.write(`${line}\n`);
+      },
     });
     if (args.json) process.stdout.write(`${JSON.stringify(outcome.record, null, 2)}\n`);
-    else process.stdout.write(`${summary(outcome.record)}\nreport    ${outcome.reportFiles.markdown}\n`);
+    else process.stdout.write(`${summary(outcome.record)}\nreport    ${outcome.reportFiles.markdown}\nevents    ${outcome.eventsPath}\n`);
     return outcome.exitCode;
   } catch (error) {
     const classified = classifyApiError(error as Error);

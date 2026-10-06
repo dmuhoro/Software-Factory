@@ -68,6 +68,8 @@ export interface LoopEvent {
 export interface LoopRunRecord {
   runId: string;
   status: LoopStatus;
+  /** Live JSONL stream of `events`, written as each event is produced. Since v4.10.0. */
+  eventsPath?: string;
   startedAt: string;
   finishedAt?: string;
   repo: string;

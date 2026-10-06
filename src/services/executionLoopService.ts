@@ -46,11 +46,17 @@ export interface LoopRunOptions {
   reportDir?: string;
   /** Extra environment for the processes this run spawns. */
   env?: Record<string, string>;
+  /** Called the moment the live event stream is opened, so an operator can tail it mid-run. */
+  onStart?: (eventsPath: string) => void;
+  /** Called for every event as it is produced, before it is durable. */
+  onEvent?: (entry: LoopEvent) => void;
 }
 
 export interface LoopRunOutcome {
   record: LoopRunRecord;
   reportFiles: { markdown: string; json: string };
+  /** Absolute path to the live JSONL event stream (`record.eventsPath`). */
+  eventsPath: string;
   /** 0 = every unit committed; 2 = some units are stuck or blocked; 3 = the run halted. */
   exitCode: 0 | 2 | 3;
 }
@@ -213,17 +219,37 @@ export class ExecutionLoopService {
           units,
         });
 
+    // The live stream opens before any work starts: an operator tails this file to tell a run
+    // that is working from one that is stuck, from the very first gate check.
+    const eventsPath = this.openEventStream(record, path.resolve(options.reportDir ?? defaultReportDir()));
+    options.onStart?.(eventsPath);
+
     const persist = (): void => {
       DurableStore.upsert('factoryLoopRuns', record.runId, record as unknown as Record<string, unknown>);
     };
     const event = (level: LoopEvent['level'], stage: LoopEvent['stage'], message: string): void => {
-      record.events.push({ at: iso(), stage, level, message });
+      const entry = { at: iso(), stage, level, message };
+      record.events.push(entry);
+      try {
+        fs.appendFileSync(eventsPath, `${JSON.stringify(entry)}\n`, 'utf8');
+      } catch {
+        // The ledger still carries the event; the stream is a convenience, not the record.
+      }
+      options.onEvent?.(entry);
     };
     const baseContext = (): Omit<GateContext, 'stage' | 'timing'> => ({ repo, isolation, run: record, tenantProviders });
 
     const enterStage = (stage: LoopStage, timing: 'before' | 'after', extra: Partial<GateContext> = {}): GateResult[] => {
       const outcome = runStageGates(stage, timing, { ...baseContext(), ...extra });
       record.gates.push(...outcome.results);
+      const refused = outcome.results.filter((item) => !item.passed);
+      event(
+        refused.length ? 'warn' : 'info',
+        stage,
+        refused.length
+          ? `gate(s) ${refused.map((item) => item.id).join(', ')} refused at ${stage}.${timing}`
+          : `${outcome.results.length} gate(s) passed at ${stage}.${timing}`,
+      );
       persist();
       if (!outcome.ok) {
         const detail = outcome.refusals.map((item) => `${item.id}: ${item.detail}`).join(' | ');
@@ -323,7 +349,7 @@ export class ExecutionLoopService {
 
     const reportFiles = this.writeReport(record, options.reportDir);
     const exitCode: 0 | 2 | 3 = hardStop ? 3 : record.units.some((unit) => unit.status !== 'done') ? 2 : 0;
-    return { record, reportFiles, exitCode };
+    return { record, reportFiles, eventsPath, exitCode };
   }
 
   // ── one unit: its attempts, its rollback, its one commit ─────────────────
@@ -347,6 +373,7 @@ export class ExecutionLoopService {
     const { repo, unit, unitRecord, record, isolation, attemptCap, loop, tenantProviders } = input;
     unitRecord.status = 'running';
     unitRecord.startedAt = unitRecord.startedAt ?? iso();
+    input.event('info', 'run', `unit ${unit.id} started — ${unit.title}`);
     input.persist();
 
     let feedback: string | undefined;
@@ -364,6 +391,7 @@ export class ExecutionLoopService {
         detail: '',
       };
       unitRecord.attempts.push(attempt);
+      input.event('info', 'implement', `unit ${unit.id} attempt ${attempt.attempt}/${attemptCap} starting`);
       const before = treePaths(repo);
       let committed: { sha: string; subject: string } | undefined;
 
@@ -375,6 +403,14 @@ export class ExecutionLoopService {
         const enter = (stage: LoopStage, timing: 'before' | 'after', extra: Partial<GateContext> = {}): void => {
           const outcome = runStageGates(stage, timing, { repo, isolation, run: record, tenantProviders, unit: unitRecord, ...extra });
           record.gates.push(...outcome.results);
+          const refused = outcome.results.filter((item) => !item.passed);
+          input.event(
+            refused.length ? 'warn' : 'info',
+            stage,
+            refused.length
+              ? `gate(s) ${refused.map((item) => item.id).join(', ')} refused at ${stage}.${timing}`
+              : `${outcome.results.length} gate(s) passed at ${stage}.${timing}`,
+          );
           if (!outcome.ok) {
             const detail = outcome.refusals.map((item) => `${item.id}: ${item.detail}`).join(' | ');
             throw new Error(`GATE_REFUSED:${stage}:${outcome.refusals.map((item) => item.id).join(',')}:${detail}`);
@@ -514,6 +550,18 @@ export class ExecutionLoopService {
 
   // ── run record lifecycle ────────────────────────────────────────────────
 
+  /**
+   * Opens the live event stream for the run. Rewrites it with the run's recorded history so a
+   * resumed run appends to the same file an operator was already tailing.
+   */
+  private static openEventStream(record: LoopRunRecord, reportDir: string): string {
+    fs.mkdirSync(reportDir, { recursive: true });
+    const eventsPath = path.join(reportDir, `${record.runId}.events.jsonl`);
+    fs.writeFileSync(eventsPath, record.events.map((entry) => `${JSON.stringify(entry)}\n`).join(''), 'utf8');
+    record.eventsPath = eventsPath;
+    return eventsPath;
+  }
+
   private static fresh(repo: string, documentHash: string, taskDocument: string, input: {
     tenantId: string;
     attemptCap: number;
@@ -624,6 +672,7 @@ function renderReport(record: LoopRunRecord): string {
     `| Started | ${record.startedAt} |`,
     `| Finished | ${record.finishedAt ?? '—'} |`,
     `| Quarantined instruction files | ${record.quarantineCount} |`,
+    `| Event stream | \`${record.eventsPath ?? '—'}\` |`,
     `| Narration claims discarded | ${record.narrationRejected} |`,
     '',
     '## Units',
