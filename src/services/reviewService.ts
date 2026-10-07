@@ -44,8 +44,75 @@ export interface ReviewResult {
 /** How much of the working-tree diff a reviewer sees. Bounded, like every other model input. */
 const MAX_DIFF_CHARS = 60_000;
 
+/** Cap on the whole architecture brief so a large repo cannot drown the review. */
+const MAX_ARCHITECTURE_CHARS = 8_000;
+
 function fail(code: string, detail?: string): Error {
   return new Error(detail ? `${code}:${detail}` : code);
+}
+
+/**
+ * A bounded read of the target repository's *stated* architecture: language manifests, entry
+ * points, and the top-level module inventory. This is ground truth drawn from files git tracks —
+ * never the implementer's word and never the reviewer's guess — so the reviewer can judge whether
+ * a change honours the structure it is pretending to be. Truncation is stated, never silent.
+ */
+export function repoArchitectureBrief(repo: string): { text: string; truncated: boolean } {
+  let listing = '';
+  try {
+    listing = execFileSync('git', ['-C', repo, 'ls-files'], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      maxBuffer: 8_000_000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch {
+    return { text: '(the repository inventory could not be read from git)', truncated: false };
+  }
+  const files = listing.replace(/\s+$/, '').split('\n').filter(Boolean);
+
+  const topLevel = new Map<string, number>();
+  for (const rel of files) {
+    const entry = rel.split('/')[0];
+    topLevel.set(entry, (topLevel.get(entry) ?? 0) + 1);
+  }
+  const inventory = [...topLevel.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([dir, count]) => `${dir} (${count})`)
+    .join('\n');
+
+  const manifests = files.filter((rel) => /^(package\.json|pyproject\.toml|go\.mod|Cargo\.toml|composer\.json|Gemfile|README|README\.md|tsconfig\.json)$/i.test(rel));
+  const manifestLines: string[] = [];
+  const MAX_MANIFEST_LINES = 40;
+  for (const rel of manifests.slice(0, 3)) {
+    try {
+      const content = fs.readFileSync(path.join(repo, rel), 'utf8').split('\n');
+      const shown = content.slice(0, MAX_MANIFEST_LINES);
+      manifestLines.push(`--- ${rel} (${content.length} lines)\n${shown.join('\n')}${content.length > MAX_MANIFEST_LINES ? `\n[... ${content.length - MAX_MANIFEST_LINES} more lines omitted]` : ''}`);
+    } catch {
+      // an unreadable manifest is skipped, not fabricated
+    }
+  }
+
+  const commandFiles = files.filter((rel) => /^(bin|scripts|src)\/.*\.(ts|js|mjs|cjs|py|go|rs|rb)$/i.test(rel)).slice(0, 60);
+  const entryBlock = commandFiles.length
+    ? `Source / command files (first ${Math.min(commandFiles.length, 60)}):\n${commandFiles.join('\n')}`
+    : '(no obvious source/command tree in this repository)';
+
+  const text = [
+    `Tracked files: ${files.length}`,
+    '',
+    'Top-level structure (directory, tracked count):',
+    inventory || '(empty repository)',
+    '',
+    'Manifest excerpts (the repository\'s own stated dependencies and scripts):',
+    manifestLines.length ? manifestLines.join('\n\n') : '(no recognized manifest)',
+    '',
+    entryBlock,
+  ].join('\n');
+
+  const truncated = text.length > MAX_ARCHITECTURE_CHARS;
+  return { text: truncated ? `${text.slice(0, MAX_ARCHITECTURE_CHARS)}\n[... architecture brief truncated at ${MAX_ARCHITECTURE_CHARS} characters]` : text, truncated };
 }
 
 /** The diff an attempt produced, bounded and with its size stated so truncation is not silent. */
@@ -127,10 +194,14 @@ const REVIEW_SYSTEM = (doctrineLines: string[], role: string): string => {
     'Reject — with precise, actionable findings — when any of these is true:',
     '- a criterion is met only by the test itself (e.g. the check reads the file the implementer wrote, rather than asserting real behaviour);',
     '- the change adds code that no criterion requests, or touches files unrelated to the unit;',
+    '- the change contradicts the repository\'s stated architecture — its inventory, manifests, or module boundaries — without the task document asking for that restructuring;',
     '- the diff would break other callers, states, or platforms the inventory shows exist;',
     '- verification was gamed, skipped, or narrated instead of executed;',
     '- credentials, keys, or environment secrets appear in the diff;',
     '- the change is a stub, a mock, a hardcoded answer, or a placeholder that cannot be trusted in production.',
+    '',
+    'The repository architecture brief in the task is ground truth from the repository itself:',
+    'use it to judge whether the change fits the structure it is pretending to be.',
     '',
     'Findings must name the exact file and line or behaviour they refer to. A rejection with no',
     'findings is refused: the next attempt needs to know what to fix.',
@@ -148,6 +219,7 @@ export function buildReviewPrompts(request: ReviewRequest): { system: string; ta
   const { unit, document } = request;
   const criteria = unit.criteria.map((criterion) => `- ${criterion.id}: ${criterion.text}${criterion.check ? ` (check: ${criterion.check})` : ''}`).join('\n');
   const diff = attemptDiff(request.repo);
+  const architecture = repoArchitectureBrief(request.repo);
 
   const task = [
     `Task document: ${document.title}`,
@@ -162,6 +234,10 @@ export function buildReviewPrompts(request: ReviewRequest): { system: string; ta
     'Verification evidence recorded for this attempt (command, exit code, digest):',
     evidenceLines(request.proof),
     '',
+    'Repository architecture (from the tracked inventory and manifests — use it to judge intent):',
+    '---',
+    architecture.text || '(no architecture could be read for this repository)',
+    '---',
     `Working-tree diff vs HEAD (${diff.truncated ? `truncated at ${MAX_DIFF_CHARS} characters` : 'complete'}):`,
     '---',
     diff.text || '(empty — no diff was produced)',
