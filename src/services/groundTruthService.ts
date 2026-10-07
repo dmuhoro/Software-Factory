@@ -146,13 +146,18 @@ function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, 
     '--unshare-user-try', '--unshare-pid', '--unshare-ipc', '--unshare-uts', '--unshare-cgroup',
     ...(sandbox.enableNetwork ? [] : ['--unshare-net']),
     '--die-with-parent', '--new-session',
-    '--dev', '/dev',
-    '--proc', '/proc',
+    // The container root, read-only. Must stay BEFORE the fresh /proc and /dev mounts
+    // below: bubblewrap applies mounts in order and the last mount at a path wins. If the
+    // ro-bind of `/` comes last it shadows the fresh procfs with the host's read-only
+    // /proc, which would expose the entire host process table (and their cmdlines) to a
+    // verification command. The fixed order exposes only the container's own processes.
     '--ro-bind', '/', '/',
     '--tmpfs', '/tmp',
     '--tmpfs', '/run',
     '--tmpfs', '/home',
     '--tmpfs', '/root',
+    '--dev', '/dev',
+    '--proc', '/proc',
   ];
 
   for (const relative of sandbox.writableDirs ?? []) {
