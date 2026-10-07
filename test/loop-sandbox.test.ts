@@ -142,3 +142,83 @@ test('the doctrine ships a sandbox block that is enabled and bwrap-backed', asyn
   assert.equal(sandboxConfig.backend, 'bwrap');
   assert.equal(sandboxConfig.enableNetwork, false, 'the default is no network');
 });
+
+test('break-out: the sandbox sees only its own processes, never the host process table', () => {
+  const { repo, cleanup } = makeRepo();
+  try {
+    const result = commandResult(repo, 'ls /proc | grep -cE "^[0-9]+$"; cat /proc/1/comm; readlink /proc/1/root', sandbox());
+    assert.equal(result.exitCode, 0, result.output);
+    const [count, pid1Comm, pid1Root] = result.output.split('\n').map((s) => s.trim());
+    // A fresh procfs for one verification command shows a handful of the container's own pids.
+    // The host here shows 400+; if the host /proc were bound instead of a fresh procfs the count
+    // would be that number and pid 1 would be the host init.
+    assert.ok(Number(count) <= 10, `the container must see its own pids only (saw ${count}): ${result.output}`);
+    assert.ok(pid1Comm === 'bwrap' || pid1Comm === 'sh', `pid 1 must be the container's own init (was ${pid1Comm}): ${result.output}`);
+    assert.equal(pid1Root, '/', 'pid 1 root must resolve inside the container, not the host');
+  } finally {
+    cleanup();
+  }
+});
+
+test('break-out: a same-user host process is invisible, so its env and cwd cannot be read through /proc', async () => {
+  const { repo, cleanup } = makeRepo();
+  const secretDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-host-secret-'));
+  let markerPid = 0;
+  try {
+    const secretPath = path.join(secretDir, 'host-secret.txt');
+    fs.writeFileSync(secretPath, 'this-is-the-host-secret\n');
+    // A long-lived host process running as the same user, with its cwd in a dir that holds a
+    // secret file. On the host we can read that file through /proc/<pid>/cwd and /proc/<pid>/root.
+    const { spawn, execFileSync: execFileSyncHost } = await import('node:child_process');
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000);'], { cwd: secretDir, stdio: 'ignore', env: { ...process.env, SF_HOST_SENTINEL: 'env-secret-value' } });
+    markerPid = child.pid ?? 0;
+    // wait for the process to exist and shed its cwd reference
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    execFileSyncHost('kill', ['-0', String(markerPid)]);
+    const probe = commandResult(
+      repo,
+      `test -e /proc/${markerPid} && echo "HOST_PROC_VISIBLE" || echo "HOST_PROC_HIDDEN"; test -e /proc/${markerPid}/environ && echo "ENV_REACHABLE" || echo "ENV_HIDDEN"; test -e /proc/${markerPid}/cwd && echo "CWD_VISIBLE" || echo "CWD_HIDDEN"`,
+      sandbox(),
+    );
+    assert.equal(probe.exitCode, 0, probe.output);
+    assert.match(probe.output, /HOST_PROC_HIDDEN/, `the host marker process (pid ${markerPid}) must not appear in the container's /proc: ${probe.output}`);
+    assert.match(probe.output, /ENV_HIDDEN/, `the host process environment must not be reachable from the sandbox: ${probe.output}`);
+    assert.match(probe.output, /CWD_HIDDEN/, `the host process cwd must not be reachable from the sandbox: ${probe.output}`);
+  } finally {
+    if (markerPid) try { process.kill(markerPid, 'SIGKILL'); } catch { /* already gone */ }
+    fs.rmSync(secretDir, { recursive: true, force: true });
+    cleanup();
+  }
+});
+
+test('break-out: a symlink in the repo cannot redirect a write to the host read-only mount', () => {
+  const { repo, cleanup } = makeRepo();
+  try {
+    // The container root is a ro-bind of the host, so its /var is host /var mounted read-only.
+    // A verification command runs in / (well, cwd=repo); a repo-owned symlink that points at
+    // /var cannot be used to write outside the quarantine.
+    fs.symlinkSync('/var', path.join(repo, 'escape'));
+    const result = commandResult(repo, `node -e "const fs=require('node:fs');try{fs.writeFileSync('escape/sf-host-write','x');console.log('WROTE')}catch(e){console.log(e.code||e.message)}"`, sandbox());
+    assert.equal(result.exitCode, 0, 'node must run and report the refusal');
+    assert.match(result.output, /EROFS|EACCES|read-only|permission/i, `the write must be refused by the sandbox, not land through the symlink (got: ${result.output})`);
+    assert.equal(fs.existsSync('/var/sf-host-write'), false, 'nothing may be written into the host /var through a repo symlink');
+    assert.equal(fs.existsSync(path.join(repo, 'escape')), true, 'the symlink inside the repo stays a symlink; only its target is protected');
+  } finally {
+    cleanup();
+    if (fs.existsSync('/var/sf-host-write')) fs.rmSync('/var/sf-host-write', { force: true });
+  }
+});
+
+test('break-out: /proc/self/root resolves to the container root, never the host', () => {
+  const { repo, cleanup } = makeRepo();
+  const marker = path.join(os.tmpdir(), `sf-root-escape-${process.pid}-${Date.now()}`);
+  try {
+    fs.writeFileSync(marker, 'host-only\n');
+    const result = commandResult(repo, `node -e "const fs=require('node:fs');try{fs.accessSync('/proc/self/root${marker}');console.log('HOST_REACHABLE')}catch{console.log('CONTAINED')}"`, sandbox());
+    assert.equal(result.exitCode, 0, result.output);
+    assert.match(result.output, /CONTAINED/, `/proc/self/root must not reach the host filesystem: ${result.output}`);
+  } finally {
+    fs.rmSync(marker, { force: true });
+    cleanup();
+  }
+});
