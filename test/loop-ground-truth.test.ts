@@ -336,3 +336,45 @@ test('doctrine path patterns match the way gitignore does, including at the root
   assert.equal(pathMatchesPattern('src/a/b.ts', 'src/**/b.ts'), true, '** crosses directories');
   assert.equal(slugify('Add The Audit Page!', 40), 'add-the-audit-page');
 });
+
+test('a comment that names a value the annotated code does not use is refused', () => {
+  const { repo, cleanup } = makeRepo();
+  try {
+    // The real sprint 22 case: the loop's M2 commit put a comment claiming the empty string
+    // directly above `tenantId: 'default'`. Verify greps and the reviewer both passed it.
+    const baseline = "export const registry = {\n  tenantId: 'x',\n};\n";
+    fs.writeFileSync(path.join(repo, 'registry.ts'), baseline);
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-qm', 'registry baseline']);
+
+    fs.writeFileSync(path.join(repo, 'registry.ts'),
+      "export const registry = {\n  // Register the provider for the empty string (platform_operator)\n  tenantId: 'default',\n};\n");
+    const proof = collectGroundTruth({ repo, claimedFiles: ['registry.ts'], requireNonEmptyDiff: true, timeoutMs: 30_000 });
+    const check = proof.checks.find((item) => item.id === 'diff:comment-claim');
+    assert.ok(check, 'the comment-claim check must exist');
+    assert.equal(check.passed, false, `the false comment must be refused; outputTail was: ${check.outputTail ?? '(none)'}`);
+    assert.match(check.outputTail ?? '', /registry\.ts:\d+/);
+    assert.equal(proof.passed, false, 'a false comment fails the whole proof');
+  } finally {
+    cleanup();
+  }
+});
+
+test('a comment whose named value matches the annotated code passes', () => {
+  const { repo, cleanup } = makeRepo();
+  try {
+    const baseline = "export const registry = {\n  tenantId: 'x',\n};\n";
+    fs.writeFileSync(path.join(repo, 'registry.ts'), baseline);
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-qm', 'registry baseline']);
+
+    fs.writeFileSync(path.join(repo, 'registry.ts'),
+      "export const registry = {\n  // Register the same provider for the 'default' tenant\n  tenantId: 'default',\n};\n");
+    const proof = collectGroundTruth({ repo, claimedFiles: ['registry.ts'], requireNonEmptyDiff: true, timeoutMs: 30_000 });
+    const check = proof.checks.find((item) => item.id === 'diff:comment-claim');
+    assert.ok(check, 'the comment-claim check must exist');
+    assert.equal(check.passed, true, `a true comment must pass; outputTail was: ${check.outputTail ?? '(none)'}`);
+  } finally {
+    cleanup();
+  }
+});
