@@ -4,6 +4,7 @@ import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsolationService';
 import { ResourceGovernorService } from './resourceGovernorService';
 import type { GroundTruthProof } from './groundTruthService';
+import { extractLocators } from './groundTruthService';
 import { stageAndScanSecrets } from './commitService';
 import { detectVerificationProfile } from './verificationProfileService';
 import { isGitRepository } from '../utils/pathGuard';
@@ -141,13 +142,18 @@ const REGISTRY: Record<GateId, GateFn> = {
     const failed = proof.checks.filter((check) => !check.passed);
     if (!commands.length) return { passed: false, detail: 'no command was executed, so nothing is verified (narration is not evidence)' };
     if (!proof.passed) {
-      // Command failures are named by id and exit code only — their tails run to thousands of
-      // characters. A failed diff check is different: its outputTail is the whole reason
-      // (file, line, finding), and dropping it would refuse the attempt without telling the
-      // next attempt what to fix.
-      const detail = failed.map((check) => check.kind === 'command' || !check.outputTail
-        ? `${check.id} exit ${check.exitCode}`
-        : `${check.id} exit ${check.exitCode}: ${check.outputTail.slice(0, 600)}`).join('; ');
+      // Command failures used to be named by id and exit code only — their tails run to
+      // thousands of characters. A failed diff check is different: its outputTail is the whole
+      // reason (file, line, finding), and its detail already carries the tail. A failed command
+      // now carries only the output's `file:line` locators — the first thing a human reads —
+      // so the refusal names where to look instead of an exit code alone.
+      const detail = failed.map((check) => {
+        const head = `${check.id} exit ${check.exitCode}`;
+        if (check.kind !== 'command') return check.outputTail ? `${head}: ${check.outputTail.slice(0, 600)}` : head;
+        if (!check.outputTail) return head;
+        const locators = extractLocators(check.outputTail);
+        return locators.length ? `${head}: ${locators.join(' | ')}` : head;
+      }).join('; ');
       return { passed: false, detail };
     }
     return { passed: true, detail: `${commands.length} command(s) exited 0; ${proof.rejectedNarration.length} narration claim(s) discarded` };

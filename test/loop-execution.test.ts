@@ -547,3 +547,27 @@ verify: node check-eof.cjs
     assert.equal(porcelain(root), '', 'the preserved run still leaves a clean tree');
   });
 });
+
+test('a failed verify command reaches the next attempt with its file:line locator', async () => {
+  const repo = makeTarget('locator');
+  // The command fails the way a compiler or linter does: with a file:line in its output. The
+  // refusal must carry that locator, not only the exit code, or the next attempt is told to
+  // fix something without being told where.
+  const task = writeTask('locator', [
+    '### M1: Feature alpha',
+    'type: feat',
+    `verify: node -e "console.log('src/feature-a.ts:3:5: error: missing alpha'); process.exit(1)"`,
+    '- [ ] feature-a.txt exists and contains alpha',
+    '',
+  ].join('\n'));
+
+  await withStub(() => ({ files: [{ path: 'feature-a.txt', content: 'alpha\n' }] }), async () => {
+    const { record } = await ExecutionLoopService.run({ repo, taskDocument: task, tenantId: TENANT });
+    const failed = record.units.find((unit) => unit.unitId === 'M1')!;
+    assert.equal(failed.status, 'stuck');
+    const first = failed.attempts[0];
+    assert.equal(first.stage, 'verify');
+    assert.match(first.detail, /cmd:unit-M1 exit 1/, 'the command and its exit code are still named');
+    assert.match(first.detail, /src\/feature-a\.ts:3:5/, `the refusal did not name the failing location: ${first.detail}`);
+  });
+});
