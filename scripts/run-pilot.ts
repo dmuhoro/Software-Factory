@@ -16,7 +16,7 @@ import path from 'path';
 
   // Run the factory loop against Daftari with the pilot task document
   const daftariPath = path.resolve('..', 'Daftari');
-  const taskPath = '/tmp/opencode/daftari-pilot-task.md';
+  const taskPath = path.resolve('tasks', 'daftari-pilot-toast-i18n.md');
   const cmd = ['scripts/run-factory-loop.ts', '--repo', daftariPath, '--task', taskPath];
   console.log('Executing loop:', cmd.join(' '));
   try {
