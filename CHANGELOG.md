@@ -4,6 +4,45 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-07
 
+### 4.11.0 - 2026-10-07
+
+- **All five sprint-22 open findings closed, each with a failing-first test and a replay against
+  the real artifact it came from.**
+  - **Opaque exit-1 refusals → named codes** (commit `3fbabf2`): 35 message-only domain errors now
+    carry a code. A refusal that reached a terminal as a bare sentence is now
+    `SOMETHING_NAMED`. Test `test/l3-error-contract.test.ts` scans every throw form.
+  - **Command feedback carries file:line** (commit `98bebdf`): a failed verification command's
+    `outputTail` is mined for file/line (`extractLocators`) and appended to the next attempt's
+    refusal, so the model is told where to look.
+  - **`diff:comment-claim`** (commit `22e4c81`): an added comment must not name a value the line it
+    annotates does not use. Replayed against Daftari `0dfec9c`'s false `tenantId: ''` comment,
+    refused at `scripts/run-pilot.ts:22` with `proof.passed=false`.
+  - **`no-op-unit`** (commit `3d24567`): a unit whose own verification command already exits 0 on
+    the starting tree is refused once, before the model is dialled, instead of burning the attempt
+    cap. The loop treats it as terminal. Replayed against the vacuous Daftari M2.
+  - **`SANDBOX_TOOLCHAIN_HIDDEN`** (commit `1eb653b`): a sandboxed command that exits 127 because
+    the sandbox masked its toolchain (the `/home`-hidden `npm` from the first self-dogfood run) is
+    named at the boundary that observed it and treated as terminal. Replayed with the exact
+    pre-remediation M1 verify command from `30a1bf5`.
+- **Adversarial review's true scope documented** (`docs/ADVERSARIAL_REVIEW_SCOPE.md`, commit
+  `8152ff0`): what the reviewer reads, its seven rejection rules, and an explicit statement of
+  what it is **not** — not a security audit, not a correctness proof, not independent verification
+  (same model family possible), probabilistic, and truncated at 60,000 diff characters.
+- **Die-and-resume drill, live:** run `looprun_875b855f07096ade7d02c68d` was SIGKILLed between
+  `verify.before` and `verify.after` (no commit, one untracked path), then resumed with
+  `--resume` — the run restored the interrupted path to its last committed state and produced
+  exactly one commit (`7d53719cff8b`), status COMPLETED, 25 gates, 0 refused. A first, accidental
+  drill run (`looprun_3a8160da31a7d5884bdd6fd9`) additionally proved the reviewer refuses an
+  unrelated-file change: it refused an untracked `verify-ran` residue on all three attempts.
+- **Real throughput batch on Daftari:** run `looprun_e8c12bcd603a16fe1dd9d02c68d`, task
+  `tasks/daftari-throughput-i18n-batch.md` — 4 independent real i18n units, **4/4 committed on
+  attempt 1**, 66 gates executed, 0 refused, 217.6s wall (54.4s/unit, ≈66 units/hour) on a local
+  `gpt-oss:20b-cloud`. Daftari HEAD `a2457dbe`; `check-i18n` (430/430 keys) and `tsc --noEmit`
+  both green.
+- README updated to name only proven capabilities and to link the review scope document.
+- Release 4.11.0: version bump 4.10.3 → 4.11.0, this CHANGELOG entry, annotated tag `v4.11.0`;
+  full suite and lint green.
+
 ### 4.10.3 - 2026-10-07
 
 - **New ground-truth check `diff:escape-mangling`** (commit `f5e170d`): the throughput day's survey found exactly one corruption in every loop commit — Daftari run `looprun_baabd8f138d822bca628cb29` fused two JSX lines of `ProductCatalogScreen.tsx` with a literal two-character `\n` while every command, `diff:whitespace`, and the reviewer all passed. The check compares each changed file against its `git show HEAD:` baseline and fails when a literal escape's two sides appear in HEAD separated by a real line break; verbatim-reproduced lines and files without a HEAD baseline are out of scope and named honestly. TDD: both new tests failed with the check absent (11/13), pass with it, suite 211/211. Replayed against the real corruption: refused at `ProductCatalogScreen.tsx:261` with `proof.passed=false`; the remediated content passes. Live proof of the feedback loop: the dogfood's attempt 1 carried `diff:whitespace ... scripts/seed-local-ollama.ts:22: trailing whitespace` into attempt 2, which shipped clean.
