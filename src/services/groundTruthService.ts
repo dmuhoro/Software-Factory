@@ -24,6 +24,7 @@ export type CheckId =
   | 'diff:claimed'
   | 'diff:whitespace'
   | 'diff:escape-mangling'
+  | 'diff:comment-claim'
   | `cmd:${string}`;
 
 export interface GroundTruthCheck {
@@ -204,6 +205,79 @@ function check(id: string, kind: CheckKind, exitCode: number, extra: Partial<Gro
 }
 
 /**
+ * Finding (c) of sprint 22: comment truth was outside every gate. The loop's M2 commit put a
+ * comment claiming the empty string directly above `tenantId: 'default'`; the greps check code,
+ * the reviewer checks intent, and nobody checked the comment. Operator remediation f32dde2.
+ *
+ * This is not a natural-language claim verifier, and it does not pretend to be one. It is one
+ * mechanical falsity: a comment this change *added* that names a value — a quoted literal or
+ * the words "empty string" — where the next code lines below it use a string literal and none
+ * of them equals the named value. Scope is stated in the pass output: only comments added by
+ * this change are judged, and only files with a HEAD baseline are examined.
+ */
+const COMMENT_LINE = /^\s*(\/\/|#|\/\*|\*|--|<!--)/;
+
+function literalsIn(text: string): string[] {
+  const values: string[] = [];
+  for (const match of text.matchAll(/'([^'\n]*)'|"([^"\n]*)"|`([^`\n]*)`/g)) {
+    values.push(match[1] ?? match[2] ?? match[3] ?? '');
+  }
+  return values;
+}
+
+function commentClaimFindings(repo: string, observed: string[]): { findings: string[]; commentsChecked: number } {
+  const findings: string[] = [];
+  let commentsChecked = 0;
+  for (const relative of observed) {
+    const diff = git(repo, ['diff', '--no-color', '--unified=0', 'HEAD', '--', relative]);
+    if (diff.code !== 0 || !diff.out.trim()) continue;
+    // Only comments this change *added* are judged; a pre-existing comment is not this
+    // run's claim. The annotated line is read from the working tree, because a false
+    // comment is usually added next to code that already existed — the real M2 case was a
+    // one-line comment change above an unchanged `tenantId: 'default'`.
+    const addedComments: number[] = [];
+    let newLine = 0;
+    for (const raw of diff.out.split('\n')) {
+      const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+      if (hunk) { newLine = Number(hunk[1]); continue; }
+      if (raw.startsWith('+++') || raw.startsWith('---')) continue;
+      if (raw.startsWith('+')) { if (COMMENT_LINE.test(raw.slice(1))) addedComments.push(newLine); newLine += 1; continue; }
+      if (raw.startsWith(' ')) { newLine += 1; continue; }
+    }
+    if (addedComments.length === 0) continue;
+    let lines: string[];
+    try {
+      lines = fs.readFileSync(path.join(repo, relative), 'utf8').split(/\r?\n/);
+    } catch {
+      continue;
+    }
+    for (const lineNo of addedComments) {
+      const comment = lines[lineNo - 1] ?? '';
+      commentsChecked += 1;
+      const claimed = new Set<string>(literalsIn(comment));
+      if (/empty[-\s]?string/i.test(comment)) claimed.add('');
+      if (!claimed.size) continue;
+      let codeLine: string | undefined;
+      let scanned = 0;
+      for (let index = lineNo; index < lines.length && scanned < 3; index += 1) {
+        const text = lines[index];
+        if (!text.trim() || COMMENT_LINE.test(text)) continue;
+        scanned += 1;
+        if (literalsIn(text).length > 0) { codeLine = text; break; }
+      }
+      if (codeLine === undefined) continue;
+      const actual = literalsIn(codeLine);
+      if ([...claimed].some((value) => actual.includes(value))) continue;
+      const said = [...claimed].map((value) => (value === '' ? 'the empty string' : JSON.stringify(value))).join(' or ');
+      const used = actual.map((value) => (value === '' ? "''" : JSON.stringify(value))).join(', ') || 'no string literal';
+      findings.push(`${relative}:${lineNo}: the comment names ${said}, but the annotated line uses ${used}`);
+      if (findings.length >= 20) return { findings, commentsChecked };
+    }
+  }
+  return { findings, commentsChecked };
+}
+
+/**
  * Finds the corruption a re-emitting model produces: two HEAD lines fused into one by a
  * literal backslash-n (or backslash-r) escape instead of a real newline.
  *
@@ -302,6 +376,13 @@ export function collectGroundTruth(request: GroundTruthRequest): GroundTruthProo
     outputTail: mangling.findings.length
       ? mangling.findings.join('\n').slice(0, 4000)
       : `no literal escape reconstructs a real line break HEAD holds; ${mangling.compared} changed file(s) with a HEAD baseline compared`,
+  }));
+
+  const claims = commentClaimFindings(repo, observed);
+  checks.push(check('diff:comment-claim', 'diff', claims.findings.length ? 1 : 0, {
+    outputTail: claims.findings.length
+      ? claims.findings.join('\n').slice(0, 4000)
+      : `no added comment names a value its annotated line does not use; ${claims.commentsChecked} comment(s) examined, files with no HEAD baseline not judged`,
   }));
 
   for (const step of request.commands ?? []) {
