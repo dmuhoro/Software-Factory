@@ -2,7 +2,13 @@
 
 All notable architectural and code modifications are documented here.
 
-## [Unreleased] - 2026-10-06
+## [Unreleased] - 2026-10-07
+
+### 4.10.1 - 2026-10-07
+
+- Removed the fake `--kill-at` drill scaffolding shipped in 4.10.0: it threw synthetic `GATE_REFUSED:killed-at-gate` / `COMMIT_KILL:recorded` errors before a run record existed, so every `--resume` path died with `LOOP_RUN_NOT_FOUND`. Deleted its bogus test (`test/die-resume-drill.test.ts`).
+- Fixed a crash that killed every CLI-run child on its first event: the JSONL `onEvent` handler called `process.stdout.flush()`, which does not exist on a Node `Writable`. The die-and-resume drill therefore hung waiting for a model request that never came once the child died. Removed the invalid call; the live event stream now works.
+- Real kill evidence is `test/loop-die-resume.test.ts` (genuine SIGKILL of detached process groups at three kill points plus dangling-commit reconciliation): 4/4 passing. Full suite 197/197, `npm run lint` clean.
 
 ### 4.10.0 - 2026-10-06
 
