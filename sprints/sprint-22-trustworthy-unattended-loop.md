@@ -187,6 +187,19 @@ What the run burned to get there — every refusal earned its keep:
    'default'`. The greps check code, not comments; the reviewer checks intent, not
    comment truth. Operator remediation `f32dde2`.
 
+### Second Daftari unit: the gate on the corruption-prone surface
+
+Run `looprun_d2cd0d0263cbe10f95d38a9c` (task `tasks/daftari-throughput-admin-refresh.md`)
+localized the admin screen's `aria-label="Refresh"` → `{t('refresh')}`: **1/1 committed,
+attempt 1, 20 gates executed, 0 refused**, commit `3c277d7146e6` on Daftari with full
+provenance (`loop=software-factory/4.10.3`). The diff is surgical — import, hook, label,
+nothing else — after M1's scope-bleed the task carried an explicit stay-in-scope
+constraint, and the reviewer approved nothing more than the criterion. Its
+`Ground truth: 6/6 checks passed` includes `diff:escape-mangling` running for real
+against a freshly re-emitted 302-line file — the exact surface class that corrupted
+`0dfec9c` — and passing. Daftari HEAD after the run: eslint 0, `tsc --noEmit` 0, all
+725 tests green.
+
 ### Open findings (surfaced, not fixed in this sprint)
 
 1. **Exit-1 refusals are opaque to cron/CI**: codes that are not in `apiError`'s table
@@ -223,4 +236,5 @@ What the run burned to get there — every refusal earned its keep:
 - [x] L7 escape‑mangling ground‑truth gate with actionable refusal detail, TDD and replay‑proven against Daftari's real corruption – done. Commits `f5e170d` (gate), `6f3fdb0` (EOF‑newline writer fix).
 - [x] L7 Daftari throughput day – done: run `looprun_baabd8f138d822bca628cb29` → real commit `0dfec9c`, corruption surveyed and remediated at `01c845f`, M2‑vacuous recorded honestly.
 - [x] L7 Software Factory self‑hosted run – done: run `looprun_cd5b2f682f3ca0f7c99ab731`, **2/2 units committed (`3aa864f`, `c5d6a47`), attempt 1, 34 gates, 0 refused, exit 0**; environment and comment remediations `30a1bf5`, `d41f329`, `f32dde2`.
-- [x] L7 release 4.10.3 (version bump, CHANGELOG, annotated tag, push) – done (tag `v4.10.3`)
+- [x] L7 release 4.10.3 (version bump, CHANGELOG, annotated tag, push) – done (tag `v4.10.3`, remote ref `17dd6c8` verified)
+- [x] L7 second Daftari throughput unit – done: run `looprun_d2cd0d0263cbe10f95d38a9c` → commit `3c277d7146e6` on attempt 1, 20 gates, 0 refused; `diff:escape-mangling` exercised live on a 302-line file; Daftari suite 725/725 + typecheck + eslint green. Task `tasks/daftari-throughput-admin-refresh.md`.
