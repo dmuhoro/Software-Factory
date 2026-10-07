@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Software Factory — Public Evidence</title>
+<meta name="description" content="Evidence for Software Factory's unattended delivery loop: what it proves, how it refuses, and what it does not yet do.">
+<style>
+  :root { --ink:#1a1a1a; --muted:#5a5a5a; --line:#e3e3e3; --bg:#fbfbf9; --accent:#1c5d3a; --bad:#9a2b2b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  main { max-width:820px; margin:0 auto; padding:56px 20px 96px; }
+  h1 { font-size:26px; margin:0 0 4px; letter-spacing:-0.01em; }
+  h2 { font-size:17px; margin:40px 0 12px; border-bottom:1px solid var(--line); padding-bottom:6px; }
+  p, li { color:var(--ink); }
+  .sub { color:var(--muted); margin:0 0 28px; }
+  code { background:#f0efe9; padding:1px 5px; border-radius:3px; font-size:13px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin:8px 0; }
+  th,td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  .ok { color:var(--accent); font-weight:600; }
+  .no { color:var(--bad); font-weight:600; }
+  ul { padding-left:20px; }
+  .limits li { margin-bottom:6px; }
+  footer { margin-top:48px; color:var(--muted); font-size:12px; border-top:1px solid var(--line); padding-top:14px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Software Factory</h1>
+  <p class="sub">A durable product-manufacturing workspace — and the evidence for its unattended delivery loop. Nothing here is a promise; each claim names the run or the command that demonstrates it.</p>
+
+  <h2>The unattended loop</h2>
+  <p>One task document in; the loop runs <code>PLAN → IMPLEMENT → VERIFY → REVIEW → COMMIT → REPORT</code> for every unit, without asking anything, until each unit is committed, stuck, or a hard stop is reached. A unit is complete only when its verification command <em>ran</em> and exited 0 — never because a model said so.</p>
+  <table>
+    <tr><th>Exit code</th><th>Meaning</th></tr>
+    <tr><td>0</td><td>every unit committed under a command that exited 0</td></tr>
+    <tr><td>1</td><td>the run refused to start (dirty tree, bad document, doctrine drift)</td></tr>
+    <tr><td>2</td><td>finished, with at least one unit STUCK or BLOCKED</td></tr>
+    <tr><td>3</td><td>halted at a hard stop (wall clock, attempts, commits, resources)</td></tr>
+  </table>
+
+  <h2>How it refuses</h2>
+  <ul>
+    <li><strong>The rulebook is outside the target and pinned by hash.</strong> A doctrine that no longer matches <code>doctrine/manifest.json</code> is refused before any work starts.</li>
+    <li><strong>A unit that cannot fail its own check is a no-op.</strong> <code>no-op-unit</code> refuses a unit whose verification already exits 0 on the starting tree — once, before the model is dialled.</li>
+    <li><strong>A hidden toolchain is named, not retried.</strong> A sandboxed command that exits 127 because the sandbox masked its toolchain reports <code>SANDBOX_TOOLCHAIN_HIDDEN</code> and stops instead of burning the attempt cap.</li>
+    <li><strong>A comment may not lie about its code.</strong> <code>diff:comment-claim</code> refuses a comment naming a value the line it annotates does not use.</li>
+    <li><strong>A failed command reaches the next attempt with its file:line</strong>, so the model is told where to look.</li>
+    <li><strong>Refusals are named.</strong> Every message-only domain error carries a machine-readable code.</li>
+  </ul>
+
+  <h2>Real runs</h2>
+  <table>
+    <tr><th>What</th><th>Run / result</th></tr>
+    <tr><td>Software Factory runs the loop on itself</td><td><span class="ok">2 / 2</span> committed on attempt 1 — <code>looprun_cd5b2f682f3ca0f7c99ab731</code></td></tr>
+    <tr><td>Real i18n batch on Daftari (4 independent units)</td><td class="ok">4 / 4 committed, all first attempt · 66 gates, 0 refused · 217.6s (54.4s/unit)</td></tr>
+    <tr><td>Die-and-resume drill</td><td>SIGKILLed mid-verification, resumed to exactly one commit — <code>looprun_875b855f07096ade7d02c68d</code></td></tr>
+    <tr><td>Reviewer refuses an unrelated-file change</td><td class="no">3/3 refused</td></tr>
+  </table>
+
+  <h2>Verification</h2>
+  <ul>
+    <li>Full test suite: <span class="ok">219 / 219</span> passing; TypeScript check clean.</li>
+    <li>Doctrine manifest pinned and verified (<code>doctrine:manifest --check</code>).</li>
+    <li>The reviewer's real scope — including its limits — is documented, not implied:
+      <a href="https://github.com/dmuhoro/Software-Factory/blob/main/docs/ADVERSARIAL_REVIEW_SCOPE.md">Adversarial Review — True Scope</a>.</li>
+  </ul>
+
+  <h2>Known limits</h2>
+  <ul class="limits">
+    <li>The reviewer is an LLM: not a security audit, not a correctness proof, not independent of the implementer, and it reads at most 60,000 characters of diff.</li>
+    <li>The TypeScript ledger is single-writer; replicas are unsafe.</li>
+    <li>The tenant registry is in-memory.</li>
+    <li>Execution uses a restricted local sandbox; a hardened container or microVM boundary is not yet in place.</li>
+    <li>No hosted deployment adapter or production secret injection yet.</li>
+  </ul>
+
+  <h2>Source</h2>
+  <p><a href="https://github.com/dmuhoro/Software-Factory">github.com/dmuhoro/Software-Factory</a> — release v4.11.0.</p>
+
+  <footer>
+    Every figure on this page is drawn from a run record or a test in the source repository, not from a model's account of itself.
+  </footer>
+</main>
+</body>
+</html>
