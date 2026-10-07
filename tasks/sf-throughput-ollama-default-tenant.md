@@ -20,24 +20,29 @@ models.implementer: local-ollama/gpt-oss:20b-cloud
 models.reviewer: local-ollama/gpt-oss:20b-cloud
 
 ## Verification
-npm run lint
+node_modules/.bin/tsc --noEmit
+
+Note: `npm run lint` is exactly `tsc --noEmit`, but doctrine's sandbox masks `/home`
+(credential hygiene) and this machine's `npm` lives under the home directory, so a
+sandboxed command cannot see it. The repo-local `tsc` binary needs only `node`, which
+the sandbox does see.
 
 ## Milestones
 ### M1: seed-local-ollama registers the default tenant
 type: fix
-verify: grep -q "tenantId: 'default'" scripts/seed-local-ollama.ts && grep -q "seedLocalOllama" scripts/seed-local-ollama.ts && npm run lint
+verify: grep -q "tenantId: 'default'" scripts/seed-local-ollama.ts && grep -q "seedLocalOllama" scripts/seed-local-ollama.ts && node_modules/.bin/tsc --noEmit
 - [ ] `seedLocalOllama` has a second `register` call whose `tenantId` is `'default'` (in addition to the existing `''` registration)
   - check: grep -q "tenantId: 'default'" scripts/seed-local-ollama.ts
 - [ ] the script still compiles clean under the project typecheck
-  - check: npm run lint
+  - check: node_modules/.bin/tsc --noEmit
 
 ### M2: run-pilot registers the default tenant
 type: fix
 depends: M1
-verify: grep -q "tenantId: 'default'" scripts/run-pilot.ts && grep -q "tenantId: ''" scripts/run-pilot.ts && npm run lint
+verify: grep -q "tenantId: 'default'" scripts/run-pilot.ts && grep -q "tenantId: ''" scripts/run-pilot.ts && node_modules/.bin/tsc --noEmit
 - [ ] `run-pilot.ts` has a second `register` call whose `tenantId` is `'default'` (in addition to the existing `''` registration)
   - check: grep -q "tenantId: 'default'" scripts/run-pilot.ts
 - [ ] the existing platform-operator registration is preserved
   - check: grep -q "tenantId: ''" scripts/run-pilot.ts
 - [ ] the script still compiles clean under the project typecheck
-  - check: npm run lint
+  - check: node_modules/.bin/tsc --noEmit
