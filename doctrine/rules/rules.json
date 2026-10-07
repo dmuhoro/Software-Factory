@@ -99,6 +99,13 @@
       "enforcement": "ground-truth",
       "stages": ["verify"],
       "blocking": true
+    },
+    {
+      "id": "R-15-NO-OP-UNIT",
+      "statement": "A unit whose own declared verification command already passes on the starting tree is refused before any model is dialled: the proof already holds, so the only way to reach a commit would be to invent a change nobody asked for. The refusal is terminal for that unit — a check that cannot change is not retried.",
+      "enforcement": "no-op-unit",
+      "stages": ["implement"],
+      "blocking": true
     }
   ]
 }

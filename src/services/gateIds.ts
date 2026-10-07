@@ -12,6 +12,7 @@ export const GATE_IDS = [
   'resource-admission',
   'plan-is-executable',
   'model-assignment',
+  'no-op-unit',
   'claimed-files-exist',
   'ground-truth',
   'attempt-cap',

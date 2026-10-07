@@ -1,11 +1,11 @@
 {
   "version": 1,
   "files": {
-    "DOCTRINE.md": "sha256:80185a9b46c7cba01b563570d420d0128196295ba54483c72d0b1a6471e2e63a",
+    "DOCTRINE.md": "sha256:8a215593b8b13128ac3fe5feac3e030333e48f703da1895d1f05515de08930a7",
     "README.md": "sha256:d19cd766f140dff0f62ab14f01d5b53533f2ed88a02abdf382af3d657741abcc",
     "agents/models.json": "sha256:85c12e4f460e3a31e5e301c7e1d5d4a9fdc77f795124582c634680276f261ed3",
-    "hooks/hooks.json": "sha256:36c817e106b310830cf19026532be0bd7d033350f2de95e78e0d97b2764cacb5",
+    "hooks/hooks.json": "sha256:c9115c2b6eb3206c76b419ba4ceb7afc7e0a9bc3c02d212eedce709cbb08f0a0",
     "loop.json": "sha256:03db703b5632023d8407aa0c9c32846827e8efef2d6b328d6fc00712e1462fb5",
-    "rules/rules.json": "sha256:35f850c11d3395d806ea0d177e7167316fe94486d86c2fa44fab7434c6d4fb68"
+    "rules/rules.json": "sha256:ba6d6892957c4e66ab347ab46910594f4e0c452af17b27f9255478f832b70f0d"
   }
 }

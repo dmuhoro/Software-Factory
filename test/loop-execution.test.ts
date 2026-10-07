@@ -571,3 +571,54 @@ test('a failed verify command reaches the next attempt with its file:line locato
     assert.match(first.detail, /src\/feature-a\.ts:3:5/, `the refusal did not name the failing location: ${first.detail}`);
   });
 });
+
+test('a unit whose own verification already passes on the starting tree is refused as a no-op before the implementer is dialled', async () => {
+  // The real case, in miniature: Daftari run baabd8f138d822bca628cb29 (sprint 22, finding 4).
+  // M1's implementer bled past its own criterion and landed M2's work too, so M2's declared
+  // verification already passed on M2's clean starting tree. M2 then burned its whole attempt
+  // cap — the model could not change a file that already satisfied its own grep — and went
+  // STUCK. A unit whose proof already holds has nothing to execute, so the loop refuses it
+  // before a model is dialled, once, with the command that was already satisfied.
+  const repo = makeTarget('noop');
+  const task = writeTask('noop', [
+    '### M1: Feature alpha',
+    'type: feat',
+    'verify: node check-a.cjs',
+    '- [ ] feature-a.txt exists and contains alpha',
+    '### M2: Feature beta',
+    'type: feat',
+    'depends: M1',
+    'verify: node check-b.cjs',
+    '- [ ] feature-b.txt exists and contains beta',
+    '',
+  ].join('\n'));
+
+  await withStub((prompt) => (prompt.includes('Unit: M1')
+    ? { files: [{ path: 'feature-a.txt', content: 'alpha\n' }, { path: 'feature-b.txt', content: 'beta\n' }], notes: 'wrote the alpha feature' }
+    : { files: [{ path: 'feature-b.txt', content: 'beta\n' }] }), async (stub) => {
+    const outcome = await ExecutionLoopService.run({ repo, taskDocument: task, tenantId: TENANT });
+    const { record } = outcome;
+
+    assert.equal(outcome.exitCode, 2, `one unit refused as vacuous means the run reports stuck units: ${record.hardStop ?? record.refusal ?? ''}`);
+    const m1 = record.units.find((unit) => unit.unitId === 'M1')!;
+    const m2 = record.units.find((unit) => unit.unitId === 'M2')!;
+    assert.equal(m1.status, 'done', 'the unit with real work still runs');
+    assert.equal(m2.status, 'stuck');
+
+    // Refused once with the reason. A check that cannot change must not burn the attempt cap.
+    assert.equal(m2.attempts.length, 1, 'a futile check was retried');
+    assert.match(m2.attempts[0].detail, /GATE_REFUSED:implement:no-op-unit/, `the refusal did not name the gate: ${m2.attempts[0].detail}`);
+    assert.match(m2.attempts[0].detail, /already passes on the starting tree/, `the refusal did not state why: ${m2.attempts[0].detail}`);
+
+    // The implementer was never dialled for a unit with nothing to do.
+    assert.deepEqual(stub.prompts.filter((prompt) => prompt.includes('Unit: M2')), [], 'the implementer was dialled for a vacuous unit');
+
+    // The gate is on the record for both units: passed for M1, refused exactly once for M2.
+    const gateResults = record.gates.filter((gate) => gate.id === 'no-op-unit');
+    assert.ok(gateResults.length >= 2, `no-op-unit ran for both units, saw ${gateResults.length}`);
+    assert.equal(gateResults.filter((gate) => !gate.passed).length, 1, 'exactly one no-op refusal');
+    assert.equal(record.commits.length, 1, 'the vacuous unit produced no commit');
+    assert.equal(gitLines(repo, ['rev-list', '--count', 'HEAD'])[0], '2', 'initial + M1 only');
+    assert.equal(porcelain(repo), '', 'the run leaves a clean tree');
+  });
+});

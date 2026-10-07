@@ -41,10 +41,16 @@ if (!ok) { console.error('feature-a.txt is missing or does not contain alpha'); 
 console.log('check-a passed');
 `;
 
-/** A verify command that signals (by touching a file) that it is in flight, then stays busy. */
+/**
+ * A verify command that signals (by touching a file) that it is in flight, then stays busy. The
+ * marker is written only once the implementation file is present, so it means "a verification
+ * command is running against the implemented tree". `no-op-unit` runs this same command before
+ * the implementer has written anything (proving the unit is not already satisfied); that pre-work
+ * run must not be mistaken for the verify run the kill is meant to interrupt.
+ */
 function gateSleep(marker: string, sleepMs: number): string {
   return `const fs = require('node:fs');
-fs.writeFileSync(${JSON.stringify(marker)}, '');
+if (fs.existsSync('feature-a.txt')) fs.writeFileSync(${JSON.stringify(marker)}, '');
 const end = Date.now() + ${sleepMs};
 while (Date.now() < end) {}
 const ok = fs.existsSync('feature-a.txt') && fs.readFileSync('feature-a.txt', 'utf8').includes('alpha');

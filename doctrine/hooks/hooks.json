@@ -7,7 +7,7 @@
       "after": ["plan-is-executable"]
     },
     "implement": {
-      "before": ["resource-admission", "model-assignment"],
+      "before": ["resource-admission", "model-assignment", "no-op-unit"],
       "after": ["claimed-files-exist"]
     },
     "verify": {
