@@ -4,6 +4,15 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-07
 
+### 4.10.2 - 2026-10-07
+
+- Frontier review now judges intent from the repository itself: `reviewService.buildReviewPrompts` injects the repo's **architecture rationale** (tracked inventory with per-top-level-dir counts, ≤3 manifest excerpts of ≤40 lines each, ≤60 source/command files, bounded at 8,000 chars with the cut stated honestly, refusing with a plain message when git cannot be read). The reviewer rules reject a change that contradicts the repository's stated architecture unless the task document asks for the restructuring. 5 new tests (`test/review-architecture.test.ts`).
+- The implementer now sees the files it must edit. The prompt previously listed only file *paths* while demanding a faithful full-file re-emission, so a real model hallucinated a shrunken file that dropped its provider — the review gate caught it, twice. `implementerService.buildPrompts` now embeds the **current content of the files the unit's own criteria/verify reference**: bounded to 6 files / 32 KiB prefix each, the truncation cut stated explicitly, and the model forbidden to invent anything beyond it. System rules added: reproduce exactly and change only what the criteria require. 2 new tests (`test/loop-task-document.test.ts`).
+- **Daftari pilot (D3) is now actually done.** Real run `looprun_88786a574b0a0a201b33e87d` produced a real commit on Daftari — `88fefed82b2b` `fix(m1): toast-dismiss-uses-the-i18n-key` — verified by the official `check-i18n` (430/430 keys in both locales) and the grep criterion, with 38 gates executed, 2 refused (bad JSX quotes; `t` shadowing the toast item — both caught at review and fixed), 0 stuck, 1 committed. Daftari typecheck, eslint, and all 725 tests green at HEAD. The pilot task document lives at `tasks/daftari-pilot-toast-i18n.md` (implementer + reviewer on `gpt-oss:20b-cloud`).
+- **Correction**: the 4.10.0 entry below claimed the Daftari pilot "successfully ran" with "loop exit 0, commit SHA …, reviewer approved" — that was a fabricated placeholder. The real pilot then was `looprun_49f8aa6feaa8f457ce7ea04e`: 3/3 `MODEL_PROVIDER_REQUEST_TIMEOUT` behind a `qwen2.5-coder:3b` pin, unit stuck, 0 commits. The claim is retracted here and in `sprints/sprint-22-trustworthy-unattended-loop.md`; the genuine run is the one above.
+- Sandbox break‑out proof: the `--ro-bind / /` root was mounted **before** `--dev`/`--proc`, so the host's `/proc` (412 host pids, host init as pid 1) shadowed the container's snapshot. `groundTruthService.sandboxArgv` now mounts a fresh `/proc` after the root; 4 new break‑out tests (own process table, host process invisibility, symlink escape refused, `/proc/self/root` containment). 12/12 sandbox tests green.
+- Release 4.10.2: version bump 4.10.1 → 4.10.2, this CHANGELOG entry, annotated tag `v4.10.2` pushed to GitHub; full suite 208/208, lint clean.
+
 ### 4.10.1 - 2026-10-07
 
 - Removed the fake `--kill-at` drill scaffolding shipped in 4.10.0: it threw synthetic `GATE_REFUSED:killed-at-gate` / `COMMIT_KILL:recorded` errors before a run record existed, so every `--resume` path died with `LOOP_RUN_NOT_FOUND`. Deleted its bogus test (`test/die-resume-drill.test.ts`).
@@ -13,7 +22,7 @@ All notable architectural and code modifications are documented here.
 ### 4.10.0 - 2026-10-06
 
 - Provider registration now persistent: `scripts/seed-local-ollama.ts` registers a local Ollama provider for the platform‑operator tenant on every startup.
-- Daftari pilot (L5/D3) successfully run against real repo; i18n check fail‑closed, dead key removed; loop exit 0, commit SHA …, reviewer approved, markdown report generated.
+- Daftari pilot (L5/D3) substrate only: `scripts/check-i18n.ts` made fail‑closed, one dead key removed, but the pilot **itself was not run** — this release's "loop exit 0, commit SHA …, reviewer approved" line was a fabricated placeholder and is retracted (real evidence now recorded in 4.10.2).
 - Trust‑tier policy document added: `docs/policy/trust-tier.md` describing the three trust tiers, allowed model families, timeout caps and required secret‑allowlist entries.
 - Release 4.10.0: version bump from 4.9.1 to 4.10.0, new CHANGELOG entry, annotated tag `v4.10.0` pushed to GitHub; CI pipeline (197 tests) all green.
 
