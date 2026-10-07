@@ -176,13 +176,19 @@ test('L3: every path-guard boundary code has a status and a written message', ()
   const boundaryCodes = new Set<string>();
   for (const file of ALL_SOURCE) {
     const text = readFileSync(file, 'utf8');
-    // Single-quoted `code:` options and both throw forms. The template form was missed
-    // once already: the egress guard raises `MODEL_PROVIDER_HOST_NOT_ALLOWED:${hostname}`,
-    // which a single-quote regex cannot see, so those refusals silently degraded to a
-    // generic 500 and the Layer 1 harness caught it. Enum members are deliberately not
-    // scanned: 'BUILD' and 'APPROVED' are values, not error codes.
-    for (const m of text.matchAll(/code:\s*'([A-Z][A-Z0-9_]+)'/g)) boundaryCodes.add(m[1]);
-    for (const m of text.matchAll(/throw new (?:\w+\()?`([A-Z][A-Z0-9_]+)/g)) boundaryCodes.add(m[1]);
+    // Three shapes, because the earlier two missed helper-wrapped throws:
+    //   code: 'CODE'                  — an option-based code (the path guard)
+    //   throw <helper>('CODE', ...)   — throw fail(...), throw parseError(...)
+    //   new Error(`CODE: ...`)        — the direct and helper-body forms
+    // The single-quoted `throw new Error('CODE:` and the helper `throw fail('CODE')`
+    // shapes were invisible to the first regex, so every loop refusal that used them
+    // degraded to INTERNAL_ERROR while this gate stayed green — the same blindness,
+    // wearing a new hat, that once hid PATH_MISSING. A gate assembled from a grep is
+    // only as good as the grep. Enum members are still deliberately not scanned:
+    // 'BUILD' and 'APPROVED' are values, not error codes.
+    for (const m of text.matchAll(/code:\s*['`]([A-Z][A-Z0-9_]+)['`]/g)) boundaryCodes.add(m[1]);
+    for (const m of text.matchAll(/throw (?:new )?\w+\(['`]([A-Z][A-Z0-9_]+)/g)) boundaryCodes.add(m[1]);
+    for (const m of text.matchAll(/new Error\(['`]([A-Z][A-Z0-9_]+)[:`]/g)) boundaryCodes.add(m[1]);
   }
   const uncovered = [...boundaryCodes]
     // INTERNAL_ERROR is the classifier's own fallback literal, not a boundary code.
