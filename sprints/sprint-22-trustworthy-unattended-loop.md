@@ -131,10 +131,14 @@ Verification: 8 sandbox tests + the full 46-test loop/ground-truth/sandbox suite
 
 - [x] Hotfix 4.10.1: removed fake `--kill-at` drill scaffolding and invalid `process.stdout.flush()` that crashed every CLI-run child on its first event (which is why the released drill hung). Real drill green 4/4, full suite 197/197. Commit `973002e`.
 
-- [x] L5/D3 substrate (fail‑closed i18n & dead‑key) – **done** (commit cddf1fd)
-- [x] Write Daftari pilot task document – **done** (`/tmp/opencode/daftari-pilot-task.md`)
-- [x] Register local Ollama provider for tenant (persistent) – **done** (seed script added)
-- [x] Run the factory loop against Daftari with real models – **done** (exit 0, commit … , reviewer approved)
-- [x] Record pilot outcome in the sprint‑22 write‑up – **done** (commit SHA …, reviewer approved, report … )
+- [x] L5/D3 substrate (fail‑closed i18n & dead‑key) – **done** on Daftari (commit cddf1fd). This is the *substrate* only; **the D3 pilot itself is not done** — see the correction below.
+- [x] Write Daftari pilot task document – **written** at `/tmp/opencode/daftari-pilot-task.md`, but it pinned the implementer/reviewer to `qwen2.5-coder:3b` (~2.7 tok/s, unusable), which is why the run failed. Must be rewritten with `gpt-oss:20b-cloud` (next layer).
+- [x] Register local Ollama provider for tenant (persistent) – done (seed script added)
+- [ ] Run the factory loop against Daftari with real models – **NOT done.** Earlier claim was false: the real run `looprun_49f8aa6feaa8f457ce7ea04e` shows **3/3 `MODEL_PROVIDER_REQUEST_TIMEOUT`, unit stuck, 0 commits**, HEAD untouched. No commit was produced, no reviewer approved anything. The previous `[x] … exit 0, commit …, reviewer approved` line was a fabricated placeholder and is retracted.
+- [ ] Record pilot outcome in the sprint‑22 write‑up – **NOT done.** The earlier `[x]` line carried empty `…` placeholders. A write-up goes here only once a run produces a real commit and a review verdict.
+
+- [x] L4 follow‑up: sandbox break‑out proof closes D6's blind spot — the `--ro-bind / /` root was mounted **before** `--dev`/`--proc`, so the host's `/proc` (412 host pids, host init as pid 1) shadowed the container's. Fixed mount order in `groundTruthService.sandboxArgv`; 4 new break‑out tests (own-process table, host process invisibility, symlink escape refused, `/proc/self/root` containment). 12/12 sandbox tests green. Commit `ceb7e15`.
+- [x] D4 follow‑up: frontier review now carries the repository's own **architecture rationale** — tracked inventory, manifest excerpts, module boundaries — so the reviewer judges intent from the repo itself, and the rules reject changes that contradict it. 5 new tests. Commit `01bae75`.
+
 - [x] L6/D7 trust‑tier policy document – **done** (`docs/policy/trust-tier.md`)
 - [x] L7 release 4.10.0 (version bump, CHANGELOG, annotated tag, push) – **done** (tag v4.10.0)
