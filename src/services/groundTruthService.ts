@@ -333,6 +333,41 @@ export function collectGroundTruth(request: GroundTruthRequest): GroundTruthProo
   };
 }
 
+/**
+ * Finding (b) of sprint 22: a command that fails must reach the next attempt with the same kind
+ * of locator the diff checks already carry. A failed diff check's detail was enriched with its
+ * output tail, but a failed *command* still arrived as `cmd:unit-M1 exit 1` -- the output tail
+ * is up to 4000 characters of compiler or test log, and the operator's (and the model's) first
+ * move is to find the `file:line`. This extracts those locator lines, de-duplicated and bounded,
+ * covering the three shapes seen in the wild: `file.ext:12:3:`, `file.ext(12,3):` (TypeScript),
+ * and node stack frames `at fn (file.ext:12:3)`.
+ */
+const LOCATOR_PATTERNS: readonly RegExp[] = [
+  /(?:^|[\s("'])([\w./-]+\.[A-Za-z0-9]+):(\d+)(?::(\d+))?/,
+  /(?:^|[\s("'])([\w./-]+\.[A-Za-z0-9]+)\((\d+),(\d+)\)/,
+];
+
+export function extractLocators(outputTail: string, limit = 6): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of outputTail.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    for (const pattern of LOCATOR_PATTERNS) {
+      const match = pattern.exec(line);
+      if (!match) continue;
+      const locator = match[0].replace(/^[\s("']/, '').slice(0, 200);
+      if (!seen.has(locator)) {
+        seen.add(locator);
+        found.push(locator);
+      }
+      break;
+    }
+    if (found.length >= limit) break;
+  }
+  return found;
+}
+
 /** The statement a commit body must carry: commands actually executed, with their exit codes. */
 export function verifiedStatement(proof: GroundTruthProof): string {
   const executed = proof.checks.filter((item) => item.kind === 'command');
