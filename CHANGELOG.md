@@ -15,8 +15,8 @@ All notable architectural and code modifications are documented here.
     `outputTail` is mined for file/line (`extractLocators`) and appended to the next attempt's
     refusal, so the model is told where to look.
   - **`diff:comment-claim`** (commit `22e4c81`): an added comment must not name a value the line it
-    annotates does not use. Replayed against Daftari `0dfec9c`'s false `tenantId: ''` comment,
-    refused at `scripts/run-pilot.ts:22` with `proof.passed=false`.
+    annotates does not use. Replayed against the false `tenantId: ''` comment from `c5d6a47`,
+    refused at `scripts/run-pilot.ts:17` with `proof.passed=false`.
   - **`no-op-unit`** (commit `3d24567`): a unit whose own verification command already exits 0 on
     the starting tree is refused once, before the model is dialled, instead of burning the attempt
     cap. The loop treats it as terminal. Replayed against the vacuous Daftari M2.
