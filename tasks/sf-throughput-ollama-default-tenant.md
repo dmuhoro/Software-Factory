@@ -14,6 +14,7 @@ tenant the loop actually uses, alongside the existing platform-operator registra
 - Add a second registration that targets tenant `default` with the same local Ollama settings (`kind: 'local'`, baseUrl `http://127.0.0.1:11434/v1`, modelIds `['qwen2.5-coder:3b', 'gpt-oss:20b-cloud']`, timeoutMs 300_000).
 - Keep the existing tenant `''` registration in both scripts unchanged; the platform operator is a separate, documented tenant.
 - Reuse `FrontierModelService.register` exactly as the existing call does; do not introduce a new helper or dependency.
+- Verify calls the repo-local `tsc` directly: `npm run lint` is exactly `tsc --noEmit`, but doctrine's sandbox masks `/home` (credential hygiene) and this machine's `npm` lives under it, so `npm` is unreachable in a sandboxed command; `node` (`/usr/bin/node`) is visible.
 
 ## Models
 models.implementer: local-ollama/gpt-oss:20b-cloud
@@ -21,11 +22,6 @@ models.reviewer: local-ollama/gpt-oss:20b-cloud
 
 ## Verification
 node_modules/.bin/tsc --noEmit
-
-Note: `npm run lint` is exactly `tsc --noEmit`, but doctrine's sandbox masks `/home`
-(credential hygiene) and this machine's `npm` lives under the home directory, so a
-sandboxed command cannot see it. The repo-local `tsc` binary needs only `node`, which
-the sandbox does see.
 
 ## Milestones
 ### M1: seed-local-ollama registers the default tenant
