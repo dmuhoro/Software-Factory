@@ -23,6 +23,7 @@ export type CheckId =
   | 'diff:non-empty'
   | 'diff:claimed'
   | 'diff:whitespace'
+  | 'diff:escape-mangling'
   | `cmd:${string}`;
 
 export interface GroundTruthCheck {
@@ -203,6 +204,55 @@ function check(id: string, kind: CheckKind, exitCode: number, extra: Partial<Gro
 }
 
 /**
+ * Finds the corruption a re-emitting model produces: two HEAD lines fused into one by a
+ * literal backslash-n (or backslash-r) escape instead of a real newline.
+ *
+ * The mechanical signature, because a judge must not guess: a changed line carries a literal
+ * escape whose left and right context both appear in HEAD separated by a real line break —
+ * the escape stands exactly where git holds a newline. Lines reproduced verbatim from HEAD
+ * are the model faithfully copying content, not mangling it. Files with no HEAD baseline
+ * (new or renamed) cannot be judged and are named in the pass output so the scope is honest.
+ */
+function escapeManglingFindings(repo: string, observed: string[]): { findings: string[]; compared: number } {
+  const findings: string[] = [];
+  let compared = 0;
+  for (const relative of observed) {
+    const absolute = path.join(repo, relative);
+    if (!fs.existsSync(absolute)) continue;
+    const head = git(repo, ['show', `HEAD:${relative}`]);
+    if (head.code !== 0) continue;
+    let raw: Buffer;
+    try {
+      raw = fs.readFileSync(absolute);
+    } catch {
+      continue;
+    }
+    if (raw.includes(0)) continue;
+    compared += 1;
+    const headText = head.out;
+    const lines = raw.toString('utf8').split('\n');
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (!/\\r\\n|\\[rn]/.test(line)) continue;
+      if (headText.includes(line)) continue;
+      const escapes = /\\r\\n|\\[rn]/g;
+      let escape: RegExpExecArray | null;
+      while ((escape = escapes.exec(line)) !== null) {
+        const before = line.slice(Math.max(0, escape.index - 80), escape.index);
+        const after = line.slice(escape.index + escape[0].length, escape.index + escape[0].length + 80);
+        if (!before || !after) continue;
+        if (headText.includes(`${before}\n${after}`) || headText.includes(`${before}\r\n${after}`)) {
+          findings.push(`${relative}:${index + 1}: literal ${escape[0]} stands where HEAD holds a real line break (HEAD ends: ${JSON.stringify(before.slice(-40))}; begins: ${JSON.stringify(after.slice(0, 40))})`);
+          break;
+        }
+      }
+      if (findings.length >= 20) return { findings, compared };
+    }
+  }
+  return { findings, compared };
+}
+
+/**
  * Executes every check against the real working tree and returns the proof.
  *
  * `passed` is computed from `checks` alone. There is deliberately no parameter that can make a
@@ -246,6 +296,13 @@ export function collectGroundTruth(request: GroundTruthRequest): GroundTruthProo
 
   const whitespace = git(repo, ['diff', '--check']);
   checks.push(check('diff:whitespace', 'diff', whitespace.code, { outputTail: whitespace.out || '(no whitespace errors)' }));
+
+  const mangling = escapeManglingFindings(repo, observed);
+  checks.push(check('diff:escape-mangling', 'diff', mangling.findings.length ? 1 : 0, {
+    outputTail: mangling.findings.length
+      ? mangling.findings.join('\n').slice(0, 4000)
+      : `no literal escape reconstructs a real line break HEAD holds; ${mangling.compared} changed file(s) with a HEAD baseline compared`,
+  }));
 
   for (const step of request.commands ?? []) {
     if (!step.command || !step.command.trim()) {

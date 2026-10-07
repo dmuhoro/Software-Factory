@@ -242,6 +242,80 @@ test('the commit body is derived from the proof, so a stale proof cannot describ
   }
 });
 
+test('a literal escape standing in for a real line break fails the proof and the commit is refused', () => {
+  const { repo, cleanup } = makeRepo();
+  try {
+    // HEAD holds a real line break between the two JSX lines.
+    const headContent = [
+      'export function CostLine() {',
+      '  return (',
+      '    <p className="cost">',
+      "      {t('cost')}",
+      '    </p>',
+      '  );',
+      '}',
+      '',
+    ].join('\n');
+    fs.writeFileSync(path.join(repo, 'view.tsx'), headContent);
+    execFileSync('git', ['-C', repo, 'add', '-A']);
+    execFileSync('git', ['-C', repo, 'commit', '-qm', 'view']);
+
+    // The corruption the 20B model produced: the two lines joined by a literal backslash-n.
+    const mangled = [
+      'export function CostLine() {',
+      '  return (',
+      '    <p className="cost">\\n      {t(\'cost\')}',
+      '    </p>',
+      '  );',
+      '}',
+      '',
+    ].join('\n');
+    fs.writeFileSync(path.join(repo, 'view.tsx'), mangled);
+
+    const proof = collectGroundTruth({ repo, claimedFiles: ['view.tsx'], requireNonEmptyDiff: true, timeoutMs: 30_000 });
+    const check = proof.checks.find((item) => item.id === 'diff:escape-mangling');
+    assert.equal(check?.kind, 'diff');
+    assert.equal(check?.passed, false, 'the joined line must fail the proof');
+    assert.equal(check?.exitCode, 1);
+    assert.match(check?.outputTail ?? '', /view\.tsx:3/, 'the refusal names the file and the line');
+    assert.match(check?.outputTail ?? '', /real line break/, 'the refusal explains what HEAD actually holds');
+    assert.equal(proof.passed, false, 'one failed check fails the whole proof');
+    assert.equal(proofDigest(proof).startsWith('sha256:'), true, 'the corruption is content-addressed into the digest');
+
+    assert.throws(() => commitUnit(request(repo, proof)), /^Error: GROUND_TRUTH_REQUIRED/, 'a mangled diff is refused a commit');
+    const log = execFileSync('git', ['-C', repo, 'log', '--oneline'], { encoding: 'utf8' });
+    assert.equal(log.trim().split('\n').length, 2, 'HEAD did not move past the fixture commit');
+  } finally {
+    cleanup();
+  }
+});
+
+test('a legitimate escape string, a pre-existing escape line, and a new file do not fail the proof', () => {
+  const { repo, cleanup } = makeRepo();
+  try {
+    // HEAD carries a legitimate literal escape of its own; it must never trip the check.
+    const headContent = ["const note = 'a\\nb';", 'const value = 1;', ''].join('\n');
+    fs.writeFileSync(path.join(repo, 'note.ts'), headContent);
+    execFileSync('git', ['-C', repo, 'add', '-A']);
+    execFileSync('git', ['-C', repo, 'commit', '-qm', 'note']);
+
+    // 1. The pre-existing escape line stays verbatim while the file changes elsewhere.
+    // 2. A new legitimate string escape is added; HEAD does not hold that text across a line break.
+    // 3. A brand-new untracked file carries an escape; there is no HEAD baseline to compare.
+    const changed = ["const note = 'a\\nb';", 'const value = 2;', "const extra = 'first\\nsecond';", ''].join('\n');
+    fs.writeFileSync(path.join(repo, 'note.ts'), changed);
+    fs.writeFileSync(path.join(repo, 'fresh.ts'), "const fresh = 'x\\ny';\n");
+
+    const proof = collectGroundTruth({ repo, claimedFiles: ['note.ts', 'fresh.ts'], requireNonEmptyDiff: true, timeoutMs: 30_000 });
+    const check = proof.checks.find((item) => item.id === 'diff:escape-mangling');
+    assert.equal(check?.passed, true, `expected a green check, got: ${check?.outputTail ?? '(absent)'}`);
+    assert.match(check?.outputTail ?? '', /no literal/, 'the pass states what was compared, honestly');
+    assert.equal(proof.passed, true, `expected a green proof: ${proof.checks.map((item) => `${item.id}=${item.passed}`).join(',')}`);
+  } finally {
+    cleanup();
+  }
+});
+
 test('doctrine path patterns match the way gitignore does, including at the root', () => {
   const patterns = loop.commit.refusePathPatterns;
   const refused: Array<[string, string]> = [

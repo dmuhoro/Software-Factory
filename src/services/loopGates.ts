@@ -140,7 +140,16 @@ const REGISTRY: Record<GateId, GateFn> = {
     const commands = proof.checks.filter((check) => check.kind === 'command');
     const failed = proof.checks.filter((check) => !check.passed);
     if (!commands.length) return { passed: false, detail: 'no command was executed, so nothing is verified (narration is not evidence)' };
-    if (!proof.passed) return { passed: false, detail: failed.map((check) => `${check.id} exit ${check.exitCode}`).join('; ') };
+    if (!proof.passed) {
+      // Command failures are named by id and exit code only — their tails run to thousands of
+      // characters. A failed diff check is different: its outputTail is the whole reason
+      // (file, line, finding), and dropping it would refuse the attempt without telling the
+      // next attempt what to fix.
+      const detail = failed.map((check) => check.kind === 'command' || !check.outputTail
+        ? `${check.id} exit ${check.exitCode}`
+        : `${check.id} exit ${check.exitCode}: ${check.outputTail.slice(0, 600)}`).join('; ');
+      return { passed: false, detail };
+    }
     return { passed: true, detail: `${commands.length} command(s) exited 0; ${proof.rejectedNarration.length} narration claim(s) discarded` };
   },
 
