@@ -295,14 +295,40 @@ What makes it safe to leave alone:
 - **Failure is bounded and visible.** Three attempts per unit, each quoting the previous refusal
   back to the model and rolling the tree back first; then STUCK, and the run continues with the
   next independent unit.
+- **A unit that cannot fail its own check, or cannot run it, is refused before the model is
+  dialled.** A unit whose verification command already exits 0 on the starting tree is a no-op —
+  nothing it does can satisfy the proof — so `no-op-unit` refuses it once instead of burning the
+  attempt cap. A sandboxed command that dies with exit 127 because the sandbox masked its
+  toolchain (for example a version-manager `node`/`npm` living under the masked `/home`) is named
+  at the boundary that observed it (`SANDBOX_TOOLCHAIN_HIDDEN`), not retried three times.
+- **A comment must not claim a value its code does not use.** `diff:comment-claim` compares each
+  added comment against the line it annotates; a comment naming a value the code does not use
+  refuses the unit.
+- **A failed command reaches the next attempt with its file:line**, not just an exit code, so the
+  model is told where to look.
 
 The format of the input is specified in
 [docs/TASK_DOCUMENT_FORMAT.md](docs/TASK_DOCUMENT_FORMAT.md). The rules the loop enforces are in
-[doctrine/DOCTRINE.md](doctrine/DOCTRINE.md). The loop has been run end to end against a real
-local model (qwen2.5-coder:3b over Ollama): two verified commits from one task document, the
-ground-truth gate refusing a failing attempt and the feedback loop fixing it; that run and the
-post-build re-audit are recorded in
-[sprints/sprint-21-live-loop.md](sprints/sprint-21-live-loop.md).
+[doctrine/DOCTRINE.md](doctrine/DOCTRINE.md). What the review stage can and cannot prove is
+stated honestly in
+[docs/ADVERSARIAL_REVIEW_SCOPE.md](docs/ADVERSARIAL_REVIEW_SCOPE.md).
+
+The loop has been run end to end against real repositories with a real local model
+(`gpt-oss:20b-cloud` over Ollama), and the reports are kept:
+
+- **Software Factory ran the loop on itself** — run `looprun_cd5b2f682f3ca0f7c99ab731`, 2/2
+  verified commits on attempt 1.
+- **A real i18n batch on Daftari** — run `looprun_e8c12bcd603a16fe1dd9d02c68d`, 4/4 verified
+  commits, all first attempt, 66 gates executed with 0 refused; 217.6s wall for 4 units
+  (54.4s/unit, ≈66 units/hour) on a local 20b model. Daftari's `check-i18n` and typecheck were
+  both green after.
+- **A die-and-resume drill** — run `looprun_875b855f07096ade7d02c68d` was SIGKILLed mid-verification
+  and resumed (`--resume`) to exactly one commit with the interrupted path restored to its last
+  committed state.
+
+The gate feedback loop, a refusal carried into the next attempt, and the reviewer refusing an
+unrelated-file change are recorded in
+[sprints/sprint-22-trustworthy-unattended-loop.md](sprints/sprint-22-trustworthy-unattended-loop.md).
 
 ```bash
 npm run verify:loop        # doctrine manifest, gate wiring, 7 end-to-end scenarios, CLI contract
@@ -359,6 +385,7 @@ appwrite-functions/     Optional Appwrite integration functions
 - [Product Foundry Context](docs/PRODUCT_FOUNDRY_CONTEXT.md)
 - [Repository Context Index](docs/REPOSITORY_CONTEXT_INDEX.md)
 - [Task Document Format](docs/TASK_DOCUMENT_FORMAT.md)
+- [Adversarial Review — True Scope](docs/ADVERSARIAL_REVIEW_SCOPE.md)
 - [Machine-Building Contract](docs/MACHINE_BUILDING_CONTRACT.md)
 - [Sprint 12: Real-World Readiness](sprints/sprint-12-real-world-readiness.md)
 - [Sprint 14: Machine Building](sprints/sprint-14-machine-building.md)
