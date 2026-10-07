@@ -129,6 +129,8 @@ Verification: 8 sandbox tests + the full 46-test loop/ground-truth/sandbox suite
 
 ## Sprint progress
 
+- [x] Hotfix 4.10.1: removed fake `--kill-at` drill scaffolding and invalid `process.stdout.flush()` that crashed every CLI-run child on its first event (which is why the released drill hung). Real drill green 4/4, full suite 197/197. Commit `973002e`.
+
 - [x] L5/D3 substrate (fail‑closed i18n & dead‑key) – **done** (commit cddf1fd)
 - [x] Write Daftari pilot task document – **done** (`/tmp/opencode/daftari-pilot-task.md`)
 - [x] Register local Ollama provider for tenant (persistent) – **done** (seed script added)
