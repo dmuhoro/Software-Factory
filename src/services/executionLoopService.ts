@@ -197,30 +197,6 @@ export class ExecutionLoopService {
     const tenantId = options.tenantId ?? 'default';
     const attemptCap = Math.min(Math.max(1, options.attemptCap ?? loop.attempt.maxPerUnit), loop.attempt.maxPerUnit);
 
-    // Kill-at support: if KILL_AT env var is set, the loop exits at the specified point.
-    // Values: 'gate' (after gate checks, before stage work), 'commit' (after commit recording, before next stage), 'attempt' (after attempt cap, unit becomes STUCK).
-    if (process.env.KILL_AT) {
-      const killAt = process.env.KILL_AT;
-      // 'gate': kill after doctrine gate checks but before entering the stage work.
-      // The run will record a gate refusal and exit; resume will start a fresh attempt.
-      if (killAt === 'gate') {
-        // Record a gate refusal and exit so resume can start a new attempt.
-        throw new Error('GATE_REFUSED:killed-at-gate');
-      }
-      if (killAt === 'commit') {
-        // After a commit is recorded, exit the run. On resume, the loop will start a new unit
-        // and should not duplicate the previously recorded commit.
-        throw new Error('COMMIT_KILL:recorded');
-      }
-      if (killAt === 'attempt') {
-        // After the attempt cap is reached, the unit becomes STUCK.
-        // On resume, the loop should continue with the next unit without duplicating work.
-        // We set a flag that the next unit start will see the attempt cap as already used.
-        // The loop's attempt-cap logic will handle STUCK state.
-        // Mark that we killed at attempt so the resume logic can adjust.
-        options.attemptCap = 0; // force STUCK on next unit
-      }
-    }
     if (!options.resumeRunId) {
       const starting = treePaths(repo);
       if (starting.tracked.size || starting.untracked.size) {
