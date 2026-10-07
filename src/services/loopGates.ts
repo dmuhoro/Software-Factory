@@ -4,11 +4,11 @@ import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsolationService';
 import { ResourceGovernorService } from './resourceGovernorService';
 import type { GroundTruthProof } from './groundTruthService';
-import { extractLocators } from './groundTruthService';
+import { extractLocators, runCommand } from './groundTruthService';
 import { stageAndScanSecrets } from './commitService';
 import { detectVerificationProfile } from './verificationProfileService';
 import { isGitRepository } from '../utils/pathGuard';
-import type { GateResult, LoopRunRecord, LoopStage, UnitRecord } from './loopTypes';
+import type { GateResult, LoopRunRecord, LoopSandboxConfig, LoopStage, UnitRecord } from './loopTypes';
 import type { WorkUnit } from './taskDocumentService';
 
 /**
@@ -46,6 +46,12 @@ export interface GateContext {
   usedRoles?: string[];
   /** The review verdict for this attempt, required by `review-approve`. */
   review?: { approved: boolean; findings: string[] };
+  /** The execution environment for gates that run a command, required by `no-op-unit`. */
+  env?: NodeJS.ProcessEnv;
+  /** The sandbox for gates that run a command, required by `no-op-unit`. */
+  sandbox?: LoopSandboxConfig;
+  /** The command timeout for gates that run a command, required by `no-op-unit`. */
+  timeoutMs?: number;
 }
 
 export interface GateOutcome {
@@ -123,6 +129,38 @@ const REGISTRY: Record<GateId, GateFn> = {
     } catch (error) {
       return { passed: false, detail: (error as Error).message };
     }
+  },
+
+  'no-op-unit': (ctx) => {
+    // The real case: Daftari run baabd8f138d822bca628cb29 (sprint 22, finding 4). M1's
+    // implementer bled into M2's criterion, so M2's declared verify already passed on the
+    // clean starting tree, and M2 burned its whole attempt cap — the model could not change
+    // a file that already satisfied its own grep — before going STUCK. A unit whose proof
+    // already holds has nothing to execute: the loop must refuse before it dials a model,
+    // not fabricate a change to satisfy a command that is already satisfied.
+    //
+    // Only the unit's own command is judged. The repository profile (lint/typecheck/test)
+    // passes on any green tree and says nothing about this unit, so it is not this unit's
+    // proof. A command that errors before work is unknown, not vacuous: it passes here and
+    // the verify stage judges it later.
+    const declared = (ctx.unit?.verify ?? '').trim();
+    if (!declared) {
+      return { passed: true, detail: 'no unit-declared verification command; the repository profile is not this unit\u2019s proof' };
+    }
+    // The starting tree is the committed state on every attempt — the driver rolls back before
+    // each one — so if this command did not pass on attempt 1 it cannot pass on a later attempt
+    // of the same unit. Run it once, not once per attempt.
+    if (ctx.unit && ctx.unit.attempts.length > 1) {
+      return { passed: true, detail: 'the starting tree is unchanged from attempt 1, where this unit\u2019s verification did not pass; re-running the same command would say the same thing' };
+    }
+    const result = runCommand(ctx.repo, declared, ctx.timeoutMs ?? 60_000, ctx.env, ctx.sandbox);
+    if (result.exitCode !== 0) {
+      return { passed: true, detail: `unit verification does not pass before work: ${declared} exited ${result.exitCode}` };
+    }
+    return {
+      passed: false,
+      detail: `unit ${ctx.unit?.unitId ?? 'unknown'} verification already passes on the starting tree: ${declared} — nothing this attempt could change; drop the unit or tighten its criterion`,
+    };
   },
 
   'claimed-files-exist': (ctx) => {

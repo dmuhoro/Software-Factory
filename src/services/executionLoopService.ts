@@ -176,9 +176,19 @@ function parseRefusal(detail: string): Error {
   return new Error(`TASK_DOCUMENT_INVALID:${detail}`);
 }
 
+/**
+ * This unit's own declared verification command. Deliberately not the repository profile: the
+ * profile (lint/typecheck/test) passes on any green tree and says nothing about one unit, which
+ * is why `no-op-unit` judges only what the unit itself offered as its proof.
+ */
+function ownVerifyCommands(unit: WorkUnit): Array<{ id: string; command: string }> {
+  return (unit.verify ?? '').trim() ? [{ id: `unit-${unit.id}`, command: unit.verify!.trim() }] : [];
+}
+
 /** Verification commands for one unit: its own declaration, else the repository's profile. */
 function verifyCommands(unit: WorkUnit, repo: string): Array<{ id: string; command: string }> {
-  if ((unit.verify ?? '').trim()) return [{ id: `unit-${unit.id}`, command: unit.verify!.trim() }];
+  const own = ownVerifyCommands(unit);
+  if (own.length) return own;
   const profile = detectVerificationProfile(repo);
   return profile.steps.map((step) => ({ id: `${profile.id}-${step.id}`, command: `${step.executable} ${step.args.join(' ')}`.trim() }));
 }
@@ -447,7 +457,15 @@ export class ExecutionLoopService {
           }
         };
 
-        enter('implement', 'before', { taskOverrides: input.document.models });
+        // `no-op-unit` judges the unit's own proof against the tree the unit is about to start
+        // from — the rollback above guarantees that tree is the committed state, so a unit whose
+        // verification already passes here can never be shown to have done anything.
+        enter('implement', 'before', {
+          taskOverrides: input.document.models,
+          env: childEnv(isolation),
+          sandbox: loop.sandbox,
+          timeoutMs: loop.verification.timeoutMs,
+        });
         const result = await ImplementerService.implement({
           tenantId: input.tenantId,
           repo,
@@ -571,7 +589,8 @@ export class ExecutionLoopService {
         feedback = tail(message, 2000);
         input.event('warn', attempt.stage, `unit ${unit.id} attempt ${attempt.attempt} refused at ${attempt.stage}: ${tail(message, 300)}`);
 
-        const halting = gateIdsFrom(message).some((id) => HALTING_GATES.has(id));
+        const ids = gateIdsFrom(message);
+        const halting = ids.some((id) => HALTING_GATES.has(id));
         const nonRetryable = NON_RETRYABLE.test(message);
 
         // A commit that already landed is evidence, not something to erase. Keep it and stop.
@@ -585,6 +604,17 @@ export class ExecutionLoopService {
         }
 
         if (halting) throw new LoopHardStop(`${unit.id}: ${tail(message, 400)}`);
+
+        if (ids.includes('no-op-unit')) {
+          // Terminal, and only for this refusal: every attempt starts from the same committed
+          // tree, so the same unit-declared command passes again — a retry provably changes
+          // nothing. Record it stuck and stop, rather than burn the cap on a futile loop.
+          // (Transient refusals such as MODEL_* keep their retries.)
+          unitRecord.status = 'stuck';
+          unitRecord.finishedAt = iso();
+          input.event('error', attempt.stage, `unit ${unit.id} is stuck: ${attempt.detail}`);
+          break;
+        }
 
         if (nonRetryable) {
           unitRecord.status = 'stuck';

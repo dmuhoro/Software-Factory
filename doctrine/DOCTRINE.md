@@ -37,7 +37,7 @@ The loop repeats until every unit is `DONE` or `STUCK`, or a hard stop fires.
 | Stage | What happens | Gate that must pass |
 |---|---|---|
 | PLAN | The unit's acceptance criteria, verification commands, and touched surface are written to a human-readable plan artifact. | `doctrine-integrity`, `doctrine-isolation`, `resource-admission`, `plan-is-executable` |
-| IMPLEMENT | The assigned model returns a file manifest. Files are written only through the traversal-guarded writer. | `resource-admission`, `model-assignment`, `claimed-files-exist` |
+| IMPLEMENT | The assigned model returns a file manifest. Files are written only through the traversal-guarded writer. | `resource-admission`, `model-assignment`, `no-op-unit`, `claimed-files-exist` |
 | VERIFY | Commands are executed against the working tree. Exit codes and output digests are recorded. Narration is discarded. | `resource-admission`, `ground-truth`, `attempt-cap` |
 | COMMIT | The diff is scanned for credentials, committed, and the tree is re-checked clean. | `ground-truth`, `secret-scan`, `clean-tree`, `verified-commit-message`, `one-commit-per-unit` |
 | REPORT | A markdown report records every check, digest, and commit for the unit. | `doctrine-integrity`, `evidence-is-machine-derived` |
@@ -103,6 +103,9 @@ cat .data/factory-runs/<runId>/checkpoint.json
 | R-10 | The commit body states what was verified and carries `AI-Assisted:`. | `verified-commit-message` | `git log -1 --format=%B` |
 | R-11 | One unit produces exactly one commit. | `one-commit-per-unit` | `git log --oneline` vs unit count |
 | R-12 | Report evidence comes from recorded checks, never from free text. | `evidence-is-machine-derived` | `jq '.evidence[] | .source' report.md` guard |
+| R-13 | Every change is read by a judgement-tier reviewer; a refusal steers the next attempt. | `review-approve` | the reviewer's findings in `checkpoint.json` |
+| R-14 | Verification commands run sandboxed and fail closed; a command that cannot be sandboxed is refused, never run bare. | `ground-truth` | `jq '.checks[] | select(.command)' checkpoint.json` under a restricted sandbox |
+| R-15 | A unit whose own verification already passes on the starting tree is refused before any model is dialled, and not retried. | `no-op-unit` | `jq '.gates[] | select(.id=="no-op-unit")' checkpoint.json` |
 
 ---
 
