@@ -208,6 +208,54 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   PROJECT_REPOSITORY_NOT_GIT: { status: 400, message: 'The project repository is not a git repository.' },
   REPOSITORY_SOURCE_NOT_GIT: { status: 400, message: 'The repository source is not a git repository.' },
   SANDBOX_SOURCE_NOT_FOUND: { status: 404, message: 'No such sandbox source.' },
+
+  // ── Doctrine configuration. The factory's own rulebook is unusable. ────────
+  //   These reach an operator through the unattended-loop CLI (DoctrineService.load
+  //   runs before any work starts), so they must publish by name. Their messages are
+  //   fixed and free of the file/path detail the call sites carry, which stays in the
+  //   log. Status is 500: the caller's request was fine; the configured rulebook was
+  //   not, and that is an internal fault, not a refusal of the request.
+  DOCTRINE_FILE_INVALID: { status: 500, message: 'A doctrine file could not be interpreted.' },
+  DOCTRINE_FILE_MISSING: { status: 500, message: 'A doctrine file the manifest requires is missing.' },
+  DOCTRINE_FILE_UNPARSEABLE: { status: 500, message: 'A doctrine file could not be parsed.' },
+  DOCTRINE_GATE_UNKNOWN: { status: 500, message: 'The doctrine names a gate that does not exist.' },
+  DOCTRINE_INVALID_VALUE: { status: 500, message: 'The doctrine contains a value that is not permitted.' },
+  DOCTRINE_MANIFEST_INVALID: { status: 500, message: 'The doctrine manifest is not valid.' },
+  DOCTRINE_MANIFEST_MISMATCH: { status: 500, message: 'The doctrine does not match its manifest; the run refuses to start.' },
+  DOCTRINE_MANIFEST_MISSING: { status: 500, message: 'The doctrine manifest is missing.' },
+  DOCTRINE_MISSING_KEY: { status: 500, message: 'The doctrine is missing a required key.' },
+  DOCTRINE_ROOT_INSIDE_TARGET_REPOSITORY: { status: 403, message: 'The doctrine root is inside the target repository; a repository cannot supply the rules it is judged by.' },
+  DOCTRINE_ROOT_MISSING: { status: 500, message: 'No doctrine root was found at the configured location.' },
+  DOCTRINE_STAGE_UNKNOWN: { status: 500, message: 'The doctrine declares a stage that does not exist.' },
+  DOCTRINE_UNKNOWN_KEY: { status: 500, message: 'The doctrine contains a key that is not recognised.' },
+  MODEL_ASSIGNMENT_INVALID: { status: 400, message: 'A model assignment in the doctrine is not in the required form.' },
+  MODEL_ROLE_UNKNOWN: { status: 500, message: 'The doctrine assigns a model to a role that does not exist.' },
+
+  // ── Unattended loop: refusals raised at the run boundary. ──────────────────
+  //   A cron job scraping the CLI's exit-1 line must see the reason. Every one of
+  //   these was invisible to the source scan's first two regexes (they are raised by
+  //   a helper or with a single-quoted `new Error`), so each degraded to
+  //   `INTERNAL_ERROR` plus an incident id the CLI never logged. They publish by name.
+  GIT_COMMAND_FAILED: { status: 409, message: 'A git command failed during the unit commit.' },
+  GROUND_TRUTH_REQUIRED: { status: 409, message: 'Ground truth did not pass, so this unit cannot be committed.' },
+  IMPLEMENTER_OUTPUT_EMPTY: { status: 409, message: 'The implementer returned no output for this attempt.' },
+  IMPLEMENTER_OUTPUT_MALFORMED: { status: 409, message: 'The implementer output does not match the required format.' },
+  IMPLEMENTER_OUTPUT_TOO_LARGE: { status: 413, message: 'The implementer output exceeded the permitted size.' },
+  IMPLEMENTER_PATH_INVALID: { status: 400, message: 'The implementer returned a file path that is refused.' },
+  MODEL_NOT_REGISTERED_FOR_PROVIDER: { status: 409, message: 'The model the doctrine assigns is not registered on its provider.' },
+  MODEL_PROVIDER_DISABLED: { status: 409, message: 'The model provider assigned to this run is disabled.' },
+  MODEL_PROVIDER_NOT_REGISTERED: { status: 404, message: 'No model provider with that id is registered for this tenant.' },
+  NOTHING_STAGED: { status: 409, message: 'This unit produced no changes to commit.' },
+  RESOURCE_SAMPLE_UNAVAILABLE: { status: 503, message: 'The host could not be sampled; the run stops rather than proceeding unmeasured.', retryAfterSeconds: 5 },
+  REVIEW_OUTPUT_EMPTY: { status: 409, message: 'The reviewer returned no output for this attempt.' },
+  REVIEW_OUTPUT_MALFORMED: { status: 409, message: 'The reviewer output does not match the required format.' },
+  REVIEW_OUTPUT_TOO_LARGE: { status: 413, message: 'The reviewer returned more findings than the cap allows.' },
+  REVIEW_REJECTED_WITHOUT_FINDINGS: { status: 409, message: 'A reviewer rejection must record what to fix.' },
+  SECRET_CONTENT_REFUSED: { status: 403, message: 'The staged content matches a refused secret pattern.' },
+  SECRET_PATH_REFUSED: { status: 403, message: 'A changed path is refused because it is reserved for secrets.' },
+  TARGET_DOCTRINE_LEAKED_INTO_RUN: { status: 403, message: 'A quarantined instruction file appeared in a run payload; the run refuses to continue.' },
+  TARGET_REPOSITORY_NOT_GIT: { status: 400, message: 'That path is not a git repository.' },
+  TASK_DOCUMENT_INVALID: { status: 400, message: 'The task document is not valid.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */
