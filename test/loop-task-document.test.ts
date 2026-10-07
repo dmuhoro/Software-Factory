@@ -167,6 +167,84 @@ test('the prompt carries doctrine and criteria, never the target instructions', 
   assert.match(task, /Repository files \(bounded inventory\)/);
 });
 
+test('the implementer sees the current content of files its own criteria reference', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-impl-prompt-'));
+  fs.mkdirSync(path.join(fixtureRoot, 'src'), { recursive: true });
+  const real = '// keep me\nconst keep = true;\n';
+  fs.writeFileSync(path.join(fixtureRoot, 'src', 'target.ts'), real);
+
+  const markdown = `# Task: Touch target
+## Goal
+Edit the target file.
+## Milestones
+### M1: touch it
+type: fix
+- [ ] the target file mentions its key
+  - check: grep -q "key" src/target.ts
+`;
+  const document = parseTaskDocument(markdown, 'sprints/fixture.md');
+  const units = decompose(document, { maxAcceptanceCriteriaPerMilestone: 5 });
+  const { system, task } = buildPrompts({
+    tenantId: 'tenant_test_0001',
+    repo: fixtureRoot,
+    unit: units[0],
+    document,
+    assignment: { role: 'implementer', tier: 'cheap', providerId: 'local', model: 'qwen2.5-coder:14b', source: 'doctrine' },
+    doctrineLines: [],
+    isolation: {
+      doctrineRoot: DoctrineService.root(),
+      doctrineDigest: 'sha256:test',
+      targetRepo: fixtureRoot,
+      quarantine: [],
+      childEnv: {},
+      stagedAt: new Date().toISOString(),
+    },
+    timeoutMs: 1000,
+  });
+  assert.match(task, /--- src\/target\.ts \(current content/);
+  assert.ok(task.includes(real), 'the real current content is embedded, not a guess');
+  assert.match(system, /reproduce it exactly and apply only the required change/);
+});
+
+test('content embedding is bounded and honest about a truncation cut', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-impl-trunc-'));
+  fs.mkdirSync(path.join(fixtureRoot, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(fixtureRoot, 'src', 'big.ts'), 'x'.repeat(40 * 1024));
+
+  const markdown = `# Task: Touch big
+## Goal
+Edit the big file.
+## Milestones
+### M1: touch it
+type: fix
+- [ ] the file mentions its key
+  - check: grep -q "key" src/big.ts
+`;
+  const document = parseTaskDocument(markdown, 'sprints/fixture.md');
+  const units = decompose(document, { maxAcceptanceCriteriaPerMilestone: 5 });
+  const { task } = buildPrompts({
+    tenantId: 'tenant_test_0001',
+    repo: fixtureRoot,
+    unit: units[0],
+    document,
+    assignment: { role: 'implementer', tier: 'cheap', providerId: 'local', model: 'qwen2.5-coder:14b', source: 'doctrine' },
+    doctrineLines: [],
+    isolation: {
+      doctrineRoot: DoctrineService.root(),
+      doctrineDigest: 'sha256:test',
+      targetRepo: fixtureRoot,
+      quarantine: [],
+      childEnv: {},
+      stagedAt: new Date().toISOString(),
+    },
+    timeoutMs: 1000,
+  });
+  const block = task.match(/--- src\/big\.ts \(current content, (\d+) bytes shown/);
+  assert.ok(block, 'the block is present with a byte count');
+  assert.ok(Number(block[1]) <= 32 * 1024, `only the bounded prefix is shown (${block[1]} bytes)`);
+  assert.match(task, /content after this cut is NOT included: do not invent it/);
+});
+
 test('a model reply that is narration is refused, not believed', () => {
   const replies = [
     'I created the route and the tests all pass now.',

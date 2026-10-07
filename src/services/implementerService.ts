@@ -58,6 +58,58 @@ function safeRepoPath(repo: string, relative: string): void {
   if (rel.split(path.sep).includes('.git')) throw fail('IMPLEMENTER_PATH_INVALID', `.git is not writable: ${relative}`);
 }
 
+const MAX_REFERENCE_FILES = 6;
+const MAX_REFERENCE_FILE_BYTES = 32 * 1024;
+const MAX_REFERENCE_TOTAL_BYTES = 96 * 1024;
+const REFERENCE_SKIP = new Set(['node_modules', '.git', '.data', 'dist', 'build', 'target', '.factory-worktrees']);
+
+/** Extracts repo-relative file paths a shell command mentions (e.g. `grep ... src/components/Toast.tsx`). */
+function referencedFromCommand(repo: string, command: string, out: Set<string>): void {
+  if (!command.trim()) return;
+  for (const raw of command.trim().split(/\s+/)) {
+    const token = raw.replace(/^['"]|['"]$/g, '');
+    if (!token || token === '&&' || token === '||' || token === ';' || token.startsWith('-')) continue;
+    if (token.split(path.sep).some((part) => REFERENCE_SKIP.has(part))) continue;
+    if (path.isAbsolute(token)) continue;
+    const normalised = path.normalize(token);
+    if (normalised.startsWith('..') || normalised.startsWith('/')) continue;
+    const resolved = path.resolve(repo, normalised);
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) continue;
+    const rel = path.relative(repo, resolved);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) continue;
+    out.add(rel);
+  }
+}
+
+/**
+ * Current content of the files the unit's own criteria/verify commands reference. The model must
+ * reproduce a full file exactly, so it must see the file it is editing. Bounded and honestly
+ * truncated: never invented content beyond the cut, and a change that needs hidden parts is refused.
+ */
+function referencedFileContents(repo: string, unit: WorkUnit): Array<{ path: string; content: string; truncated: boolean }> {
+  const paths = new Set<string>();
+  for (const criterion of unit.criteria) {
+    if (criterion.check) referencedFromCommand(repo, criterion.check, paths);
+  }
+  if (unit.verify) referencedFromCommand(repo, unit.verify, paths);
+  if (paths.size === 0) return [];
+  if (paths.size > MAX_REFERENCE_FILES) return [];
+
+  const files: Array<{ path: string; content: string; truncated: boolean }> = [];
+  let total = 0;
+  for (const relative of [...paths].sort()) {
+    const resolved = path.join(repo, relative);
+    const bytes = fs.statSync(resolved).size;
+    const truncated = bytes > MAX_REFERENCE_FILE_BYTES;
+    const content = fs.readFileSync(resolved, 'utf8');
+    const shown = truncated ? content.slice(0, MAX_REFERENCE_FILE_BYTES) : content;
+    total += Buffer.byteLength(shown, 'utf8');
+    if (total > MAX_REFERENCE_TOTAL_BYTES) return [];
+    files.push({ path: relative, content: shown, truncated });
+  }
+  return files;
+}
+
 /** Bounded view of the repository so the model sees what exists without a whole-tree dump. */
 function fileInventory(repo: string, limit = 400): string[] {
   const out: string[] = [];
@@ -99,6 +151,7 @@ export function buildPrompts(request: ImplementRequest): { system: string; task:
     `- Paths are relative to the repository root. Absolute paths, "..", and anything under .git are refused.`,
     `- Return the COMPLETE content of every file you change; partial or "diff" content is rejected.`,
     `- Change only what the acceptance criteria require. Every returned path must correspond to a criterion.`,
+    `- When a file's current content is shown to you, reproduce it exactly and apply only the required change. Do not rewrite, reformat, reorder, or drop any part you do not need to change, and do not invent anything beyond a truncation cut.`,
     `- Do not return empty content unless the criterion requires deleting meaning; deleting a file is done by returning {"path":"...","content":""} and will be treated as an edit, not a removal.`,
     `- Never include credentials, tokens, private keys, or .env contents in any file.`,
   ].join('\n');
@@ -115,6 +168,10 @@ export function buildPrompts(request: ImplementRequest): { system: string; task:
     '',
     'Repository files (bounded inventory):',
     inventory.join('\n'),
+    '',
+    referencedFileContents(request.repo, unit).map((file) =>
+      `--- ${file.path} (current content, ${Buffer.byteLength(file.content, 'utf8')} bytes shown${file.truncated ? ' of ' + fs.statSync(path.join(request.repo, file.path)).size + '; content after this cut is NOT included: do not invent it, keep the file as-is beyond what you can see' : ''}) ---\n${file.content}\n--- end ${file.path} ---`
+    ).join('\n\n'),
     '',
     request.feedback ? `Previous attempt of this unit was refused. Fix exactly this:\n${request.feedback}` : '',
     'Return the JSON file manifest now.',
