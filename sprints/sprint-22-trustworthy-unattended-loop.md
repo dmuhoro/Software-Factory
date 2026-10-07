@@ -127,6 +127,83 @@ Verification: 8 sandbox tests + the full 46-test loop/ground-truth/sandbox suite
 7/7, full `npm run verify` green.
 
 
+## L7 verified (real throughput day: Daftari and Software Factory itself)
+
+### The corruption the day found — and the gate that now refuses it
+
+Run `looprun_baabd8f138d822bca628cb29` against Daftari committed M1 as `0dfec9c`, and the
+day's survey found **exactly one corrupted line across every loop commit**: in
+`ProductCatalogScreen.tsx` the model fused two JSX lines with a literal two-character
+`\n` (456 → 455 lines; escape 0 → 1). Every command passed, `diff:whitespace` passed, the
+reviewer approved — JSX renders the escape as visible text and no test breaks. Operator
+remediation `01c845f` on Daftari (suite 725/725, typecheck, lint).
+
+New ground-truth check **`diff:escape-mangling`** (commit `f5e170d`), TDD: both tests
+failed with the check absent (11 pass / 2 fail), pass 13/13 with it, suite 211/211, lint
+green. The check compares every changed file against its `git show HEAD:` baseline and
+fails when a literal escape's two sides appear in HEAD separated by a real line break;
+verbatim-reproduced lines and files with no HEAD baseline are outside its scope and named
+honestly in the pass output.
+
+- **Replay against the real corruption**: scratch clone with HEAD at `0dfec9c~1` and the
+  corrupt file in the working tree → `diff:escape-mangling FAIL` at
+  `ProductCatalogScreen.tsx:261` (the surveyed line), `proof.passed=false`, commit
+  refused; the remediated `01c845f` content → green ("1 changed file(s) with a HEAD
+  baseline compared").
+- **The refusal is now actionable**: the `ground-truth` gate carries a failed diff
+  check's `outputTail` in its detail. Live proof from the dogfood's first run — attempt 1
+  refused with `diff:whitespace exit 2: scripts/seed-local-ollama.ts:22: trailing
+  whitespace`, attempt 2 shipped whitespace-clean on the model's own.
+- `6f3fdb0`: the writer preserves the target file's EOF-newline convention at the write
+  boundary (the 456→455 class also touched line endings; failing-first test, both
+  conventions).
+
+### Software Factory itself: run `looprun_cd5b2f682f3ca0f7c99ab731` — exit 0, 2/2 committed
+
+The loop ran unattended against its own repository with `gpt-oss:20b-cloud` for both
+implementer and reviewer: **M1 `3aa864f` and M2 `c5d6a47`, attempt 1 of 3 for both, 34
+gates executed, 0 refused, 2 narration claims discarded.** Both commit bodies carry the
+full provenance: `Verified: <real command> (exit 0)`, `Ground truth: 6/6 checks passed`,
+`Proof: sha256:…`, `Review: approved by local-ollama/gpt-oss:20b-cloud`, and
+`loop=software-factory/4.10.2`. The diffs do what the task asked: a second
+`register(...tenantId: 'default'...)` in `seed-local-ollama.ts` and `run-pilot.ts` with
+the tenant `''` registrations preserved. Suite 211/211 + lint green afterwards.
+
+What the run burned to get there — every refusal earned its keep:
+
+1. **Refused by design first**: `DOCTRINE_ROOT_INSIDE_TARGET_REPOSITORY` — a repository
+   may not supply the rules it is judged by. The sanctioned, default-shut override
+   `FACTORY_ALLOW_SELF_DOCTRINE=1` (same trust domain, must be asked for explicitly)
+   carried the run; the rule itself was not weakened.
+2. **Three attempts burned on an environment failure**: `cmd:unit-M1 exit 127`
+   (`sh: 1: npm: not found`) — doctrine's sandbox masks `/home` for credential hygiene
+   and this machine's `npm` lives under it. The task's verify moved to the repo-local
+   `tsc` (identical check: `npm run lint` is exactly `tsc --noEmit`; `node` is
+   `/usr/bin/node`, visible), with the constraint recorded in the task doc (`30a1bf5`).
+3. **`TASK_DOCUMENT_INVALID`: the Verification section allows one command** — the
+   explanatory note moved to Constraints (`d41f329`).
+4. **A false comment survived verify and review**: M2's output put "Register the
+   provider for the empty string (platform_operator)" directly above `tenantId:
+   'default'`. The greps check code, not comments; the reviewer checks intent, not
+   comment truth. Operator remediation `f32dde2`.
+
+### Open findings (surfaced, not fixed in this sprint)
+
+1. **Exit-1 refusals are opaque to cron/CI**: codes that are not in `apiError`'s table
+   (`DOCTRINE_ROOT_INSIDE_TARGET_REPOSITORY`, `TASK_DOCUMENT_INVALID`, …) surface as
+   `INTERNAL_ERROR` plus an incident id — exit 1 with no stated reason on the terminal.
+2. **Command failures give the retry `id exit N` only.** An environmental failure (exit
+   127) burns the whole attempt cap while the model cannot see why; the `outputTail`
+   lives in the run record for the operator, not in the feedback.
+3. **A factually false code comment** passed both verify (greps) and review (intent) —
+   comment truth is outside every gate.
+4. **Daftari M2 was vacuous**: the implementer's scope-bleed in M1 already landed M2's
+   Cancel-label work (the reviewer's "unrelated file" rule did not flag a same-file,
+   same-concern edit), so M2's `diff:non-empty` forced a fake delta and the unit went
+   STUCK. Task-design flaw; recorded, not re-run.
+5. **Toolchains under `/home` are invisible to sandboxed verification** — verify commands
+   must use system or repo-local binaries.
+
 ## Sprint progress
 
 - [x] Hotfix 4.10.1: removed fake `--kill-at` drill scaffolding and invalid `process.stdout.flush()` that crashed every CLI-run child on its first event (which is why the released drill hung). Real drill green 4/4, full suite 197/197. Commit `973002e`.
@@ -143,3 +220,6 @@ Verification: 8 sandbox tests + the full 46-test loop/ground-truth/sandbox suite
 
 - [x] L6/D7 trust‑tier policy document – **done** (`docs/policy/trust-tier.md`)
 - [x] L7 release 4.10.0 (version bump, CHANGELOG, annotated tag, push) – **done** (tag v4.10.0)
+- [x] L7 escape‑mangling ground‑truth gate with actionable refusal detail, TDD and replay‑proven against Daftari's real corruption – done. Commits `f5e170d` (gate), `6f3fdb0` (EOF‑newline writer fix).
+- [x] L7 Daftari throughput day – done: run `looprun_baabd8f138d822bca628cb29` → real commit `0dfec9c`, corruption surveyed and remediated at `01c845f`, M2‑vacuous recorded honestly.
+- [x] L7 Software Factory self‑hosted run – done: run `looprun_cd5b2f682f3ca0f7c99ab731`, **2/2 units committed (`3aa864f`, `c5d6a47`), attempt 1, 34 gates, 0 refused, exit 0**; environment and comment remediations `30a1bf5`, `d41f329`, `f32dde2`.
