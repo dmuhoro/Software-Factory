@@ -77,6 +77,25 @@ function iso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Writer fidelity: preserve the existing file's EOF-newline convention when replacing it.
+ *
+ * Models reliably emit file content that ends in `\n`. An existing file that ends in a non-newline
+ * byte (e.g. `...}\n}`) has a convention; stamping the model's trailing newline onto it introduces
+ * an unrequested byte change that the reviewer refuses and that the whitespace diff gate cannot see
+ * (`git diff --check` ignores a single added EOF newline). Restore/keep the existing convention so
+ * the loop only ever changes what the criteria require. Trailing *blank lines* (`\n\n`) are real
+ * corruption the whitespace gate flags and are never normalized away.
+ */
+export function preserveEofNewline(existing: string | undefined, content: string): string {
+  if (existing === undefined) return content;
+  const existingEndsNl = existing.endsWith('\n');
+  const contentEndsNl = content.endsWith('\n');
+  if (existingEndsNl && !contentEndsNl) return `${content}\n`;
+  if (!existingEndsNl && contentEndsNl) return content.slice(0, -1);
+  return content;
+}
+
 function git(repo: string, args: string[]): { code: number; out: string } {
   try {
     const out = execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', timeout: 60_000, maxBuffer: 4_000_000, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -443,7 +462,8 @@ export class ExecutionLoopService {
         const claimed = result.files.map((file) => {
           const target = resolveFileWithin(repo, file.path, 'IMPLEMENTER_PATH_INVALID');
           fs.mkdirSync(path.dirname(target), { recursive: true });
-          fs.writeFileSync(target, file.content, 'utf8');
+          const existing = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : undefined;
+          fs.writeFileSync(target, preserveEofNewline(existing, file.content), 'utf8');
           return file.path;
         });
         if (!claimed.length) throw new Error('IMPLEMENTER_OUTPUT_EMPTY:no files were returned for this unit');
