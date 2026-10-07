@@ -154,6 +154,11 @@ const REGISTRY: Record<GateId, GateFn> = {
       return { passed: true, detail: 'the starting tree is unchanged from attempt 1, where this unit\u2019s verification did not pass; re-running the same command would say the same thing' };
     }
     const result = runCommand(ctx.repo, declared, ctx.timeoutMs ?? 60_000, ctx.env, ctx.sandbox);
+    if (result.exitCode === 127) {
+      // The command did not run: a hidden toolchain, not a failed criterion. Refuse loudly here,
+      // before the model is dialled, rather than let it be mistaken for a not-yet-satisfied unit.
+      return { passed: false, detail: `unit ${ctx.unit?.unitId ?? 'unknown'} verification could not run: ${result.output}` };
+    }
     if (result.exitCode !== 0) {
       return { passed: true, detail: `unit verification does not pass before work: ${declared} exited ${result.exitCode}` };
     }

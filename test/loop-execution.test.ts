@@ -622,3 +622,34 @@ test('a unit whose own verification already passes on the starting tree is refus
     assert.equal(porcelain(repo), '', 'the run leaves a clean tree');
   });
 });
+
+test('a verification command masked by the sandbox is refused before the model is dialled, once', async () => {
+  // The real case (sprint 22, finding 5): the sandbox masks /home, this machine's npm lives
+  // under it, and a sandboxed verify command died with an opaque exit 127 that burned three
+  // attempts. The unit's executable here is on its own PATH but under a masked mount, so the
+  // sandbox genuinely cannot see it. It must be refused loudly, once, before the model is dialled.
+  const repo = makeTarget('masked-tool');
+  const maskedDir = fs.mkdtempSync(path.join(state, 'masked-tool-bin-'));
+  const tool = path.join(maskedDir, 'masked-lint');
+  fs.writeFileSync(tool, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  const task = writeTask('masked-tool', [
+    '### M1: Feature alpha',
+    'type: feat',
+    `verify: ${tool}`,
+    '- [ ] feature-a.txt exists and contains alpha',
+    '',
+  ].join('\n'));
+
+  await withStub(() => ({ files: [{ path: 'feature-a.txt', content: 'alpha\n' }] }), async (stub) => {
+    const outcome = await ExecutionLoopService.run({ repo, taskDocument: task, tenantId: TENANT });
+    const { record } = outcome;
+
+    assert.equal(outcome.exitCode, 2, `a unit whose verification cannot run means the run reports stuck units: ${record.hardStop ?? record.refusal ?? ''}`);
+    const m1 = record.units.find((unit) => unit.unitId === 'M1')!;
+    assert.equal(m1.status, 'stuck');
+    assert.equal(m1.attempts.length, 1, 'an environment failure burned the attempt cap');
+    assert.match(m1.attempts[0].detail, /SANDBOX_TOOLCHAIN_HIDDEN/, `the refusal was not loud: ${m1.attempts[0].detail}`);
+    assert.deepEqual(stub.prompts, [], 'the model was dialled for a unit whose verification cannot run');
+    assert.equal(record.commits.length, 0, 'nothing was committed for a unit that could not be verified');
+  });
+});
