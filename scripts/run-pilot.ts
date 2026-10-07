@@ -14,7 +14,7 @@ import path from 'path';
   });
   console.log('Registered provider', provider.id);
 
-  // Register the provider for the empty string (platform_operator)
+  // Register the same provider for the 'default' tenant the unattended loop uses
   const providerDefault = FrontierModelService.register({
     tenantId: 'default',
     id: 'local-ollama',
