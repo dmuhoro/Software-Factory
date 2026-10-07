@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import test from 'node:test';
-import { collectGroundTruth } from '../src/services/groundTruthService';
+import { collectGroundTruth, runCommand } from '../src/services/groundTruthService';
 
 function makeRepo(): { repo: string; cleanup: () => void } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loop-sbox-'));
@@ -220,5 +220,34 @@ test('break-out: /proc/self/root resolves to the container root, never the host'
   } finally {
     fs.rmSync(marker, { force: true });
     cleanup();
+  }
+});
+
+test('a sandboxed command whose executable the sandbox masks is refused loudly, never run bare', () => {
+  // The real case (sprint 22, finding 5): the sandbox masks /home, this machine's `npm` lives
+  // under it, and the sandboxed verification died with an opaque `sh: 1: npm: not found`
+  // (exit 127) that burned three attempts. Here the executable is on the command's own PATH but
+  // under a masked mount, so the sandbox genuinely cannot see it.
+  const { repo, cleanup } = makeRepo();
+  const maskedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-masked-'));
+  fs.writeFileSync(path.join(maskedDir, 'masked-lint'), '#!/bin/sh\necho masked-lint ran\n', { mode: 0o755 });
+  try {
+    const proof = collectGroundTruth({
+      repo,
+      requireNonEmptyDiff: true,
+      commands: [{ id: 'probe', command: 'masked-lint' }],
+      timeoutMs: 60_000,
+      env: { ...process.env, PATH: `${maskedDir}:${process.env.PATH ?? ''}` },
+      sandbox: sandbox(),
+    });
+    const probe = proof.checks.find((item) => item.id === 'cmd:probe')!;
+    assert.equal(probe.exitCode, 127);
+    assert.match(probe.outputTail ?? '', /SANDBOX_TOOLCHAIN_HIDDEN/, 'the refusal must be named, not a bare exit code');
+    assert.match(probe.outputTail ?? '', /masks \/home/, 'the refusal must explain the sandbox path masking');
+    assert.ok(!/masked-lint ran/.test(probe.outputTail ?? ''), 'the masked executable must not have run');
+    assert.equal(proof.passed, false);
+  } finally {
+    cleanup();
+    fs.rmSync(maskedDir, { recursive: true, force: true });
   }
 });

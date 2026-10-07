@@ -605,11 +605,10 @@ export class ExecutionLoopService {
 
         if (halting) throw new LoopHardStop(`${unit.id}: ${tail(message, 400)}`);
 
-        if (ids.includes('no-op-unit')) {
-          // Terminal, and only for this refusal: every attempt starts from the same committed
-          // tree, so the same unit-declared command passes again — a retry provably changes
-          // nothing. Record it stuck and stop, rather than burn the cap on a futile loop.
-          // (Transient refusals such as MODEL_* keep their retries.)
+        if (ids.includes('no-op-unit') || /SANDBOX_TOOLCHAIN_HIDDEN/.test(message)) {
+          // Terminal, and not retried: the tree is restored to the same committed state every
+          // attempt, so a vacuous unit stays vacuous and a masked toolchain stays masked; neither
+          // can change, and a retry only burns the attempt cap (sprint 22, findings 4 and 5).
           unitRecord.status = 'stuck';
           unitRecord.finishedAt = iso();
           input.event('error', attempt.stage, `unit ${unit.id} is stuck: ${attempt.detail}`);

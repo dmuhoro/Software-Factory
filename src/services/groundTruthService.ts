@@ -116,6 +116,18 @@ export function runCommand(repo: string, command: string, timeoutMs: number, env
       }
       const output = `${error?.stdout ?? ''}${error?.stderr ?? ''}`.trim().slice(-400_000) || `sandbox: ${error?.message ?? 'execution failed'}`;
       const exitCode = typeof error?.status === 'number' ? error.status : 1;
+      // `sh: 1: <tool>: not found` inside the sandbox is almost always a hidden toolchain, not a
+      // typo: the sandbox masks /home, /tmp, /run and /root, so a version-manager node or npm
+      // installed under the operator's home is invisible. An opaque exit 127 here once burned a
+      // whole attempt cap (sprint 22, finding 5), so it is named at the boundary that observed it.
+      if (exitCode === 127) {
+        return {
+          exitCode,
+          output: `SANDBOX_TOOLCHAIN_HIDDEN: a sandboxed verification command could not find its executable (exit 127). The sandbox masks /home, /tmp, /run and /root, so a toolchain installed under your home directory (a version-manager node or npm, for example) is invisible inside it. Use a system binary (/usr/bin) or a repository-local one (node_modules/.bin/…). Shell said: ${output}`,
+          startedAt,
+          completedAt: now(),
+        };
+      }
       return { exitCode, output, startedAt, completedAt: now() };
     }
   }
