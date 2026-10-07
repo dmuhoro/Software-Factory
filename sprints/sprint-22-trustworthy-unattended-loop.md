@@ -1,6 +1,6 @@
 # Sprint 22: the unattended loop becomes trustworthy
 
-- **Status**: In progress
+- **Status**: Done
 - **Date**: 2026-10-06
 - **Precedes**: `sprint-21-live-loop.md`
 - **Branch**: `review/appwrite-pilot-4.8.0`
@@ -223,3 +223,4 @@ What the run burned to get there — every refusal earned its keep:
 - [x] L7 escape‑mangling ground‑truth gate with actionable refusal detail, TDD and replay‑proven against Daftari's real corruption – done. Commits `f5e170d` (gate), `6f3fdb0` (EOF‑newline writer fix).
 - [x] L7 Daftari throughput day – done: run `looprun_baabd8f138d822bca628cb29` → real commit `0dfec9c`, corruption surveyed and remediated at `01c845f`, M2‑vacuous recorded honestly.
 - [x] L7 Software Factory self‑hosted run – done: run `looprun_cd5b2f682f3ca0f7c99ab731`, **2/2 units committed (`3aa864f`, `c5d6a47`), attempt 1, 34 gates, 0 refused, exit 0**; environment and comment remediations `30a1bf5`, `d41f329`, `f32dde2`.
+- [x] L7 release 4.10.3 (version bump, CHANGELOG, annotated tag, push) – done (tag `v4.10.3`)
