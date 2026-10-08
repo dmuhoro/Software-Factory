@@ -133,9 +133,9 @@ consults it.
 
 | # | Phase | State |
 |---|---|---|
-| 0 | Ground truth record | **done** |
-| 1 | Two-phase confirm on destructive control-plane ops | in progress |
-| 2 | Eligibility pre-check before destruction | pending |
+| 0 | Ground truth record | **done** `698f164` |
+| 1 | Two-phase confirm on destructive control-plane ops | **done** `5cfb42c` |
+| 2 | Eligibility pre-check before destruction | **done** `5cfb42c` |
 | 3 | Scoped, expiring API keys at `tenantAuth` | pending |
 | 4 | Graduated enforcement (`off`/`log-only`/`enforce`), default `enforce` | pending |
 | 5 | Audit event schema validation + preview | pending |
@@ -160,3 +160,49 @@ consults it.
    is refused 401. Needs a console-created key with table/row/column/index scopes.
 2. **Onboarding checklist** — `projects_list_stages` is `401` under the console OAuth
    session; completing onboarding is a dashboard action.
+
+## Evidence (as landed)
+
+### Phases 1 and 2 — two-phase cancel + eligibility (`5cfb42c`)
+
+`test/loop-two-phase-cancel.test.ts`, 10 cases, all driving the real
+`LoopControlService` and the real HTTP router against a stub provider and real git
+repositories:
+
+- the token is single-use, and a replay is refused even inside the TTL;
+- a token bound to one subject or tenant cannot redeem another;
+- **a wrong guess invalidates a live confirmation**, so it cannot be brute-forced;
+- an expired token is refused;
+- **a single call does not cancel** — phase one takes no action on the run;
+- a real cancellation stops the run at a unit boundary and is recorded as a hard
+  stop naming the operator, with no unit left running;
+- a forged or missing token is refused and leaves the run running;
+- a foreign tenant gets a miss, and so does its cancellation;
+- a settled run is not cancelable;
+- over HTTP: 202 + token on phase one, 202 + `cancellationRequested` on phase two,
+  400 on replay, 404 cross-tenant, 401 with no credential, and the eligibility
+  pre-check answers `eligible: false` once the run has settled.
+
+**Failing-first proof.** With `requestCancel` patched to call
+`ExecutionLoopService.requestCancellation` immediately (the single-phase behaviour
+the shape exists to prevent), case 5 fails:
+
+```
+not ok 5 - a single call does not cancel: phase one takes no action on the run
+# pass 9
+# fail 1
+```
+
+Reverted, and the file returns to 10/10.
+
+### Regression
+
+- `npm test` → **240/240** passing (230 baseline + 10 new).
+- `npm run lint` (`tsc --noEmit`) clean.
+- `npm run build` (vite + esbuild) clean.
+
+### Also fixed this sprint
+
+`da90cfe` — the 4.12.0 release bumped `package.json` but left `package-lock.json`
+at 4.11.0, failing NC-3. A release that cannot be installed from a clean clone is
+not a release.

@@ -4,6 +4,32 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### Sprint 25 — borrowed leverage (in progress)
+
+Shapes borrowed from WorkOS, inverted where SF's safety model requires it. Full plan and
+verified ground truth in `sprints/sprint-25-borrowed-leverage.md`.
+
+- **Ground truth recorded** (`698f164`). WorkOS MCP (OAuth, 4 tools, 188 queries + 183
+  mutations) and Appwrite MCP (1 database, 4 tables, 0 buckets, 0 users, **0 API keys**) probed
+  live and read-only; the full WorkOS catalogue is at `artifacts/sprint-25/workos-catalog.md`.
+  Two findings recorded rather than papered over: SF's live Appwrite credential is dead (401, and
+  the project has no keys at all — operator-blocked), and a static `Authorization` header on a
+  remote MCP defeats its OAuth session.
+- **Two-phase confirmation for irreversible control-plane operations** (`5cfb42c`).
+  `ConfirmationService` issues single-use, TTL-bound, scope-bound tokens; a wrong guess
+  invalidates a live confirmation so it cannot be brute-forced. Tokens live in memory, not the
+  ledger — a pending confirmation is a conversation with one caller, not a fact about the world.
+- **Run cancellation is cooperative and only at a unit boundary.** The loop is the only writer of
+  the target tree, so stopping it mid-write would leave a tree nothing can vouch for.
+  `POST /api/loop/runs/:id/cancel` takes two calls: phase one returns a token and does nothing;
+  phase two consumes it and the run stops. Commits already made are kept.
+- **Eligibility is answered before the operation** (`5cfb42c`, shape from WorkOS
+  `workspaceDeletionCheck`). `GET /api/loop/runs/:id/cancel` reports whether a run may be stopped
+  and why not, without touching it.
+- **The 4.12.0 lockfile drift is fixed** (`da90cfe`): `package-lock.json` still said 4.11.0,
+  failing NC-3. A release that cannot be installed from a clean clone is not a release.
+- Full suite: **240/240** passing (230 baseline + 10 new); `tsc --noEmit` clean; build clean.
+
 ### Sprint 24 — remote control plane (in progress)
 
 - **Single-writer lock proven across processes** (`d141f4b`): a second process against one data
