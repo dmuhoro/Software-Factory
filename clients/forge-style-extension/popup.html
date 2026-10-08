@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SF Control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+      body { margin: 0; padding: 12px; background: #020617; color: #e2e8f0; width: 340px; }
+      h1 { font-size: 14px; margin: 0 0 8px; }
+      label { display: block; font-size: 11px; margin: 6px 0 2px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; }
+      input, textarea, select, button { width: 100%; box-sizing: border-box; font-size: 12px; padding: 6px 8px; border-radius: 8px; border: 1px solid #1e293b; background: #0f172a; color: #e2e8f0; }
+      textarea { resize: vertical; font-family: monospace; }
+      .row { display: flex; gap: 6px; }
+      .row > * { flex: 1; }
+      .hidden { display: none; }
+      pre { max-height: 180px; overflow: auto; background: #000; padding: 8px; border-radius: 8px; font-size: 11px; line-height: 1.4; }
+      small { display: block; margin: 4px 0 6px; opacity: 0.6; }
+    </style>
+  </head>
+  <body>
+    <h1>Software Factory Remote Control</h1>
+    <small>The token is stored in this tab's memory only. Close this popup to forget it.</small>
+    <label>Base URL</label>
+    <input id="baseUrl" placeholder="https://your-railway-app.up.railway.app" autocomplete="off" />
+    <label>Tenant ID</label>
+    <input id="tenantId" placeholder="tenant_..." autocomplete="off" />
+    <label>API Key</label>
+    <input id="apiKey" type="password" placeholder="paste key" autocomplete="off" />
+    <button id="connect">Connect (in-memory)</button>
+    <div id="panel" class="hidden">
+      <label>Repository</label>
+      <input id="repo" placeholder="/path/to/repo" autocomplete="off" />
+      <label>Task document</label>
+      <input id="taskDocument" placeholder="/path/to/task.md" autocomplete="off" />
+      <button id="submit">Submit run</button>
+      <label>Goal</label>
+      <textarea id="goal" rows="3" placeholder="Add the alpha feature"></textarea>
+      <div class="row">
+        <input id="providerId" placeholder="provider id" />
+        <input id="model" placeholder="model" />
+      </div>
+      <button id="draft">Draft goal</button>
+      <label>Recent runs</label>
+      <pre id="runs">- none -</pre>
+      <label>Output</label>
+      <pre id="out"></pre>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>
