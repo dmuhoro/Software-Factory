@@ -13,6 +13,7 @@ import { Router, Request, Response } from 'express';
 import { respondWithError } from '../../utils/respondWithError';
 import { validateTenantRequest } from '../middleware/tenantAuth';
 import { LoopControlService } from '../../services/loopControlService';
+import { GoalIntakeService } from '../../services/goalIntakeService';
 
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
@@ -30,6 +31,24 @@ router.post('/runs', async (req: Request, res: Response) => {
     return res.status(202).json({ status: 'success', ...result });
   } catch (error) {
     return respondWithError(res, error, 'LOOP_SUBMIT_FAILED');
+  }
+});
+
+/** Draft a task document from a goal, validated by the loop's own parser. */
+router.post('/goals', async (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  try {
+    const draft = await GoalIntakeService.draft({
+      tenantId: tenant(req),
+      repo: req.body?.repo,
+      goal: req.body?.goal,
+      providerId: req.body?.providerId,
+      model: req.body?.model,
+      maxOutputTokens: typeof req.body?.maxOutputTokens === 'number' ? req.body.maxOutputTokens : undefined,
+    });
+    return res.status(201).json({ status: 'success', ...draft });
+  } catch (error) {
+    return respondWithError(res, error, 'LOOP_GOAL_DRAFT_FAILED');
   }
 });
 

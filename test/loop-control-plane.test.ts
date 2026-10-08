@@ -27,6 +27,8 @@ fs.mkdirSync(process.env.FACTORY_DATA_DIR, { recursive: true });
 
 const { DurableStore } = await import('../src/services/durableStore');
 const { LoopControlService } = await import('../src/services/loopControlService');
+const { GoalIntakeService } = await import('../src/services/goalIntakeService');
+const { parseTaskDocument } = await import('../src/services/taskDocumentService');
 const { FrontierModelService } = await import('../src/services/frontierModelService');
 const { TenantService } = await import('../src/services/tenantService');
 const { resetRateLimiterForTests } = await import('../src/api/middleware/rateLimiter');
@@ -37,6 +39,7 @@ DurableStore.resetForTests();
 
 const TENANT = 'loop-control-tenant';
 const OTHER = 'loop-control-other';
+const GOAL_TENANT = 'loop-control-goal-tenant';
 
 // ── fixtures ───────────────────────────────────────────────────────────────
 
@@ -194,6 +197,96 @@ test('a second submission for a repository with a live run is refused', async ()
 
 // ── the HTTP surface ───────────────────────────────────────────────────────
 
+// ── goal intake ────────────────────────────────────────────────────────────
+
+const ARCHITECT_MARKER = 'You are the architect for an unattended software delivery loop.';
+
+function validDoc(providerId: string, verify: string): string {
+  return [
+    '# Task: Add the feature',
+    '',
+    '## Goal',
+    'Ship the alpha feature and prove it with a command.',
+    '',
+    '## Constraints',
+    '- Offline only',
+    '',
+    '## Models',
+    `models.implementer: ${providerId}/stub-code`,
+    `models.reviewer: ${providerId}/stub-code`,
+    '',
+    '## Milestones',
+    '### M1: Feature alpha',
+    'type: feat',
+    `verify: ${verify}`,
+    '- [ ] feature.txt exists and contains alpha',
+    '',
+  ].join('\n');
+}
+
+/** A provider that answers the architect with a document, the reviewer with approval, else a manifest. */
+async function withPipelineStub<T>(doc: string, body: (providerId: string) => Promise<T>, tenantId: string = TENANT): Promise<T> {
+  const server = http.createServer((request, response) => {
+    let raw = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => { raw += chunk; });
+    request.on('end', () => {
+      const parsed = JSON.parse(raw || '{}') as { messages?: Array<{ content?: string }> };
+      const prompt = (parsed.messages ?? []).map((message) => message.content ?? '').join('\n');
+      const content = prompt.includes(ARCHITECT_MARKER)
+        ? doc
+        : prompt.includes(REVIEW_MARKER)
+          ? '```json\n{"approved":true,"findings":[]}\n```'
+          : '```json\n{"files":[{"path":"feature.txt","content":"alpha\\n"}],"notes":"wrote it"}\n```';
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ choices: [{ message: { content } }] }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  FrontierModelService.register({ tenantId, id: 'architect', kind: 'local', baseUrl: `http://127.0.0.1:${port}/v1`, modelIds: ['stub-code'] });
+  try {
+    return await body('architect');
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+test('goal intake refuses an empty goal', async () => {
+  await assert.rejects(() => GoalIntakeService.draft({ tenantId: TENANT, repo: 'x', goal: '   ', providerId: 'p', model: 'm' }), /LOOP_GOAL_REQUIRED/);
+  await assert.rejects(() => GoalIntakeService.draft({ tenantId: TENANT, repo: 'x', goal: 'ship it', providerId: '', model: '' }), /LOOP_GOAL_MODEL_REQUIRED/);
+});
+
+test('goal intake refuses a draft the loop parser would reject', async () => {
+  const { repo } = cleanRepo('goalbaddraft', CHECK);
+  await withPipelineStub('not a task document at all\n', async (providerId) => {
+    await assert.rejects(
+      () => GoalIntakeService.draft({ tenantId: TENANT, repo, goal: 'ship it', providerId, model: 'stub-code' }),
+      /LOOP_GOAL_DRAFT_INVALID/,
+    );
+  });
+});
+
+test('a drafted goal round-trips: the parser accepts it and the loop runs it to completion', async () => {
+  const { repo } = cleanRepo('goalhappy', CHECK);
+  const verify = `node ${path.join(repo, 'check.cjs')}`;
+  await withPipelineStub(validDoc('architect', verify), async (providerId) => {
+    const draft = await GoalIntakeService.draft({ tenantId: TENANT, repo, goal: 'add the alpha feature', providerId, model: 'stub-code' });
+    assert.ok(fs.existsSync(draft.taskDocument), 'the draft was not written to disk');
+    const root = process.env.FACTORY_WORKSPACE_ROOT as string;
+    assert.ok(draft.taskDocument === root || draft.taskDocument.startsWith(root + path.sep), 'the draft was written outside the approved workspace');
+    assert.equal(parseTaskDocument(fs.readFileSync(draft.taskDocument, 'utf8')).milestones[0].id, 'M1');
+
+    // The drafted document is submitted unchanged and the loop runs it to a real commit.
+    const submitted = await LoopControlService.submit({ tenantId: TENANT, repo, taskDocument: draft.taskDocument });
+    const outcome = await LoopControlService.whenSettled(submitted.runId);
+    assert.ok(outcome);
+    assert.equal(outcome.record.status, 'completed', `goal run did not complete: ${outcome.record.hardStop ?? outcome.record.refusal ?? ''}`);
+    assert.equal(outcome.record.commits.length, 1, 'the goal produced exactly one verified commit');
+  });
+});
+
 async function listen(app: express.Express): Promise<{ url: string; close: () => Promise<void> }> {
   const server = app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
@@ -270,6 +363,39 @@ test('the loop API is 401 without a credential and tenant-scoped with one', asyn
       assert.match(text, /event: done/, 'the stream did not terminate with a done event');
       assert.match(text, /"status":"completed"/, 'the run did not complete');
     });
+  } finally {
+    await server.close();
+  }
+});
+
+test('goal intake over HTTP is 401 without a credential and 201 with one', async () => {
+  TenantService.registerTenant({
+    id: GOAL_TENANT, name: 'Goal intake tenant', niche: IndustryNiche.CUSTOM_B2B,
+    tier: TenantSubscriptionTier.PROFESSIONAL, status: TenantStatus.ACTIVE, apiKeyHash: '',
+    quota: { maxRequestsPerMinute: 10_000, maxDailyAiTokens: 10_000_000, burstCapacity: 100, storageLimitMb: 1000 },
+    customGuardrails: [], encryptionKeyId: 'test', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  });
+  const owner = await TenantService.provisionCredential(GOAL_TENANT);
+  resetRateLimiterForTests();
+  const app = express();
+  app.use(express.json());
+  app.use('/api', apiRouter);
+  const server = await listen(app);
+  try {
+    const { repo } = cleanRepo('goalhttp', CHECK);
+    const verify = `node ${path.join(repo, 'check.cjs')}`;
+    await withPipelineStub(validDoc('architect', verify), async (providerId) => {
+      const payload = JSON.stringify({ tenantId: GOAL_TENANT, repo, goal: 'add the alpha feature', providerId, model: 'stub-code' });
+      const anonymous = await fetch(`${server.url}/api/loop/goals`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload });
+      assert.equal(anonymous.status, 401, 'goal drafting must require a credential');
+      const created = await fetch(`${server.url}/api/loop/goals`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': owner.apiKey }, body: payload,
+      });
+      assert.equal(created.status, 201, `expected 201, got ${created.status}`);
+      const body = await created.json() as { taskDocument: string; milestones: Array<{ id: string }> };
+      assert.equal(body.milestones[0].id, 'M1');
+      assert.ok(fs.existsSync(body.taskDocument), 'the response named a draft that does not exist');
+    }, GOAL_TENANT);
   } finally {
     await server.close();
   }
