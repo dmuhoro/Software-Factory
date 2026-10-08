@@ -52,6 +52,74 @@ router.post('/goals', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Eligibility pre-check for cancellation: may this run be stopped, and if not, why not.
+ *
+ * The shape is borrowed from WorkOS's `workspaceDeletionCheck` / `environmentDeletionEligibility`
+ * family - ask before you attempt, so a caller learns the reason without having to trigger the
+ * operation and parse a failure.
+ */
+router.get('/runs/:id/cancel', (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  const tenantId = tenant(req);
+  const run = LoopControlService.get(tenantId, req.params.id);
+  if (!run) return res.status(404).json({ status: 'error', code: 'LOOP_RUN_NOT_FOUND', message: 'No such loop run.' });
+
+  const cancellable = run.status === 'running';
+  return res.json({
+    status: 'success',
+    eligible: cancellable,
+    runId: run.runId,
+    runStatus: run.status,
+    ...(cancellable
+      ? { reason: 'The run is executing; stopping it takes effect at the next unit boundary.' }
+      : { reason: `A run that is ${run.status} has already settled and cannot be cancelled.` }),
+    ...(cancellable
+      ? { next: `POST /api/loop/runs/${run.runId}/cancel to receive a confirmation token.` }
+      : {}),
+  });
+});
+
+/**
+ * Cancel a running run. Two phases, because stopping is irreversible:
+ *
+ *   1. POST with no token   -> 202 + a single-use `confirmationToken`. Nothing happens to the run.
+ *   2. POST with the token  -> 202 + the loop stops at its next unit boundary.
+ *
+ * Work already committed stays committed. There is no configuration that skips phase one.
+ */
+router.post('/runs/:id/cancel', (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  const tenantId = tenant(req);
+  const runId = req.params.id;
+
+  if (req.body?.confirmationToken === undefined) {
+    try {
+      const issued = LoopControlService.requestCancel(tenantId, runId);
+      return res.status(202).json({
+        status: 'pending_confirmation',
+        runId,
+        effect: 'Stops the run at its next unit boundary. Commits already made are kept.',
+        ...issued,
+      });
+    } catch (error) {
+      return respondWithError(res, error, 'LOOP_CANCEL_FAILED');
+    }
+  }
+
+  try {
+    const result = LoopControlService.confirmCancel(tenantId, runId, req.body?.confirmationToken);
+    return res.status(202).json({
+      status: 'success',
+      runId,
+      cancellationRequested: !result.alreadySettled,
+      ...(result.alreadySettled ? { note: 'The run settled before the cancellation was applied.' } : {}),
+    });
+  } catch (error) {
+    return respondWithError(res, error, 'LOOP_CANCEL_FAILED');
+  }
+});
+
 /** Every run this tenant has submitted, newest first. */
 router.get('/runs', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;

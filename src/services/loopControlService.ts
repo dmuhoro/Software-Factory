@@ -18,9 +18,13 @@
  *    two runs on one repository would interleave commits. A second submission while one is live
  *    is refused by name.
  */
+import { ConfirmationService, type IssuedConfirmation } from './confirmationService';
 import { ExecutionLoopService, type LoopRunOutcome } from './executionLoopService';
 import type { LoopRunRecord, LoopStatus } from './loopTypes';
 import { resolveWithin, isGitRepository } from '../utils/pathGuard';
+
+/** The operation a confirmation token is bound to. Kept out of the token's visible shape. */
+const CANCEL_OPERATION = 'loop.run.cancel';
 
 export interface SubmitLoopRunInput {
   tenantId: string;
@@ -157,6 +161,45 @@ export class LoopControlService {
   /** Resolves when a run this process started finishes. Undefined for a run started elsewhere. */
   public static whenSettled(runId: string): Promise<LoopRunOutcome> | undefined {
     return this.active.get(runId)?.settled;
+  }
+
+  // ── two-phase cancellation ──────────────────────────────────────────────
+  //
+  // Stopping a run is irreversible: work already committed stays committed, and the units that
+  // had not started will never run. So it takes the same two calls an irreversible operation
+  // takes anywhere else - ask, look at what is about to happen, then present a token.
+
+  /** Phase one. Issues the single-use token; takes no action on the run. */
+  public static requestCancel(tenantId: string, runId: string): IssuedConfirmation {
+    const record = this.get(tenantId, runId);
+    if (!record) throw new Error('LOOP_RUN_NOT_FOUND');
+    if (record.status !== 'running') throw new Error('LOOP_RUN_NOT_CANCELABLE');
+    return ConfirmationService.issue({ tenantId, operation: CANCEL_OPERATION, subjectId: runId });
+  }
+
+  /**
+   * Phase two. Consumes the token and asks the loop to stop at its next unit boundary.
+   *
+   * Returns false when the run had already settled between the two calls. That is not a failure
+   * of the request - the outcome the caller wanted already happened - so it is reported as
+   * `alreadySettled` rather than as an error.
+   */
+  public static confirmCancel(
+    tenantId: string,
+    runId: string,
+    token: unknown,
+  ): { alreadySettled: boolean } {
+    const record = this.get(tenantId, runId);
+    if (!record) throw new Error('LOOP_RUN_NOT_FOUND');
+
+    const redeemed = ConfirmationService.consume({ token, tenantId, operation: CANCEL_OPERATION, subjectId: runId });
+    if (!redeemed) throw new Error('LOOP_CONFIRMATION_INVALID');
+
+    if (record.status !== 'running') return { alreadySettled: true };
+    // requestCancellation re-reads the record and refuses a settled run, so a race between the
+    // status check above and the instruction below cannot report success for a run that ended.
+    const accepted = ExecutionLoopService.requestCancellation(runId);
+    return { alreadySettled: !accepted };
   }
 }
 
