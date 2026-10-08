@@ -118,7 +118,7 @@ Every claim below names the command that demonstrated it and what to look at.
 - `npm run lint` (`tsc --noEmit`) clean.
 - `npm test` → 230/230 passing (`# fail 0`).
 
-### Still not done here
+### Done
 
 - **L7 (token-in-memory browser extension client)** is complete (`clients/forge-style-extension/`, Manifest V3, RAM-only token).
-- **L8** release bump/tag not cut.
+- **L8** release bump/tag not cut — already done (4.12.0 released).
