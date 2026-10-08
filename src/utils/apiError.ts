@@ -288,6 +288,11 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   WEBHOOK_URL_NOT_HTTPS: { status: 400, message: 'A webhook destination must use https.' },
   WEBHOOK_URL_HOST_NOT_PUBLIC: { status: 400, message: 'A webhook destination must resolve to a public host.' },
   WEBHOOK_URL_MALFORMED: { status: 400, message: 'A webhook destination must be a valid URL.' },
+  // Sprint 25 phase 7: resource-scoped RBAC.
+  RBAC_NO_ROLE_BINDING: { status: 403, message: 'The presented principal holds no role binding.' },
+  RBAC_ROLE_UNKNOWN: { status: 403, message: 'The requested role is not one this system recognises.' },
+  RBAC_PERMISSION_DENIED: { status: 403, message: 'The principal\'s role does not hold this permission.' },
+  RBAC_RESOURCE_OUT_OF_SCOPE: { status: 403, message: 'The resource is outside this binding\'s scope.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */

@@ -27,6 +27,8 @@ export interface AuthenticatedPrincipal {
   scopes: Scope[];
   /** Set only when the caller authenticated with a scoped credential, for the audit trail. */
   credentialId?: string;
+  /** Whether the caller holds the tenant's root credential or a scoped one. */
+  kind: 'root' | 'scoped';
 }
 
 type PrincipalRequest = Request & { principal?: AuthenticatedPrincipal; tenantContext?: unknown };
@@ -99,7 +101,7 @@ export async function tenantAuthMiddleware(req: Request, res: Response, next: Ne
   // a local caller cannot reach a tenant that has no profile.
   const localDev = process.env.NODE_ENV !== 'production' && process.env.ALLOW_INSECURE_LOCAL === 'true';
   if (localDev && !presentedCredential(req) && isLoopback(req)) {
-    resolveTenantContext(req, res, next, { tenantId: 'local-development', role: 'platform_operator', scopes: ADMIN_SCOPES }, true);
+    resolveTenantContext(req, res, next, { tenantId: 'local-development', role: 'platform_operator', scopes: ADMIN_SCOPES, kind: 'root' }, true);
     return;
   }
 
@@ -116,7 +118,7 @@ export async function tenantAuthMiddleware(req: Request, res: Response, next: Ne
     TelemetryLogger.warn('Platform credential used', {
       metadata: { claimedTenant: (req.headers['x-tenant-id'] as string) || (req.body as { tenantId?: string })?.tenantId || null, path: req.path },
     });
-    resolveTenantContext(req, res, next, { tenantId: 'platform', role: 'platform_operator', scopes: ADMIN_SCOPES }, true);
+    resolveTenantContext(req, res, next, { tenantId: 'platform', role: 'platform_operator', scopes: ADMIN_SCOPES, kind: 'root' }, true);
     return;
   }
 
@@ -158,7 +160,7 @@ export async function tenantAuthMiddleware(req: Request, res: Response, next: Ne
     }
   }
 
-  resolveTenantContext(req, res, next, { tenantId: owner.tenantId, role: 'tenant_operator', scopes: owner.scopes, credentialId: owner.credentialId }, false);
+  resolveTenantContext(req, res, next, { tenantId: owner.tenantId, role: 'tenant_operator', scopes: owner.scopes, credentialId: owner.credentialId, kind: owner.kind }, false);
 }
 
 /**
