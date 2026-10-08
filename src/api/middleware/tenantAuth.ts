@@ -1,7 +1,11 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Request, Response, NextFunction } from 'express';
 import { emitMalformedContextError, emitSecurityError } from '../../utils/validation';
-import { TenantService } from '../../services/tenantService';
+import { classifyApiError } from '../../utils/apiError';
+import { ScopedCredentialError, TenantService } from '../../services/tenantService';
+import { requiredScope, scopeCovers, type Scope } from '../../utils/scopedCredentials';
+
+const ADMIN_SCOPES: Scope[] = ['loop:read', 'loop:write', 'admin'];
 import { IndustryNiche } from '../../models/tenant';
 import { TelemetryLogger } from '../../utils/telemetryLogger';
 
@@ -15,6 +19,14 @@ export type AuthenticatedRole = 'tenant_operator' | 'platform_operator';
 export interface AuthenticatedPrincipal {
   tenantId: string;
   role: AuthenticatedRole;
+  /**
+   * What this credential may do. A root credential carries everything; a scoped one
+   * carries only what it was granted. Recorded on the principal so downstream
+   * authorisation (RBAC, resource scoping) reads one place rather than re-deriving it.
+   */
+  scopes: Scope[];
+  /** Set only when the caller authenticated with a scoped credential, for the audit trail. */
+  credentialId?: string;
 }
 
 type PrincipalRequest = Request & { principal?: AuthenticatedPrincipal; tenantContext?: unknown };
@@ -87,7 +99,7 @@ export async function tenantAuthMiddleware(req: Request, res: Response, next: Ne
   // a local caller cannot reach a tenant that has no profile.
   const localDev = process.env.NODE_ENV !== 'production' && process.env.ALLOW_INSECURE_LOCAL === 'true';
   if (localDev && !presentedCredential(req) && isLoopback(req)) {
-    resolveTenantContext(req, res, next, { tenantId: 'local-development', role: 'platform_operator' }, true);
+    resolveTenantContext(req, res, next, { tenantId: 'local-development', role: 'platform_operator', scopes: ADMIN_SCOPES }, true);
     return;
   }
 
@@ -104,18 +116,49 @@ export async function tenantAuthMiddleware(req: Request, res: Response, next: Ne
     TelemetryLogger.warn('Platform credential used', {
       metadata: { claimedTenant: (req.headers['x-tenant-id'] as string) || (req.body as { tenantId?: string })?.tenantId || null, path: req.path },
     });
-    resolveTenantContext(req, res, next, { tenantId: 'platform', role: 'platform_operator' }, true);
+    resolveTenantContext(req, res, next, { tenantId: 'platform', role: 'platform_operator', scopes: ADMIN_SCOPES }, true);
     return;
   }
 
-  const owner = await TenantService.resolveCredentialOwner(presented);
+  let owner: Awaited<ReturnType<typeof TenantService.resolveCredentialOwner>>;
+  try {
+    owner = await TenantService.resolveCredentialOwner(presented);
+  } catch (error) {
+    // A key that matches a scoped credential which is expired or revoked is answered
+    // with that reason. It is not a silent miss: the caller already proved it holds a
+    // real key, so telling it the key is dead costs nothing and saves a support thread.
+    if (error instanceof ScopedCredentialError) {
+      // Both the code and the wording come from the published contract in
+      // `apiError.ts`. Nothing thrown at runtime is echoed into a response, which is
+      // what `l3-error-contract` enforces.
+      return res.status(401).json(emitSecurityError(error.code, classifyApiError(new Error(error.code)).message));
+    }
+    throw error;
+  }
   if (!owner) {
     // Deliberately identical to "no credential supplied", so a caller cannot use the
     // response to discover which tenant ids exist.
     return res.status(401).json(emitSecurityError('UNAUTHORIZED', 'Valid API credentials are required'));
   }
 
-  resolveTenantContext(req, res, next, { tenantId: owner.tenantId, role: 'tenant_operator' }, false);
+  // A scoped credential is narrower than the root it hangs off, and the requirement is
+  // derived from the request itself, so a route nobody enumerated demands `admin`. This
+  // is the boundary that makes "scoped" mean something: it is checked here, in front of
+  // every protected route, not in a helper only some callers remember to use.
+  if (owner.kind === 'scoped') {
+    const required = requiredScope(req.method ?? 'GET', req.path);
+    if (required && !scopeCovers(owner.scopes, required)) {
+      TelemetryLogger.warn('Scoped credential refused: insufficient scope', {
+        metadata: { credentialId: owner.credentialId, tenantId: owner.tenantId, required, granted: owner.scopes, path: req.path },
+      });
+      return res.status(403).json(emitSecurityError(
+        'CREDENTIAL_SCOPE_INSUFFICIENT',
+        `The presented credential does not hold the '${required}' scope this route requires`,
+      ));
+    }
+  }
+
+  resolveTenantContext(req, res, next, { tenantId: owner.tenantId, role: 'tenant_operator', scopes: owner.scopes, credentialId: owner.credentialId }, false);
 }
 
 /**
