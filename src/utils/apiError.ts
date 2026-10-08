@@ -267,6 +267,8 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LOOP_GOAL_REQUIRED: { status: 400, message: 'A goal describing the intended outcome is required.' },
   LOOP_GOAL_MODEL_REQUIRED: { status: 400, message: 'A registered providerId and model are required to draft a goal.' },
   LOOP_GOAL_DRAFT_INVALID: { status: 422, message: 'The drafted task document was not accepted by the loop parser; the goal is too ambiguous to plan.' },
+  LOOP_RUN_NOT_CANCELABLE: { status: 409, message: 'Only a running loop run can be cancelled.' },
+  LOOP_CONFIRMATION_INVALID: { status: 400, message: 'The confirmation token is missing, expired or already used.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */

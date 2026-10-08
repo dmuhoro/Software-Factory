@@ -210,7 +210,37 @@ function tail(text: string, limit = 2000): string {
   return text.length > limit ? `…${text.slice(-limit)}` : text;
 }
 
+/**
+ * Runs an operator has asked to stop.
+ *
+ * Cancellation is cooperative and only ever takes effect *between* units. The loop is the only
+ * writer of the target tree, so stopping it mid-write would leave the repository in a state
+ * nothing can vouch for. Checking here, at the same boundary `checkHardStop` already guards,
+ * means a cancelled run stops at a place where the tree is known clean.
+ *
+ * The set is process-local and in-memory on purpose: a cancellation is an instruction to the
+ * process that is currently doing the work, not a durable fact about the world. After a die-and-
+ * resume the work is started afresh, and the operator must decide again.
+ */
+const cancellationRequested = new Set<string>();
+
 export class ExecutionLoopService {
+  /**
+   * Ask a running loop to stop at the next unit boundary. Returns false when the run has already
+   * finished, so a caller is never told that an instruction took effect when it could not have.
+   */
+  public static requestCancellation(runId: string): boolean {
+    const run = this.getRun(runId);
+    if (!run || run.status !== 'running') return false;
+    cancellationRequested.add(runId);
+    return true;
+  }
+
+  /** Whether an operator has asked this run to stop and it has not stopped yet. */
+  public static isCancellationRequested(runId: string): boolean {
+    return cancellationRequested.has(runId);
+  }
+
   public static getRun(runId: string): LoopRunRecord | undefined {
     return DurableStore.get('factoryLoopRuns', runId) as unknown as LoopRunRecord | undefined;
   }
@@ -299,6 +329,10 @@ export class ExecutionLoopService {
     };
 
     const checkHardStop = (): void => {
+      if (cancellationRequested.has(record.runId)) {
+        cancellationRequested.delete(record.runId);
+        throw new LoopHardStop(`cancelled by operator at ${iso()}`);
+      }
       const elapsedMinutes = (Date.now() - startedAtMs) / 60_000;
       if (elapsedMinutes > loop.hardStop.maxWallClockMinutes) throw new LoopHardStop(`wall-clock after ${elapsedMinutes.toFixed(1)}m (cap ${loop.hardStop.maxWallClockMinutes}m)`);
       const attempts = record.units.reduce((total, unit) => total + unit.attempts.length, 0);
