@@ -28,7 +28,18 @@ verified ground truth in `sprints/sprint-25-borrowed-leverage.md`.
   and why not, without touching it.
 - **The 4.12.0 lockfile drift is fixed** (`da90cfe`): `package-lock.json` still said 4.11.0,
   failing NC-3. A release that cannot be installed from a clean clone is not a release.
-- Full suite: **240/240** passing (230 baseline + 10 new); `tsc --noEmit` clean; build clean.
+- **Scoped, expiring tenant credentials** (`1bf7e59`). A tenant keeps exactly one root
+  credential; an integration gets a scoped one that expires on its own, carries an explicit
+  grant, and can be revoked without disturbing the root or its siblings. The scope requirement is
+  derived from the request and is a closed set — anything that is not a recognised loop route
+  demands `admin`, so adding a route denies every scoped key until a matching scope is granted on
+  purpose. The check sits in `tenantAuthMiddleware`, in front of every protected route.
+- **Graduated enforcement with no switch that turns it off** (`9612bf2`). WorkOS ships
+  `upsertActionsEndpoint(failOpen)`; SF does not borrow it. `off` is refused in every
+  environment, and anything unrecognised resolves to `enforce`. `log-only` records what it would
+  have refused, attributed to a named rule, and governs advisory checks only — a hard safety gate
+  has no mode.
+- Full suite: **257/257** passing (230 at sprint-24 close + 27 new); `tsc --noEmit` clean; build clean.
 
 ### Sprint 24 — remote control plane (in progress)
 
