@@ -85,11 +85,23 @@ COPY --from=build --chown=factory:factory /app/dist ./dist
 # image itself. `scripts/verify-image.sh` checks that claim against the built artifact
 # rather than trusting this comment.
 
-USER factory
+# The image deliberately does NOT carry `USER factory`. A volume-capable platform
+# (Railway, and this deployment uses one) mounts its volume as root:root over the
+# directory above, and an unprivileged process cannot chown that mount — so the service
+# would refuse to start against a ledger it cannot write.
+#
+# `docker-entrypoint.sh` is the resolution: if the container starts as root it chowns the
+# data directory and IMMEDIATELY drops to `factory` via setpriv before exec'ing the
+# server. The service therefore always runs unprivileged. The only code that runs as root
+# is those four lines, and a container already started as a non-root user execs straight
+# through with nothing escalated. See the script for the full reasoning.
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 3000
 
 # Reports the real ledger state, not a hardcoded string.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/factory/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "dist/server.cjs"]
