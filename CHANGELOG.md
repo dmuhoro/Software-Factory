@@ -24,6 +24,7 @@ All notable architectural and code modifications are documented here.
   run, drafts a goal, and tails the live SSE stream. The API key the operator pastes is held in
   component memory only — never written to storage or the URL — and is dropped on unmount.
 - Full suite: 230/230 passing; `tsc --noEmit` clean.
+- **Release 4.12.0**: tagged and pushed to GitHub.
 - **RAM-only token MV3 extension**: `clients/forge-style-extension/` (Manifest V3). Token/tenant are held in memory only; popup explicitly states this. Host permissions are configurable per deployment.
 
 
