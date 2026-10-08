@@ -284,6 +284,10 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   AUDIT_EVENT_TARGET_REQUIRED: { status: 400, message: 'An audit event must name which subject it was done to.' },
   AUDIT_EVENT_OUTCOME_NOT_RECOGNISED: { status: 400, message: 'An audit event outcome must be allowed, refused, observed or failed.' },
   AUDIT_EVENT_TIMESTAMP_INVALID: { status: 400, message: 'An audit event needs a parseable ISO-8601 timestamp.' },
+  // Sprint 25 phase 6: outbound webhooks.
+  WEBHOOK_URL_NOT_HTTPS: { status: 400, message: 'A webhook destination must use https.' },
+  WEBHOOK_URL_HOST_NOT_PUBLIC: { status: 400, message: 'A webhook destination must resolve to a public host.' },
+  WEBHOOK_URL_MALFORMED: { status: 400, message: 'A webhook destination must be a valid URL.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */
