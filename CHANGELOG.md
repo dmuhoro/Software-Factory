@@ -4,7 +4,7 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
-### Sprint 25 — borrowed leverage (in progress)
+### Sprint 25 — borrowed leverage (complete, released as 4.13.0)
 
 Shapes borrowed from WorkOS, inverted where SF's safety model requires it. Full plan and
 verified ground truth in `sprints/sprint-25-borrowed-leverage.md`.
@@ -39,7 +39,35 @@ verified ground truth in `sprints/sprint-25-borrowed-leverage.md`.
   environment, and anything unrecognised resolves to `enforce`. `log-only` records what it would
   have refused, attributed to a named rule, and governs advisory checks only — a hard safety gate
   has no mode.
-- Full suite: **257/257** passing (230 at sprint-24 close + 27 new); `tsc --noEmit` clean; build clean.
+- **Audit event schema validation and preview** (`fad30db`). Eight named rules; all reported at
+  once, not one per round-trip. `preview` answers what an event would do without writing anything.
+  Graded under the phase-4 mode: `enforce` refuses and the sink is never called; `log-only` writes
+  and returns the waived rules so the trail records that it arrived unvalidated.
+- **Signed outbound webhooks** (`6b76528`). HMAC-SHA256 over `timestamp.body`, so a captured body
+  re-sent later is refused. Subscription URLs are validated at registration **and again immediately
+  before every send** (DNS rebinding). No unbounded retry loop: a failing receiver is recorded once
+  and a human replays what matters. `replay` sends the identical recorded bytes with a fresh
+  signature — an operator resending, not an attacker replaying.
+- **Resource-scoped RBAC** (`f5dd000`). principal → role → permission → resource, and both halves
+  must pass. A binding names the repositories it covers, so a global cancel right is not the default
+  anyone falls into. A scoped credential is a viewer by default and cannot escalate by being scoped
+  to `admin`.
+- **Self-describing authorisation** (`323c7df`). `GET /api/whoami` reports the caller's tenant,
+  credential kind, scopes, role and permissions — and is **scope-free**, because a `loop:read`
+  credential must be able to ask what it is. The operator panel now asks the server rather than
+  assuming, and disables controls the credential cannot use.
+- **Release 4.13.0**: version and lockfile bumped together, so NC-3 cannot drift as it did at 4.12.0.
+- Full suite: **295/295** passing (230 at sprint-24 close + 65 new); `tsc --noEmit` clean; build clean.
+
+#### Two defects the phases themselves found
+
+- `RBAC_NO_ROLE_BINDING` was unreachable: the role fallback meant a principal always had a role, so
+  the refusal could never fire. A refusal that can never fire is a claim of protection the code does
+  not provide, so the unrecognised-kind case is now refused rather than defaulted.
+- `whoami` demanded `admin`, so a `loop:read` credential could not ask what it is. The test failed,
+  which is how it was found.
+- `UNAUTHORIZED` had no entry in `DOMAIN_ERRORS` and would have degraded to a 500; the `l3`
+  path-guard scan surfaced it.
 
 ### Sprint 24 — remote control plane (in progress)
 
