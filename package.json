@@ -1,7 +1,7 @@
 {
   "name": "software-factory",
   "private": true,
-  "version": "4.13.0",
+  "version": "4.13.1",
   "type": "module",
   "scripts": {
     "appwrite:check": "tsx scripts/check-appwrite.ts",
