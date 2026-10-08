@@ -60,3 +60,65 @@ inside an arbitrary container is not, and is named as such rather than silently 
   registering a live one needs the operator's key.
 - **Phase 4 live Railway deployment**: needs the operator's Railway account and secrets. The
   build/run contract and runbook are delivered; the deploy itself is the operator's step.
+## Evidence (as landed)
+
+Every claim below names the command that demonstrated it and what to look at.
+
+### L2 — single-writer lock across processes (`d141f4b`)
+
+- `node_modules/.bin/tsx scripts/durable-writer-probe.ts` in a holder process → `WRITE_OK`.
+  A second process against the same `FACTORY_DATA_DIR` → `REFUSED:LEDGER_ANOTHER_WRITER_ACTIVE`,
+  exit 1.
+- `test/durable-store-writer-lock.test.ts` pins both directions (holder writes; child refused).
+- `railway.json` + `docs/DEPLOY_RAILWAY.md`: the deploy contract (one replica, a persistent volume
+  at `/var/lib/software-factory`, a hosted provider). The live deploy is the operator's step.
+
+### L3 — authenticated control plane (`3b124a5`)
+
+- `test/loop-control-plane.test.ts` (5 cases) drives the real `ExecutionLoopService` against a
+  stub provider and real git repositories:
+  - a repository outside the approved workspace is refused (`LOOP_REPO_OUTSIDE_WORKSPACE`);
+  - a directory that is not a git repository is refused (`LOOP_REPO_NOT_GIT`);
+  - a submitted run reaches `status: 'completed'` with one commit, and a foreign tenant gets a miss
+    from `get`/`summaries`;
+  - a second submission while a run is live is refused (`LOOP_RUN_ALREADY_ACTIVE`).
+- The same file boots the real `apiRouter` over an ephemeral HTTP port and asserts, with `fetch`:
+  `POST /api/loop/runs` is `401` with no credential, `403` for a credential claiming another
+  tenant, `202` with the owner's; `GET /api/loop/runs/:id` is `200` for the owner and `404` for
+  another tenant; and `GET /api/loop/runs/:id/events` streams `text/event-stream` to `event: done`
+  with `"status":"completed"`.
+- Negative proof: with `router.use('/loop', loopRoutes)` commented out, the HTTP case fails; with it
+  restored, it passes.
+
+### L5 — goal intake (`2198b44`)
+
+- `test/loop-control-plane.test.ts` (4 more cases): an empty goal is refused (`LOOP_GOAL_REQUIRED`),
+  a missing provider/model is refused (`LOOP_GOAL_MODEL_REQUIRED`), a draft the loop parser rejects
+  is refused (`LOOP_GOAL_DRAFT_INVALID`), and a valid draft is written inside the workspace, is
+  re-parsed by `parseTaskDocument` as `M1`, then submitted unchanged and run to a real commit.
+- Over HTTP: `POST /api/loop/goals` is `401` without a credential and `201` with one.
+
+### L6 — operator panel (React)
+
+- `src/components/LoopControlPanel.tsx`, mounted as a new **Unattended Loop** tab in `src/App.tsx`.
+  It lists runs, submits a run, drafts a goal, and tails the SSE stream for a selected run.
+- **Credential model: memory only.** The API key the operator pastes lives in component state. It
+  is not written to localStorage, sessionStorage, a cookie, or the URL, and it is dropped on
+  unmount. The panel says so on screen. This is the deliberate trade-off: a surface that can start
+  work must not persist a credential in the browser.
+- The stream is read with `fetch` + `ReadableStream`, not `EventSource`, because `EventSource`
+  cannot send the `x-api-key` header this API requires.
+- Proven by `npm run build` (vite + esbuild, clean) and `npm run lint` (`tsc --noEmit`, clean, and
+  the tsconfig has no `include`, so it type-checks `.tsx`). There is no browser test harness in
+  this repository, so the panel is proven to compile and type-check, not to render; the API
+  behaviour it calls is proven by the HTTP cases above.
+
+### Regression
+
+- `npm run lint` (`tsc --noEmit`) clean.
+- `npm test` → 230/230 passing (`# fail 0`).
+
+### Still not done here
+
+- **L7 (token-in-memory browser extension client)** is not started.
+- **L8** release bump/tag not cut.

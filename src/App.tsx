@@ -38,6 +38,7 @@ import { HealthDashboard } from './components/HealthDashboard';
 import { RecentExecutionsSidebar } from './components/RecentExecutionsSidebar';
 import { RustMetricsCharts } from './components/RustMetricsCharts';
 import { TenantSettingsToggle } from './components/TenantSettingsToggle';
+import { LoopControlPanel } from './components/LoopControlPanel';
 import { ComparePayloadsModal } from './components/ComparePayloadsModal';
 import { generateRustStackTrace } from './utils/validation';
 import { downloadTenantAuditReport } from './utils/reportGenerator';
@@ -55,7 +56,7 @@ interface TelemetryResult {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'stream' | 'appwrite' | 'gemini' | 'rust' | 'governance'>('stream');
+  const [activeTab, setActiveTab] = useState<'stream' | 'appwrite' | 'gemini' | 'rust' | 'governance' | 'loop'>('stream');
   const [selectedTenant, setSelectedTenant] = useState<string>('tenant_re_8841');
   const [selectedNiche, setSelectedNiche] = useState<IndustryNiche>(IndustryNiche.REAL_ESTATE);
   const [eventType, setEventType] = useState<string>('PROPERTY_VALUATION_REQUEST');
@@ -592,6 +593,7 @@ export default function App() {
             { id: 'gemini', label: 'Gemini JSON Schemas', icon: Cpu },
             { id: 'rust', label: 'Rust Tokio Engine', icon: Server },
             { id: 'governance', label: 'Constitution & ADRs', icon: FileText },
+            { id: 'loop', label: 'Unattended Loop', icon: Play },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -615,6 +617,9 @@ export default function App() {
 
       {/* Main Workspace */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+        {/* TAB 6: UNATTENDED LOOP CONTROL PLANE */}
+        {activeTab === 'loop' && <LoopControlPanel />}
+
         {/* TAB 1: TELEMETRY STREAM & LOGS */}
         {activeTab === 'stream' && (
           <div className="space-y-6">
