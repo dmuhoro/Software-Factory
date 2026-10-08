@@ -136,8 +136,8 @@ consults it.
 | 0 | Ground truth record | **done** `698f164` |
 | 1 | Two-phase confirm on destructive control-plane ops | **done** `5cfb42c` |
 | 2 | Eligibility pre-check before destruction | **done** `5cfb42c` |
-| 3 | Scoped, expiring API keys at `tenantAuth` | pending |
-| 4 | Graduated enforcement (`off`/`log-only`/`enforce`), default `enforce` | pending |
+| 3 | Scoped, expiring API keys at `tenantAuth` | **done** `1bf7e59` |
+| 4 | Graduated enforcement (**`off` refused**; `log-only`/`enforce`, default `enforce`) | **done** `9612bf2` |
 | 5 | Audit event schema validation + preview | pending |
 | 6 | Outbound webhooks (HMAC, test-send, replay) | pending |
 | 7 | Resource-scoped RBAC (`principal → role → permission → repo`) | pending |
@@ -206,3 +206,49 @@ Reverted, and the file returns to 10/10.
 `da90cfe` — the 4.12.0 release bumped `package.json` but left `package-lock.json`
 at 4.11.0, failing NC-3. A release that cannot be installed from a clean clone is
 not a release.
+
+### Phase 3 — scoped, expiring credentials (`1bf7e59`)
+
+`test/scoped-credentials.test.ts`, 10 cases, every one driving the real
+`tenantAuthMiddleware` over HTTP. A scope check that only runs in a unit test is not a
+scope check.
+
+- the scope requirement is derived from the request and is a closed set
+  (`loop:read`, `loop:write`, `admin`). **Anything that is not a recognised loop route
+  demands `admin`**, so adding a route denies every scoped key until someone grants a
+  matching scope on purpose.
+- a read-scoped key is refused a write at the boundary with `CREDENTIAL_SCOPE_INSUFFICIENT`;
+  the root credential is not narrowed.
+- an expired key answers `SCOPED_CREDENTIAL_EXPIRED`, a revoked one
+  `SCOPED_CREDENTIAL_REVOKED`; a key matching nothing stays a silent `UNAUTHORIZED`, so a
+  caller cannot probe which tenants hold scoped keys.
+- revoking one key leaves its siblings and the root working; a second revocation is a no-op.
+- **the cancellation route is guarded by the scope check, not beside it**: reading the
+  eligibility of a cancel is a loop read and reaches the handler; performing it is a loop
+  write and is refused before the handler runs.
+
+**Failing-first proof.** With the boundary check disabled in `tenantAuthMiddleware`, three
+cases fail — `limited to its scopes`, `the root credential is not narrowed`, and `the
+cancellation route is guarded by the scope check` — recorded by running it that way and
+reverting.
+
+### Phase 4 — graduated enforcement (`9612bf2`)
+
+The inversion. WorkOS ships `upsertActionsEndpoint(failOpen)`; SF does not borrow it.
+
+`src/utils/enforcement.ts` has **two** members, not three. `off` is not a value the type
+can hold — it is a value the parser refuses, in every environment, because a bypass that
+only works in development is a bypass that reaches production through a copied `.env`.
+Anything unrecognised resolves to `enforce`, so a typo cannot silently disable a check.
+`log-only` records what it would have refused, attributed to a named rule.
+
+Governed checks are advisory only. A hard safety gate has no mode and is not consultable
+through this module.
+
+**Failing-first proof.** With the refusal disabled, `every spelling of off is refused, in
+every environment` fails, recorded by running it that way and reverting.
+
+### Regression after phases 3 and 4
+
+- `npm test` → **257/257** passing (230 at sprint-24 close + 27 new).
+- `npm run lint` (`tsc --noEmit`) clean; `npm run build` clean.
