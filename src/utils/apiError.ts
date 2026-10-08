@@ -275,6 +275,15 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   CREDENTIAL_SCOPE_INSUFFICIENT: { status: 403, message: 'The presented credential does not hold the scope this route requires.' },
   // Sprint 25 phase 4: graduated enforcement. `off` is refused in every environment.
   ENFORCEMENT_OFF_REFUSED: { status: 400, message: 'Enforcement cannot be disabled. Use \'log-only\' to observe without enforcing.' },
+  // Sprint 25 phase 5: audit event schema. Advisory, so graduated like phase 4.
+  AUDIT_EVENT_TENANT_REQUIRED: { status: 400, message: 'An audit event must name the tenant it belongs to.' },
+  AUDIT_EVENT_KIND_REQUIRED: { status: 400, message: 'An audit event must name its kind.' },
+  AUDIT_EVENT_KIND_MALFORMED: { status: 400, message: 'An audit event kind must be lowercase and colon-namespaced.' },
+  AUDIT_EVENT_ACTOR_REQUIRED: { status: 400, message: 'An audit event must name who did it.' },
+  AUDIT_EVENT_ACTION_REQUIRED: { status: 400, message: 'An audit event must name what was done.' },
+  AUDIT_EVENT_TARGET_REQUIRED: { status: 400, message: 'An audit event must name which subject it was done to.' },
+  AUDIT_EVENT_OUTCOME_NOT_RECOGNISED: { status: 400, message: 'An audit event outcome must be allowed, refused, observed or failed.' },
+  AUDIT_EVENT_TIMESTAMP_INVALID: { status: 400, message: 'An audit event needs a parseable ISO-8601 timestamp.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */
