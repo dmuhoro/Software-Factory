@@ -15,6 +15,7 @@ import deploymentRoutes from './deployment.routes';
 import agentsRoutes from './agents.routes';
 import proofRoutes from './proof.routes';
 import operationsRoutes from './operations.routes';
+import loopRoutes from './loop.routes';
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use('/deployment', deploymentRoutes);
 router.use('/agents', agentsRoutes);
 router.use('/proof', proofRoutes);
 router.use('/operations', operationsRoutes);
+router.use('/loop', loopRoutes);
 
 export default router;

@@ -256,6 +256,16 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   TARGET_DOCTRINE_LEAKED_INTO_RUN: { status: 403, message: 'A quarantined instruction file appeared in a run payload; the run refuses to continue.' },
   TARGET_REPOSITORY_NOT_GIT: { status: 400, message: 'That path is not a git repository.' },
   TASK_DOCUMENT_INVALID: { status: 400, message: 'The task document is not valid.' },
+
+  // ── Remote control plane (sprint 24): submitting and drafting runs over HTTP. ──
+  LOOP_REPO_REQUIRED: { status: 400, message: 'A target repository path is required.' },
+  LOOP_REPO_OUTSIDE_WORKSPACE: { status: 403, message: 'The target repository is outside the approved workspace.' },
+  LOOP_REPO_NOT_GIT: { status: 400, message: 'The target repository is not a git repository.' },
+  LOOP_TASK_DOCUMENT_REQUIRED: { status: 400, message: 'A task document path is required.' },
+  LOOP_TASK_DOCUMENT_OUTSIDE_WORKSPACE: { status: 403, message: 'The task document is outside the approved workspace.' },
+  LOOP_RUN_ALREADY_ACTIVE: { status: 409, message: 'A run is already active for this repository; the loop is the only writer of the target tree.' },
+  LOOP_GOAL_REQUIRED: { status: 400, message: 'A goal describing the intended outcome is required.' },
+  LOOP_GOAL_DRAFT_INVALID: { status: 422, message: 'The drafted task document was not accepted by the loop parser; the goal is too ambiguous to plan.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */

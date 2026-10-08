@@ -47,6 +47,11 @@ export interface LoopRunOptions {
   reportDir?: string;
   /** Extra environment for the processes this run spawns. */
   env?: Record<string, string>;
+  /**
+   * Called once, synchronously, the moment the run record exists and before any work starts.
+   * Lets a control plane hand the caller a run id while the run continues in the background.
+   */
+  onRunCreated?: (runId: string) => void;
   /** Called the moment the live event stream is opened, so an operator can tail it mid-run. */
   onStart?: (eventsPath: string) => void;
   /** Called for every event as it is produced, before it is durable. */
@@ -249,6 +254,10 @@ export class ExecutionLoopService {
           models: assignments,
           units,
         });
+
+    // The record exists from here. A control plane can return this id to its caller before the
+    // first unit is attempted, so a submission is observable from the moment it is accepted.
+    options.onRunCreated?.(record.runId);
 
     // The live stream opens before any work starts: an operator tails this file to tell a run
     // that is working from one that is stuck, from the very first gate check.
