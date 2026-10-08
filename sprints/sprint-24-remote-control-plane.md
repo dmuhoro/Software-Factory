@@ -120,5 +120,5 @@ Every claim below names the command that demonstrated it and what to look at.
 
 ### Still not done here
 
-- **L7 (token-in-memory browser extension client)** is not started.
+- **L7 (token-in-memory browser extension client)** is complete (`clients/forge-style-extension/`, Manifest V3, RAM-only token).
 - **L8** release bump/tag not cut.
