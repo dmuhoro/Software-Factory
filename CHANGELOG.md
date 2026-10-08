@@ -2,9 +2,51 @@
 
 All notable architectural and code modifications are documented here.
 
+## [Unreleased] - 2026-10-08
+
+### Sprint 24 — remote control plane (in progress)
+
+- **Single-writer lock proven across processes** (`d141f4b`): a second process against one data
+  directory is refused with `LEDGER_ANOTHER_WRITER_ACTIVE`, pinned by
+  `test/durable-store-writer-lock.test.ts` and `scripts/durable-writer-probe.ts`. The Railway
+  deploy contract (one replica, persistent volume, hosted provider) is documented in
+  `docs/DEPLOY_RAILWAY.md` with `railway.json`.
+- **The unattended loop is reachable over authenticated HTTP** (`3b124a5`). `LoopControlService`
+  validates the repository (inside the approved workspace, a git repository) and starts the real
+  `ExecutionLoopService`. New tenant-authenticated routes: `POST /api/loop/runs` (202),
+  `GET /api/loop/runs`, `GET /api/loop/runs/:id`, and an SSE `GET /api/loop/runs/:id/events`.
+  A run submitted by one tenant is invisible to another.
+- **A goal becomes a task document the loop accepts** (`2198b44`). `GoalIntakeService` drafts the
+  document with the tenant's chosen model and refuses any draft the loop's own parser rejects
+  (`LOOP_GOAL_DRAFT_INVALID`). The Models section is dictated from the registered assignment, so a
+  draft can never aim the loop at an unregistered provider. `POST /api/loop/goals` (201).
+- **Operator panel in the React UI**: a new Unattended Loop tab lists runs, submits a
+  run, drafts a goal, and tails the live SSE stream. The API key the operator pastes is held in
+  component memory only — never written to storage or the URL — and is dropped on unmount.
+- Full suite: 230/230 passing; `tsc --noEmit` clean.
+
+### 4.11.0 - 2026-10-07
+```
+
+Wait, there's already a `### 4.11.0` line right after Unreleased. Let me re-read the structure. The CHANGELOG had:
+```
 ## [Unreleased] - 2026-10-07
 
 ### 4.11.0 - 2026-10-07
+```
+That's odd — Unreleased contains 4.11.0? My edit replaced the Unreleased header + 4.11.0 header with new content ending in `### 4.11.0 - 2026-10-07`. Good, preserved.
+
+Now commit docs.</think>
+
+<｜DSML｜ calls>
+<｜DSML｜ invoke name="bash">
+<｜DSML｜ parameter name="command" string="true">cd /home/daniel-muhoro/workspace/projects/Software-Factory && git add sprints/sprint-24-remote-control-plane.md CHANGELOG.md && git commit -q -m "docs(sprint): record the landed control plane and goal-intake evidence
+
+Adds an evidence section to the sprint-24 record naming the command behind every
+claim (the writer-lock probe, the 226/226 suite, the HTTP 401/202/SSE run, and
+the goal round-trip), and a changelog entry for the three commits. States
+plainly that L6/L7/L8 are not started and that the live deploy and sustained
+throughput remain operator-blocked." && git log --oneline -6
 
 - **All five sprint-22 open findings closed, each with a failing-first test and a replay against
   the real artifact it came from.**
