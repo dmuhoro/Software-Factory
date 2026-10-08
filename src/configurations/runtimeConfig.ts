@@ -71,6 +71,14 @@ export const FACTORY_SETTING_NAMES: ReadonlySet<string> = new Set([
   'FACTORY_HOSTED_DEPLOYMENT_SECRET_REF',
   'FACTORY_TENANT_CREDENTIALS',
   'FACTORY_TENANT_SEED_DEMO',
+  // Read by real code: the enforcement mode is reported by GET /api/whoami, the
+  // doctrine root is where doctrineService loads rules from, and the loop report
+  // directory is where executionLoopService writes run reports. Leaving them off this
+  // list made the startup banner claim they had NO effect, which is worse than a
+  // missing warning: it would lead an operator to remove a setting that is in use.
+  'FACTORY_ENFORCEMENT_MODE',
+  'FACTORY_DOCTRINE_ROOT',
+  'FACTORY_LOOP_REPORT_DIR',
 ]);
 
 const MIN_PRODUCTION_KEY_LENGTH = 24;
