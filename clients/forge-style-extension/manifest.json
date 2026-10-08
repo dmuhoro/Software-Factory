@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Software Factory Remote Control",
+  "version": "0.1.0",
+  "description": "RAM-only token client for the Software Factory remote control plane.",
+  "host_permissions": ["*://*/api/loop/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "SF Control"
+  },
+  "permissions": []
+}
