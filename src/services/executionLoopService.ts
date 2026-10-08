@@ -123,7 +123,10 @@ function unquote(value: string): string {
 function treePaths(repo: string): { tracked: Set<string>; untracked: Set<string> } {
   const tracked = new Set<string>();
   const untracked = new Set<string>();
-  const porcelain = git(repo, ['status', '--porcelain']);
+  // `--untracked-files=all` so a file created inside a brand-new directory is listed by name.
+  // Without it git collapses the whole new directory to one `?? dir/` entry, and the rollback
+  // snapshot would record a directory where it needs the files it is responsible for undoing.
+  const porcelain = git(repo, ['status', '--porcelain', '--untracked-files=all']);
   for (const line of porcelain.out.split('\n')) {
     if (!line.trim()) continue;
     const xy = line.slice(0, 2);

@@ -1,0 +1,23 @@
+reset     to origin/main (scratch clone baseline)
+target    /tmp/opencode/fundios-verify/workspace/fundios
+branch    main @ f3a028939be1
+
+── goal → task document ─────────────────────────────────────
+  title       Record the Software Factory verification proof
+  milestones  M1:Add the verification proof document
+  document    /tmp/opencode/fundios-verify/workspace/.factory-goal-drafts/record-the-software-factory-verification-proof-c5c077674ab0.md
+
+── run → verified commit ────────────────────────────────────
+  status      completed
+  units       M1:done
+  commits     1
+  gates       21 executed, 0 refused
+
+── evidence ─────────────────────────────────────────────────
+  commit      0265c7a4a9bbec1c504e49b1f4628dca26191992
+  subject     docs(m1): add-the-verification-proof-document
+  trailers    Verified: node -e "const fs=require('fs');const p='docs/verification/software-factory-loop-proof.md';if(!fs.existsSync(p)){console.error('missing');process.exit(1)};if(!fs.readFileSync(p,'utf8').includes('SOFTWARE-FACTORY-VERIFIED')){console.error('marker missing');process.exit(1)};console.log('proof verified')" (exit 0) | Proof: sha256:31e12061c9d30f4077df9acd4f2cbeb3c705985f183f64b53eefc54d91c4405b | AI-Assisted: architect=frontier/claude-sonnet-4-5, planner=frontier/claude-sonnet-4-5, drafter=local/qwen2.5-coder:14b, implementer=stub/stub-code, reviewer=stub/stub-code, verifier=local/qwen2.5-coder:14b, reporter=local/qwen2.5-coder:14b; loop=software-factory/4.13.1
+  file        docs/verification/software-factory-loop-proof.md present with marker SOFTWARE-FACTORY-VERIFIED
+  tree        clean
+
+VERIFIED: goal → run → verified commit, asserted on git history.

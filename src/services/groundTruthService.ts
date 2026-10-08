@@ -195,7 +195,12 @@ function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, 
 }
 
 function changedPaths(repo: string): string[] {
-  const porcelain = git(repo, ['status', '--porcelain']);
+  // `--untracked-files=all` is load-bearing, not cosmetic. Plain `git status --porcelain`
+  // collapses an untracked directory to a single `?? dir/` entry, so a unit that creates a new
+  // file inside a new directory — an ordinary thing to do — reports the directory and the
+  // `claimed-files-exist` gate then refuses the unit with "claimed file is unchanged from HEAD"
+  // even though the file is present and new. The gate must see the file it was told about.
+  const porcelain = git(repo, ['status', '--porcelain', '--untracked-files=all']);
   if (porcelain.code !== 0) return [];
   return porcelain.out
     .split('\n')

@@ -1,7 +1,7 @@
 {
   "name": "software-factory",
   "private": true,
-  "version": "4.13.1",
+  "version": "4.13.2",
   "type": "module",
   "scripts": {
     "appwrite:check": "tsx scripts/check-appwrite.ts",
@@ -37,7 +37,8 @@
     "verify:secrets:argv": "bash scripts/verify-argv-leak-control.sh",
     "doctrine:manifest": "tsx scripts/doctrine-manifest.ts",
     "factory:run": "tsx scripts/run-factory-loop.ts",
-    "verify:loop": "bash scripts/verify-loop.sh"
+    "verify:loop": "bash scripts/verify-loop.sh",
+    "verify:fundios": "tsx scripts/verify-fundios-e2e.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
