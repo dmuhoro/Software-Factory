@@ -269,6 +269,10 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LOOP_GOAL_DRAFT_INVALID: { status: 422, message: 'The drafted task document was not accepted by the loop parser; the goal is too ambiguous to plan.' },
   LOOP_RUN_NOT_CANCELABLE: { status: 409, message: 'Only a running loop run can be cancelled.' },
   LOOP_CONFIRMATION_INVALID: { status: 400, message: 'The confirmation token is missing, expired or already used.' },
+  // Sprint 25 phase 3: scoped, expiring tenant credentials.
+  SCOPED_CREDENTIAL_EXPIRED: { status: 401, message: 'The presented credential has expired.' },
+  SCOPED_CREDENTIAL_REVOKED: { status: 401, message: 'The presented credential has been revoked.' },
+  CREDENTIAL_SCOPE_INSUFFICIENT: { status: 403, message: 'The presented credential does not hold the scope this route requires.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */

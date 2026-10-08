@@ -23,11 +23,12 @@
  * fine -- that is how a tenant ends up active when nobody provisioned it.
  */
 
-import { IndustryNiche, TenantProfile, TenantQuota, TenantSubscriptionTier, TenantStatus, TenantContext } from '../models/tenant';
+import { IndustryNiche, ScopedCredential, TenantProfile, TenantQuota, TenantSubscriptionTier, TenantStatus, TenantContext } from '../models/tenant';
 import { SUBSCRIPTION_QUOTAS } from '../configurations/factory.config';
 import { DurableStore } from './durableStore';
 import { emitMalformedContextError, emitSecurityError } from '../utils/validation';
 import { hashTenantCredential, isCredentialDigest, verifyTenantCredential } from '../utils/tenantCredentials';
+import { isScope, parseScopes, type Scope } from '../utils/scopedCredentials';
 import { randomBytes } from 'node:crypto';
 
 /** Ledger collection holding the tenant registry. */
@@ -37,6 +38,46 @@ const COLLECTION = 'tenants' as const;
  * In-memory cache of the durable registry. Never read as a source of truth on its own.
  */
 const TENANT_REGISTRY = new Map<string, TenantProfile>();
+
+/** Full access. Only the root credential carries it. */
+const ADMIN_SCOPES: Scope[] = ['loop:read', 'loop:write', 'admin'];
+
+/**
+ * A resolved credential: which tenant it belongs to, and what it may do.
+ *
+ * `kind` distinguishes the tenant's root credential, which is unrestricted and
+ * long-lived, from a scoped one, which is not and is not. Authentication and
+ * authorisation both need to know which they are holding.
+ */
+export interface CredentialOwner {
+  tenantId: string;
+  profile: TenantProfile;
+  kind: 'root' | 'scoped';
+  credentialId?: string;
+  scopes: Scope[];
+}
+
+/**
+ * Raised when a presented key matches a scoped credential that may no longer be used.
+ *
+ * The message IS the code, which is this codebase's convention: `classifyApiError`
+ * reads the message, so the caller gets a written domain condition rather than a 500.
+ *
+ * Thrown rather than returned so the middleware can answer 401 with a reason without
+ * the resolver having to widen its return type to carry a failure. It is never thrown
+ * for a key that matches nothing: that path stays a silent miss, so a caller cannot
+ * probe which tenants have scoped keys.
+ */
+export class ScopedCredentialError extends Error {
+  public readonly code: 'SCOPED_CREDENTIAL_REVOKED' | 'SCOPED_CREDENTIAL_EXPIRED';
+  public readonly credentialId: string;
+  constructor(code: ScopedCredentialError['code'], credentialId: string) {
+    super(code);
+    this.name = 'ScopedCredentialError';
+    this.code = code;
+    this.credentialId = credentialId;
+  }
+}
 
 const NICHE_VALUES = new Set<string>(Object.values(IndustryNiche));
 const TIER_VALUES = new Set<string>(Object.values(TenantSubscriptionTier));
@@ -91,6 +132,44 @@ function decodeProfile(record: Record<string, unknown>, key: string): TenantProf
     throw new Error(`${where}: apiKeyHash is neither empty nor a valid scrypt digest`);
   }
 
+  // Scoped credentials are decoded strictly. A malformed entry is a corrupted identity
+  // record, and a corrupt registry must abort startup rather than silently drop the
+  // scopes that were meant to constrain a key.
+  const scopedRaw = record.scopedCredentials;
+  if (scopedRaw !== undefined && !Array.isArray(scopedRaw)) {
+    throw new Error(`${where}: scopedCredentials must be an array`);
+  }
+  const scopedCredentials: ScopedCredential[] = [];
+  for (const entry of (scopedRaw as unknown[] | undefined) ?? []) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new Error(`${where}: every scoped credential must be an object`);
+    }
+    const e = entry as Record<string, unknown>;
+    const id = e.id;
+    if (typeof id !== 'string' || id === '') throw new Error(`${where}: a scoped credential id must be a non-empty string`);
+    const digest = e.digest;
+    if (!isCredentialDigest(digest)) throw new Error(`${where}: scoped credential '${id}' has no valid scrypt digest`);
+    const scopes = e.scopes;
+    if (!Array.isArray(scopes) || scopes.some((scope) => !isScope(scope))) {
+      throw new Error(`${where}: scoped credential '${id}' carries an unrecognised scope`);
+    }
+    const expiresAt = e.expiresAt;
+    if (typeof expiresAt !== 'string' || Number.isNaN(Date.parse(expiresAt))) {
+      throw new Error(`${where}: scoped credential '${id}' needs a valid expiresAt`);
+    }
+    const createdAt = e.createdAt;
+    if (typeof createdAt !== 'string' || Number.isNaN(Date.parse(createdAt))) {
+      throw new Error(`${where}: scoped credential '${id}' needs a valid createdAt`);
+    }
+    const revokedAt = e.revokedAt;
+    if (revokedAt !== undefined && (typeof revokedAt !== 'string' || Number.isNaN(Date.parse(revokedAt)))) {
+      throw new Error(`${where}: scoped credential '${id}' has an invalid revokedAt`);
+    }
+    const decoded: ScopedCredential = { id, digest, scopes: [...(scopes as string[])], expiresAt, createdAt };
+    if (revokedAt !== undefined) decoded.revokedAt = revokedAt as string;
+    scopedCredentials.push(decoded);
+  }
+
   const quota = record.quota;
   if (typeof quota !== 'object' || quota === null || Array.isArray(quota)) {
     throw new Error(`${where}: quota must be an object`);
@@ -128,6 +207,7 @@ function decodeProfile(record: Record<string, unknown>, key: string): TenantProf
     tier: tier as TenantSubscriptionTier,
     status: status as TenantStatus,
     apiKeyHash,
+    scopedCredentials,
     quota: {
       maxRequestsPerMinute: quotaSource.maxRequestsPerMinute as number,
       maxDailyAiTokens: quotaSource.maxDailyAiTokens as number,
@@ -142,7 +222,12 @@ function decodeProfile(record: Record<string, unknown>, key: string): TenantProf
 }
 
 function encodeProfile(profile: TenantProfile): Record<string, unknown> {
-  return { ...profile, quota: { ...profile.quota }, customGuardrails: [...profile.customGuardrails] };
+  return {
+    ...profile,
+    quota: { ...profile.quota },
+    customGuardrails: [...profile.customGuardrails],
+    scopedCredentials: (profile.scopedCredentials ?? []).map((entry) => ({ ...entry, scopes: [...entry.scopes] })),
+  };
 }
 
 /**
@@ -286,17 +371,92 @@ export class TenantService {
    * constant-time per candidate and every active tenant is examined, so the response
    * time does not reveal which prefix matched.
    */
-  public static async resolveCredentialOwner(presented: string): Promise<{ tenantId: string; profile: TenantProfile } | undefined> {
+  public static async resolveCredentialOwner(presented: string): Promise<CredentialOwner | undefined> {
     if (typeof presented !== 'string' || presented.length === 0) return undefined;
-    let owner: { tenantId: string; profile: TenantProfile } | undefined;
+    let owner: CredentialOwner | undefined;
     for (const profile of TENANT_REGISTRY.values()) {
       if (profile.status !== TenantStatus.ACTIVE) continue;
       // A tenant without a valid digest is inert, not open. Provisioned-but-credential-less
       // records therefore cannot be used to authenticate.
-      if (!isCredentialDigest(profile.apiKeyHash)) continue;
-      if (await verifyTenantCredential(presented, profile.apiKeyHash)) owner = { tenantId: profile.id, profile };
+      if (isCredentialDigest(profile.apiKeyHash) && await verifyTenantCredential(presented, profile.apiKeyHash)) {
+        owner = { tenantId: profile.id, profile, kind: 'root', scopes: [...ADMIN_SCOPES] };
+      }
+      const scoped = await this.resolveScopedCredential(profile, presented);
+      if (scoped) owner = { tenantId: profile.id, profile, kind: 'scoped', credentialId: scoped.id, scopes: scoped.scopes as Scope[] };
     }
     return owner;
+  }
+
+  /**
+   * Matches a presented key against a tenant's scoped credentials.
+   *
+   * Expired and revoked entries are matched but refused afterwards, so an expired key
+   * is reported as expired rather than as unknown: the caller learns its credential is
+   * no longer good without learning anything about which tenants exist.
+   */
+  private static async resolveScopedCredential(profile: TenantProfile, presented: string): Promise<ScopedCredential | undefined> {
+    for (const entry of profile.scopedCredentials ?? []) {
+      if (!isCredentialDigest(entry.digest)) continue;
+      if (!(await verifyTenantCredential(presented, entry.digest))) continue;
+      if (entry.revokedAt) throw new ScopedCredentialError('SCOPED_CREDENTIAL_REVOKED', entry.id);
+      if (Date.parse(entry.expiresAt) <= Date.now()) throw new ScopedCredentialError('SCOPED_CREDENTIAL_EXPIRED', entry.id);
+      return entry;
+    }
+    return undefined;
+  }
+
+  /**
+   * Issues a scoped credential under a tenant's root credential.
+   *
+   * The plaintext is returned exactly once. The TTL is mandatory: an operator cannot
+   * accidentally mint a scoped key that never expires, because the whole point of a
+   * scoped credential is that it outlives neither the integration nor the need.
+   */
+  public static async provisionScopedCredential(
+    tenantId: string,
+    options: { scopes: string[]; ttlSeconds: number; plaintext?: string },
+  ): Promise<{ id: string; apiKey: string; scopes: string[]; expiresAt: string }> {
+    const profile = TENANT_REGISTRY.get(tenantId);
+    if (!profile) throw new Error(`Cannot provision a scoped credential for unknown tenant '${tenantId}'`);
+    const scopes = parseScopes(options.scopes);
+    if (scopes.length === 0) throw new Error('A scoped credential must carry at least one scope');
+    if (!Number.isInteger(options.ttlSeconds) || options.ttlSeconds <= 0) {
+      throw new Error('A scoped credential needs a positive integer ttlSeconds');
+    }
+    const apiKey = options.plaintext ?? `sfs_${randomBytes(24).toString('base64url')}`;
+    const digest = await hashTenantCredential(apiKey);
+    const now = new Date();
+    const entry: ScopedCredential = {
+      id: `sfc_${randomBytes(8).toString('hex')}`,
+      digest,
+      scopes,
+      expiresAt: new Date(now.getTime() + options.ttlSeconds * 1000).toISOString(),
+      createdAt: now.toISOString(),
+    };
+    this.persist({
+      ...profile,
+      scopedCredentials: [...(profile.scopedCredentials ?? []), entry],
+      updatedAt: now.toISOString(),
+    });
+    return { id: entry.id, apiKey, scopes, expiresAt: entry.expiresAt };
+  }
+
+  /**
+   * Revokes one scoped credential without disturbing the tenant's root credential or
+   * its other keys. Written through, so a restart cannot resurrect it.
+   */
+  public static revokeScopedCredential(tenantId: string, credentialId: string): void {
+    const profile = TENANT_REGISTRY.get(tenantId);
+    if (!profile) throw new Error(`Cannot revoke a scoped credential for unknown tenant '${tenantId}'`);
+    const entry = (profile.scopedCredentials ?? []).find((candidate) => candidate.id === credentialId);
+    if (!entry) throw new Error(`Tenant '${tenantId}' holds no scoped credential '${credentialId}'`);
+    if (entry.revokedAt) return;
+    const revokedAt = new Date().toISOString();
+    this.persist({
+      ...profile,
+      scopedCredentials: (profile.scopedCredentials ?? []).map((candidate) => (candidate.id === credentialId ? { ...candidate, revokedAt } : candidate)),
+      updatedAt: revokedAt,
+    });
   }
 
   /**
