@@ -138,11 +138,11 @@ consults it.
 | 2 | Eligibility pre-check before destruction | **done** `5cfb42c` |
 | 3 | Scoped, expiring API keys at `tenantAuth` | **done** `1bf7e59` |
 | 4 | Graduated enforcement (**`off` refused**; `log-only`/`enforce`, default `enforce`) | **done** `9612bf2` |
-| 5 | Audit event schema validation + preview | pending |
-| 6 | Outbound webhooks (HMAC, test-send, replay) | pending |
-| 7 | Resource-scoped RBAC (`principal → role → permission → repo`) | pending |
-| 8 | Self-describing authz (`GET /api/whoami`) + panel posture | pending |
-| 9 | Evidence, release, tag | pending |
+| 5 | Audit event schema validation + preview | **done** `fad30db` |
+| 6 | Outbound webhooks (HMAC, test-send, replay) | **done** `6b76528` |
+| 7 | Resource-scoped RBAC (`principal → role → permission → repo`) | **done** `f5dd000` |
+| 8 | Self-describing authz (`GET /api/whoami`) + panel posture | **done** `323c7df` |
+| 9 | Evidence, release, tag | **done** `v4.13.0` |
 
 ## Risk register
 
@@ -252,3 +252,45 @@ every environment` fails, recorded by running it that way and reverting.
 
 - `npm test` → **257/257** passing (230 at sprint-24 close + 27 new).
 - `npm run lint` (`tsc --noEmit`) clean; `npm run build` clean.
+
+### Phases 5–9 — closeout
+
+| Phase | Commit | Suite |
+|---|---|---|
+| 5 audit schema + preview | `fad30db` | 9/9 |
+| 6 webhooks (HMAC, test-send, replay) | `6b76528` | 10/10 |
+| 7 resource-scoped RBAC | `f5dd000` | 11/11 |
+| 8 self-describing authz + panel posture | `323c7df` | 7/7 + 11/11 regression |
+
+**Full suite at close: 295/295.** `tsc --noEmit` clean; vite + esbuild build clean.
+Release **4.13.0** bumped with `package-lock.json` in step, so NC-3 cannot drift the
+way it did at 4.12.0.
+
+#### Two defects found by the phases themselves
+
+1. **`NO_BINDING` was unreachable.** The RBAC role fallback (root → admin, scoped →
+   viewer) meant a principal always had a role, so the refusal could never fire. A
+   refusal reason that can never fire is a claim of protection the code does not
+   provide, so `roleFor` now refuses a principal whose kind it cannot interpret rather
+   than defaulting it.
+2. **`whoami` was gated on `admin`.** Phase 3's scope check demanded `admin` for any
+   non-loop route, which meant a `loop:read` credential could not ask what it is — the
+   one question a scoped credential most needs answered. The test failed, which is how
+   it was found. `whoami` is now scope-free: it touches no resource, so there is
+   nothing for a scope to protect.
+
+Also registered `UNAUTHORIZED` in `DOMAIN_ERRORS`, which the `l3-error-contract`
+path-guard scan surfaced as the first *scanned* use of a code that had no entry and
+would have degraded to a 500.
+
+#### Borrow table, as landed
+
+| WorkOS shape | What SF does |
+|---|---|
+| Single-use confirmation token | Borrowed — phase 1/2 cancel |
+| `workspaceDeletionCheck` eligibility pre-check | Borrowed — phase 2 |
+| Scoped, expiring keys | Borrowed — phase 3, with a closed scope set |
+| `upsertActionsEndpoint(failOpen)` | **Inverted** — no switch exists; `off` is refused in every environment |
+| Outbound webhooks | Borrowed — phase 6, with SSRF validation and no unbounded retry |
+| Self-describing authz | Borrowed — phase 8, scope-free by design |
+| WorkOS in the execution path | **Inverted** — enrichment only, never in the loop |
