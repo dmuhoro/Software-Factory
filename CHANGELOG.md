@@ -23,7 +23,7 @@ because every fixture wrote a flat file into a repository root.
   `AI-Assisted:` trailers, the file on disk, and a clean tree. Idempotent: it resets the scratch
   clone to its upstream first, so a re-run does not trip the `no-op-unit` gate. This is the
   command behind the claim that the loop works on a repository it has never seen.
-- **Evidence:** `artifacts/sprint-25/fundios-e2e-evidence.txt` — `completed`, unit `M1:done`,
+- **Evidence:** `artifacts/sprint-26/fundios-e2e-evidence.txt` — `completed`, unit `M1:done`,
   21 gates executed and 0 refused, commit `0265c7a4a9bb` carrying the verified trailers.
 - **Failing-first:** `test/loop-execution.test.ts` gains "a unit that creates a new file inside a
   new directory is committed, not refused". Observed failing with the fix reverted (1 fail), passing
