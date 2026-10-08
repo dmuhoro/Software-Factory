@@ -221,6 +221,22 @@ test('the cancellation route is guarded by the scope check, not beside it', asyn
   }
 });
 
+test('a scoped credential can always ask what it is, whatever it was granted', async () => {
+  // Regression: `whoami` is scope-free because it touches no resource. Gating it would
+  // make a scoped credential unable to ask the one question it most needs answered.
+  const server = await listen(appWithRoutes());
+  resetRateLimiterForTests();
+  const readOnly = await TenantService.provisionScopedCredential(TENANT, { scopes: ['loop:read'], ttlSeconds: 600 });
+  try {
+    const whoami = await fetch(`${server.url}/api/whoami`, { headers: auth(readOnly.apiKey) });
+    assert.equal(whoami.status, 200, 'a loop:read key must be able to describe itself');
+    const body = (await whoami.json()) as { credential: { kind: string } };
+    assert.equal(body.credential.kind, 'scoped');
+  } finally {
+    await server.close();
+  }
+});
+
 test('a key that matches no credential is still a silent miss, not a probe', async () => {
   const server = await listen(appWithRoutes());
   resetRateLimiterForTests();

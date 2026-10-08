@@ -72,6 +72,13 @@ export function requiredScope(method: string, path: string): Scope | null {
   if (['factory/health', 'factory/ready', 'factory/metrics'].includes(tail)) return null;
   if (normalisedPath.startsWith('/schemas') || tail.startsWith('schemas')) return null;
 
+  // `whoami` is authenticated but scope-free. It answers only about the caller: what
+  // tenant it belongs to, whether it is root or scoped, and which permissions follow
+  // from its role. A scope gate here would make a scoped credential unable to ask what
+  // it is, which is the one question a scoped credential most needs to be able to ask.
+  // It touches no resource, so there is nothing for a scope to protect.
+  if (segments.includes('whoami')) return null;
+
   const loopIndex = segments.lastIndexOf('loop');
   if (loopIndex !== -1) {
     const isRead = upper === 'GET' || upper === 'HEAD' || upper === 'OPTIONS';

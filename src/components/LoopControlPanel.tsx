@@ -40,6 +40,15 @@ interface Credentials {
   apiKey: string;
 }
 
+interface Posture {
+  tenantId: string;
+  role: string | null;
+  credential: { kind: 'root' | 'scoped'; id: string | null };
+  scopes: string[];
+  permissions: string[];
+  enforcementMode: string;
+}
+
 function headers(creds: Credentials, contentType = false): Record<string, string> {
   const out: Record<string, string> = { 'x-api-key': creds.apiKey, 'x-tenant-id': creds.tenantId };
   if (contentType) out['content-type'] = 'application/json';
@@ -67,10 +76,16 @@ export function LoopControlPanel(): React.ReactElement {
   const [statusLine, setStatusLine] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [posture, setPosture] = useState<Posture | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const creds: Credentials = { tenantId, apiKey };
   const ready = Boolean(tenantId.trim() && apiKey.trim());
+
+  // What this credential may do, asked of the server rather than guessed. A control the
+  // caller cannot use is disabled and labelled, instead of being shown and refused on
+  // click: discovery by refusal is a support ticket.
+  const can = (permission: string): boolean => posture?.permissions.includes(permission) ?? true;
 
   const refresh = useCallback(async () => {
     if (!ready) return;
@@ -81,6 +96,15 @@ export function LoopControlPanel(): React.ReactElement {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
+  }, [ready, tenantId, apiKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!ready) { setPosture(null); return; }
+    callApi('/api/whoami', creds)
+      .then((body: Posture) => { if (!cancelled) setPosture(body); })
+      .catch(() => { if (!cancelled) setPosture(null); });
+    return () => { cancelled = true; };
   }, [ready, tenantId, apiKey]);
 
   useEffect(() => {
@@ -230,7 +254,7 @@ export function LoopControlPanel(): React.ReactElement {
             <label className={label}>Task document</label>
             <input className={field} value={taskDocument} placeholder="/path/to/task.md" onChange={(event) => setTaskDocument(event.target.value)} />
           </div>
-          <button onClick={() => void submit()} disabled={!ready || busy || !repo.trim() || !taskDocument.trim()}
+          <button onClick={() => void submit()} disabled={!ready || busy || !can('loop:submit') || !repo.trim() || !taskDocument.trim()}
             className="flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 px-4 py-2 text-xs font-medium text-white">
             <Play className="w-3.5 h-3.5" /> Run unattended
           </button>
@@ -252,7 +276,7 @@ export function LoopControlPanel(): React.ReactElement {
               <input className={field} value={model} placeholder="claude-..." onChange={(event) => setModel(event.target.value)} />
             </div>
           </div>
-          <button onClick={() => void draft()} disabled={!ready || busy || !goal.trim() || !providerId.trim() || !model.trim()}
+          <button onClick={() => void draft()} disabled={!ready || busy || !can('loop:submit') || !goal.trim() || !providerId.trim() || !model.trim()}
             className="flex items-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-40 px-4 py-2 text-xs font-medium text-white">
             <Sparkles className="w-3.5 h-3.5" /> Draft task document
           </button>
@@ -260,6 +284,23 @@ export function LoopControlPanel(): React.ReactElement {
         </div>
       </div>
 
+      {posture && (
+        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[11px] text-slate-300">
+          <span className="text-slate-500">acting as </span>
+          <span className="text-white">{posture.role ?? 'no role'}</span>
+          <span className="text-slate-500"> on </span>
+          <span className="text-white">{posture.tenantId}</span>
+          <span className="text-slate-500"> via </span>
+          <span className="text-white">{posture.credential.kind}</span>
+          <span className="text-slate-500"> credential · scopes </span>
+          <span className="text-white">{posture.scopes.join(', ') || 'none'}</span>
+          <span className="text-slate-500"> · enforcement </span>
+          <span className={posture.enforcementMode === 'log-only' ? 'text-amber-300' : 'text-white'}>{posture.enforcementMode}</span>
+          {!can('loop:submit') && (
+            <span className="ml-2 text-amber-300">· submitting disabled: this credential lacks loop:submit</span>
+          )}
+        </div>
+      )}
       {error && (
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-300">{error}</div>
       )}

@@ -271,6 +271,7 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LOOP_CONFIRMATION_INVALID: { status: 400, message: 'The confirmation token is missing, expired or already used.' },
   // Sprint 25 phase 3: scoped, expiring tenant credentials.
   SCOPED_CREDENTIAL_EXPIRED: { status: 401, message: 'The presented credential has expired.' },
+  UNAUTHORIZED: { status: 401, message: 'Valid API credentials are required.' },
   SCOPED_CREDENTIAL_REVOKED: { status: 401, message: 'The presented credential has been revoked.' },
   CREDENTIAL_SCOPE_INSUFFICIENT: { status: 403, message: 'The presented credential does not hold the scope this route requires.' },
   // Sprint 25 phase 4: graduated enforcement. `off` is refused in every environment.
