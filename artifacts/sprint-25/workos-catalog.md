@@ -1,0 +1,378 @@
+# WorkOS operations
+
+Pass an operation name to see its parameters. Execute queries with the query tool and mutations with the mutate tool.
+
+## Queries (188)
+- actionExecution: Return a single Actions execution by ID
+- actionExecutions: List Actions executions in an environment, optionally filtered by endpoint
+- actionsEndpoint: Return an environment's Actions endpoint of a given type, if configured
+- actionsEndpoints: List all Actions endpoints configured in an environment
+- AgentBlueprint: Return an environment by its ID
+- AgentBlueprints: Return an environment by its ID
+- AgentInstance: Return an environment by its ID
+- AgentInstances: Return an environment by its ID
+- AgentInstanceSessions: Return an environment by its ID
+- aggregateRadarDetectionIdentifiers: Return aggregated Radar detection identifier counts for an environment
+- aggregateRadarDetections: Return aggregated Radar detection counts for an environment, grouped for charting
+- allRolesForOrganization: List all roles available to an organization, including resource-scoped roles Return the role configuration for an organization Return the r…
+- apiKeys: List signing keys for an environment, optionally scoped by application and key state
+- appBranding: Return the workspace for the current dashboard session
+- application: Return a single Connect application (first-party, third-party, or dynamically registered OAuth app) by ID
+- auditLogEvent: Return a single Audit Log event by ID
+- auditLogEvents: List an organization's audit log events, filtered by date range, actions, actors, and target types
+- auditLogRetentionPeriod: Return a single organization by ID
+- auditLogSchemaEditor: Return a single audit log validator (action schema) by ID List audit log target types seen in an environment
+- auditLogSchemaPreview: Preview the generated JSON schema for an audit log action and its target types
+- auditLogStream: Return a single audit log stream by ID, including its delivery destination configuration. Secret credentials are not returned.
+- auditLogTargets: List audit log target types seen in an environment
+- auditLogValidator: Return a single audit log validator (action schema) by ID
+- auditLogValidators: List an environment's audit log validators, optionally filtered by action
+- authkitApplication: Return an application's customized AuthKit branding, or null when it inherits the environment's branding
+- authkitApplications: List AuthKit applications in an environment
+- authkitEmailSettings: Return an environment's AuthKit email settings (sender and customization)
+- authkitOauthResources: List the AuthKit OAuth resources (API resources) configured for an environment
+- authkitSettings: Return an environment's AuthKit settings (localization, default locale, SSO sign-in consent)
+- authorizedPlatforms: List the third-party platforms authorized for the current workspace
+- autoMappedCustomAttributes: List available auto-mapped custom attributes for an environment, flagging which are enabled
+- availablePipesProviders: List available data providers (Pipes integration types) for the current environment
+- billingFormDetails: Return the workspace for the current dashboard session
+- checkEmailSuppression: Check whether an email address is on the suppression list for an environment's email provider
+- claimEnvironmentProjects: Return the workspace for the current dashboard session
+- connection: Return a single SSO connection by ID
+- connectionGroups: List the connection groups for an SSO/Directory connection
+- connectionsByType: List an environment's OAuth credentials filtered by provider type, paginated
+- connectionSession: Return a SAML, OIDC, or OAuth connection sign-in session by ID
+- connectionsForOrganization: List an organization's SSO connections
+- connectionWithOrganizationDirectories: Return a single SSO connection by ID
+- corsConfig: Return an environment's AuthKit CORS configuration (allowed web origins)
+- customAttributes: List available auto-mapped custom attributes for an environment, flagging which are enabled List custom-mapped Directory Sync custom attrib…
+- customDomain: Return the self-serve custom domain of a given type configured for an environment
+- customEmailDomain: Return the project's custom email domain along with the default fallback email domains
+- customEmailProviders: List the custom email providers configured for an environment
+- customMappedCustomAttributes: List custom-mapped Directory Sync custom attributes in the current environment
+- dashboardSession: Return the current session's environment and workspace context, including the workspace's full list of environments — the way to discover t…
+- dashboardTaxId: Return the workspace for the current dashboard session
+- dataProviderIntegrationSummaries: Return an environment by its ID
+- defaultAuthkitApplication: Return an application's customized AuthKit branding, or null when it inherits the environment's branding
+- defaultRedirectUri: Return the default redirect URI for the environment's default AuthKit application
+- descendantTypesForResourceType: List the descendant resource types of an FGA authorization resource type
+- directoriesForOrganization: List an organization's Directory Sync connections
+- directory: Return a Directory Sync connection by ID
+- directoryCustomAttributeMappings: List custom attribute mappings configured for a directory
+- directoryCustomAttributes: List the Directory Sync custom attribute mappings configured for an environment
+- directoryEvents: List recent directory sync events for a Directory Sync connection
+- directoryGroupConfigsSummary: Return the total and currently-syncing group counts for a directory
+- directoryGroups: List the groups synced by a Directory Sync connection
+- directoryGroupsWithRoleMappings: List the groups synced into a Directory Sync directory, filterable by name search, member count, and role
+- directoryLastFinalizedDirectorySyncRun: Return a Directory Sync connection by ID
+- directoryScimLogs: List SCIM request logs for a Directory Sync connection, with filtering and pagination
+- directoryScimLogsCount: Return the count of SCIM request logs for a Directory Sync connection matching the filters
+- directorySummary: Return a summary of a Directory Sync connection (counts and status)
+- directoryUser: Return a single Directory Sync user by ID within a directory and environment
+- directoryUsers: List the users synced by a Directory Sync connection
+- directoryUsersCount: Return the count of users synced by a Directory Sync connection
+- directoryWithOrganizationConnections: Return a summary of a Directory Sync connection (counts and status)
+- emailNotificationPreferences: Return the current dashboard user's email notification subscribe/unsubscribe preferences
+- environmentAppBranding: Return an environment's AuthKit branding
+- environmentApplications: List the Connect applications in an environment
+- environmentDeletionEligibility: Return an environment by its ID
+- environmentEvents: List recent domain events for an environment
+- environmentForNavigation: Return an environment by its ID
+- environmentSentEmails: List emails AuthKit has sent in an environment
+- event: Return a single domain event in an environment by ID
+- eventRelatedScimRequests: Return a single domain event in an environment by ID
+- eventWithWebhooks: Return a single domain event in an environment by ID
+- flag: Return a feature flag by its ID
+- flagBySlug: Return a feature flag by slug within a project
+- flags: List the feature flags in a project
+- flagTargetingDetails: Return a feature flag by slug within a project
+- flagTargetOrganization: Return a single organization by ID
+- flagTargetUser: Return a single AuthKit end user by ID
+- getDatadogActivityStream: Return the Datadog activity-stream webhook endpoint configured for an environment
+- hasEnvironmentUsedAllowProfilesOutsideOrganization: Return whether an environment has ever used the SSO 'allow profiles outside organization' setting
+- idpAttributes: List the identity-provider attributes resolved for an environment's IdP attribute configuration
+- idpAttributesConfigForEnvironment: Return the environment-level IdP attribute mapping configuration
+- idpAttributesConfigsForOrganization: Return an organization's IdP attribute mapping configuration, or a not-found result if none exists Return the environment-level IdP attribu…
+- initiateLoginUrl: Return the IdP-initiated SSO login URL configured for an environment
+- invitations: List AuthKit user invitations in an environment
+- inviteAdminReplyToEmail: Return the workspace for the current dashboard session
+- isUsingConsumerDomain: Return whether the current workspace signed up with a consumer email domain
+- jitProvisioningConfiguration: Return a single organization by ID
+- jwtTemplate: Return the JWT template configured for an environment, if one exists Return the JWT template context schema available for an environment
+- jwtTemplateContent: Return the JWT template configured for an environment, if one exists
+- logoutUris: List the configured logout URIs for an environment
+- logStreamsForOrganization: Return an organization's audit log stream configuration
+- managedListBinding: Return how a Radar managed list is bound to an environment, or null if not bound
+- membershipCountForRole: Return the number of unique users assigned a given role
+- notifications: List dashboard notifications for an environment
+- oidcJwtSigningKeyPairs: Return the active OIDC JWT signing key pair for an SSO connection
+- oidcSessionEmails: Search the end-user emails seen in a connection's OIDC sign-in sessions (typeahead)
+- oidcSessions: List a connection's OIDC sign-in sessions, filterable by email, state, initiator, and date range
+- orderedDirectoryGroupConfigs: Return a Directory Sync connection's group-sync configuration, in order
+- organization: Return a single organization by ID
+- organizationAdminCollectionEnabled: Return an environment by its ID
+- organizationAdmins: List the admin (IT contact) accounts for an organization
+- organizationApiKeys: List an organization's API keys
+- organizationCount: Return the number of organizations in an environment
+- organizationFlags: List the feature flags that serve an organization in the current environment
+- organizationInvitations: List an organization's pending AuthKit user invitations
+- organizationPipesProviders: List the Pipes data provider integrations enabled for an organization
+- organizations: List organizations in an environment, with filtering, search, and pagination
+- organizationsForSelect: List organizations in an environment, with filtering, search, and pagination
+- organizationUserlandSettings: Return a single organization by ID
+- organizationUsers: List the AuthKit end users in an organization
+- organizationUsersCount: Return a single organization by ID
+- permissions: List permissions defined in an environment, optionally filtered (e.g. only those enabled for organization or user API keys, or excluding sy…
+- pipesProviderBySlug: Return an environment's data provider integration for a given provider slug
+- pipesProviderOrganizations: List organizations using a Pipes provider integration in the current environment
+- pipesProviders: List the Pipes data provider integrations available in an environment
+- portalSettings: Return the Admin Portal settings (branding and enabled features) for an environment
+- portalSetupLinkEmailSentEvents: List the email-sent events for an Admin Portal setup link
+- profileByEmail: Return an SSO profile matching an email within a connection
+- profiles: List the SSO profiles (authenticated identities) seen for a connection
+- radarDetection: Return a single Radar detection in an environment by ID
+- radarDetections: List Radar detections in an environment
+- radarListDetails: Return the entry count for a Radar allow/block list in an environment
+- radarListEntries: List entries in a Radar allow/block list for an environment, paginated
+- radarMode: Return an environment's Radar configuration (enforcement mode, rules, and thresholds)
+- radarSettings: Return an environment's Radar configuration (enforcement mode, rules, and thresholds)
+- redirectUris: List the redirect URIs configured for an environment, paginated
+- resourceExport: Return a single CSV File Export by ID
+- resourceExportColumns: Return the columns a resource type can be exported with
+- resourceExports: List the CSV File Exports in a workspace
+- resourceRoleAssignmentsForOrganizationMembership: List FGA resource-scoped role assignments granted to an organization membership
+- resourceTypesForEnvironment: List FGA authorization resource types defined in an environment, optionally with their hierarchy topologies
+- roleConfigsForOrganization: Return the role configuration for an organization Return the role configuration for an environment
+- roles: List roles defined in an environment, scoped to organization roles or all resource types Return the role configuration for an environment
+- rolesForOrganization: List organization-scoped roles assignable to memberships of an organization Return the role configuration for an organization Return the ro…
+- samlSessionEmails: Search the end-user emails seen in a connection's SAML sign-in sessions (typeahead)
+- samlSessions: List a connection's SAML sign-in sessions, filterable by email, state, initiator, and date range
+- scimLog: Return a single SCIM request log by id and receivedAt, including the request and response payload
+- slackChannels: List the Slack channels connected to the current workspace
+- slackConfigStatus: Return the Slack AuthKit add-on connection status for an environment
+- stripeBillingData: Return the workspace for the current dashboard session
+- stripeConnect: Return an environment by its ID
+- stripeCustomers: Return an environment by its ID
+- tags: List tags within a feature-flags project, optionally filtered by name
+- teamDashboardHasDirectory: Return the workspace for the current dashboard session
+- teamDashboardSsoConnection: Return the workspace for the current dashboard session
+- teamMemberCount: Return the workspace for the current dashboard session
+- teamProjectsTransferEligibility: Return the workspace for the current dashboard session
+- teamProjectsV2: Return the workspace for the current dashboard session
+- testSsoConnection: Return the seeded test IdP SSO connection for an environment, if one exists
+- userApiKeys: List an AuthKit end user's API keys
+- userConnectedAccounts: List an AuthKit end user's connected accounts
+- userCount: Return the total number of AuthKit end users in an environment
+- userDetails: Return an AuthKit user's details, including organization memberships
+- userEvents: List recent events for a user
+- userManagementOnboarding: Return the workspace for the current dashboard session
+- userOrganizationIdentity: Return an AuthKit end user with a single organization membership and identity
+- userOrganizationMembership: Return a single AuthKit user's organization membership by ID, including its roles
+- userOrganizationMemberships: List all organization memberships for a given AuthKit end user, including their roles
+- userOrganizationMembershipsByUserIds: List AuthKit organization memberships (with roles) for specific user IDs within one organization
+- users: List AuthKit end users in an environment, with search, sorting, and role/status filters
+- userSentEmails: List emails AuthKit has sent in an environment
+- userSessions: List an AuthKit end user's authentication sessions
+- vaultKeySettingsByEnvironment: Return an environment's Vault key settings
+- vaultKeySettingsById: Return Vault key settings by their ID
+- vaultKeySettingsByOrganization: Return an organization's Vault key settings
+- waitlistEntries: List waitlist entries in an environment, filterable by search, a list of states, and date range. When states is omitted, entries of every s…
+- webhook: Return a single webhook delivery (event) by ID
+- webhookEndpoint: Return a single webhook endpoint by ID
+- webhookEndpoints: List webhook endpoints in an environment
+- webhookEndpointSecret: Return a single webhook endpoint by ID
+- webhookEvents: List the webhook event types the platform can emit (reference metadata, not tenant data)
+- webhookEventsWithFixtures: List the webhook event types the platform can emit (reference metadata, not tenant data)
+- webhooksForEndpoint: List the recent webhook deliveries for a webhook endpoint
+- workspaceBilling: Return the current workspace's billing overview (Orb and Stripe data, billing details, entitlements)
+- workspaceBillingInvoice: Return a single billing invoice for the current workspace by ID
+- workspaceBillingPaymentHistory: Return the current workspace's billing payment history
+- workspaceDeletionCheck: Return whether the current workspace can be deleted, with its production state
+- workspaceMembers: List the members of the current workspace
+- workspaceOrganizationDomains: List the WorkOS organization domains for the current workspace
+- workspaceSsoConnection: Return the SSO connection the current workspace uses to log in to the WorkOS dashboard
+
+## Mutations (183)
+- addAdpConnectionSslCertificate: Add an SSL certificate to an ADP SSO connection and re-verify it
+- addBillingAddress: Add a billing address to the current workspace
+- addDomains: Add verified domains to an organization
+- addOrganizationAdmins: Add admin (IT contact) emails to an organization for Admin Portal access
+- addPipesProvider: Add a Pipes data provider integration for a provider slug to an environment, returning the environment's existing integration when it alrea…
+- addRadarListEntry: Add an entry to a Radar allow/block list in an environment
+- addTaxId: Add a tax ID to the current workspace
+- addUserToOrganization: Add an AuthKit user to an organization, optionally with a role
+- approveWaitlistEntry: Approve a waitlist entry and send the resulting user invitation email. Also reverses a denial: a denied entry can be approved.
+- bindManagedListToEnvironment: Bind a managed Radar list to an environment for a given block action
+- cancelStripeConnect: Disconnect the Stripe Connect integration for an environment
+- configureAzureSentinelLogStream: Validate Azure Sentinel credentials and configure an audit log stream to deliver to them
+- configureDatadogActivityStream: Configure an existing webhook endpoint to forward events to Datadog using a validated API key and region
+- configureDatadogLogStreamWithRegion: Validate Datadog API credentials and region and configure an audit log stream to deliver to them
+- configureGenericHttpsLogStream: Configure an audit log stream to deliver events to a generic HTTPS endpoint
+- configureGoogleCloudStorageLogStream: Configure an audit log stream to deliver events to a Google Cloud Storage bucket
+- configureS3LogStream: Configure an audit log stream to deliver events to an Amazon S3 bucket
+- configureSplunkLogStream: Configure an audit log stream to deliver events to a Splunk destination
+- createApplication: Create a Connect Application scoped to an organization or the current environment
+- createAuditLogStream: Create an audit log stream for an organization to deliver its audit events to an external destination
+- createAuditLogValidator: Create an audit log schema validator for an action and its target types in an environment
+- createAuditLogValidatorVersion: Create a new schema version for an existing audit log validator
+- createAuthkitApplication: Create an AuthKit application in an environment with its login, homepage, and sign-up URLs
+- createConnectionGroupWithRoleMapping: Create an SSO connection group and map it to a role for role assignment
+- createCustomDomain: Configure a custom domain (Auth API, Admin Portal, or email) for an environment
+- createCustomEmailDomain: Set up a custom sender email domain for a project and start its DNS verification
+- createCustomEmailProvider: Configure a custom email provider with sending credentials for an environment
+- createCustomMappedCustomAttribute: Create a custom-mapped custom attribute definition in an environment
+- createCustomProvider: Create a custom data provider integration in an environment for Connected Apps / data sync
+- createDatadogActivityStream: Create a webhook endpoint that forwards events to Datadog for an environment after validating credentials
+- createDirectoryConfig: Create a Directory Sync configuration (group sync settings) for a directory
+- createEnvironment: Create a new sandbox or production environment within the current project
+- createFlag: Create a feature flag in a project
+- createOrganization: Create an organization in an environment
+- createOrganizationIdpAttributesConfig: Create an organization-level IdP attribute mapping config for SSO and Directory Sync
+- createOrganizationRoleConfig: Create role assignment configuration (default role, priority, SSO/dsync assignment) for an organization
+- createPermission: Create an RBAC permission in the current environment
+- createProjectFromEnvironments: Create a project by migrating existing environments out of another project
+- createProjectWithNewEnvironments: Create a project provisioned with fresh environments — a staging environment, and a production environment unless opted out
+- createResourceExport: Create a CSV File Export in an environment
+- createResourceType: Create an FGA authorization resource type in the current environment with a name, slug, and parent types
+- createRole: Create a role with permissions, either environment-wide or scoped to a specific organization
+- createUser: Create an AuthKit end user in an environment with email and optional name and password
+- createWebhookEndpoint: Create a webhook endpoint in an environment subscribed to the given events
+- deactivateOrganizationMembership: Deactivate a user's organization membership so they lose access to that organization
+- deauthorizeStripe: Disconnect the Stripe Connect integration from an environment
+- deleteActionsEndpoint: Delete an Actions endpoint so it no longer receives action execution callbacks
+- deleteAdpConnectionSslCertificate: Delete an SSL certificate from an ADP directory connection
+- deleteApiKey: Permanently delete an API key, immediately revoking access for anyone using it
+- deleteApplication: Permanently delete a Connect Application and its credentials
+- deleteApplicationCredential: Delete a credential from a Connect Application so it can no longer authenticate
+- deleteAuditLogStream: Delete an audit log stream so events stop being forwarded to its destination
+- deleteAuditLogValidator: Delete an audit log schema validator
+- deleteAuditLogValidatorVersion: Delete a specific version of an audit log schema validator
+- deleteAuthenticationFactor: Delete an MFA authentication factor so it can no longer be used to verify the user
+- deleteAuthkitApplication: Permanently delete an AuthKit application and its API keys
+- deleteConnectionGroup: Delete a connection group mapping an IdP group to a WorkOS role
+- deleteCustomEmailDomain: Delete the environment's custom email sending domain and its SendGrid configuration
+- deleteCustomEmailProvider: Delete a custom email provider configuration
+- deleteCustomMappedCustomAttribute: Delete a custom-mapped Directory Sync custom attribute in the environment
+- deleteCustomProvider: Delete a custom Pipes provider definition in the current environment; fails while a configured integration still references its slug
+- deleteFlag: Delete a feature flag from the project
+- deleteJwtTemplate: Delete a JWT template
+- deleteOrganization: Permanently delete an organization (queued asynchronously) in the current environment
+- deleteOrganizationAdminMembership: Remove an admin user's membership from a specific organization
+- deleteOrganizationDomain: Delete a domain from an organization
+- deletePermission: Delete a custom RBAC permission from the environment (system permissions cannot be deleted)
+- deletePipesProvider: Delete a Pipes data integration in the current environment
+- deleteResourceType: Delete an FGA authorization resource type from the environment
+- deleteRole: Delete a role, optionally reassigning members to a replacement default role
+- deleteSamlX509Certificate: Delete a SAML X.509 certificate from an SSO connection and re-verify the connection
+- deleteUser: Permanently delete an AuthKit end user
+- deleteWaitlistEntry: Delete a waitlist entry from the environment. This removes the entry only: an invitation created by approving it stays valid, so revoke tha…
+- deleteWebhookEndpoint: Delete a webhook endpoint so it stops receiving events
+- denyWaitlistEntry: Deny a pending waitlist entry. A denial can be reversed by approving the entry.
+- deprovisionPlatform: Deprovision a platform integration from the current workspace
+- disconnectConnectedAccount: Delete a Pipes data installation in the current environment
+- disconnectSlack: Remove the Slack AuthKit add-on integration from an environment
+- downloadResourceExport: Return a short-lived download URL for a ready CSV File Export
+- expireApiKey: Set an expiration time on an API key so it stops working after that point
+- expirePortalSetupLinks: Expire an organization's active Admin Portal setup links
+- generateSharedSlackChannel: Create a shared Slack support channel for the current workspace
+- generateSlackInstallUrl: Return a Slack install URL to connect the AuthKit add-on for an environment
+- inviteToSharedSlackChannel: Send the current workspace an invite to its shared WorkOS support Slack channel
+- inviteUser: Send an AuthKit invitation email to a user, optionally joining them to an organization with a role
+- inviteWorkspaceMember: Invite a user by email to join the current workspace with a given role
+- manuallyVerifyOrganizationDomain: Manually mark an organization domain as verified, bypassing automatic verification
+- previewJwtTemplate: Render a preview of a JWT template's claims for a given user and organization
+- reactivateOrganizationMembership: Reactivate an inactive user's organization membership
+- refreshCustomDomain: Re-check DNS and refresh the verification status of a custom domain
+- removeCustomDomain: Remove the custom AuthKit/email domain configured for an environment's project
+- removeEmailSuppression: Remove an email address from the environment's email-provider suppression (bounce) list
+- removeRadarListEntry: Remove an entry from a Radar allow/block list in the current environment
+- removeUserFromOrganization: Remove an AuthKit user's membership in an organization
+- removeWorkspaceMember: Remove a workspace member unless their access is directory-managed
+- renameEnvironment: Rename an environment, enforcing length limits and uniqueness within its project
+- renameProject: Rename a project, enforcing that its name is unique within the workspace
+- requestCustomProvider: Request support for a not-yet-supported custom Pipes provider; notifies WorkOS and does not create a provider
+- requestPipesProvider: Request support for an unshipped Pipes provider whose state is 'requestable'; add active providers with addPipesProvider
+- resendInvitation: Resend the invitation email for a pending AuthKit user invite
+- resendWebhookEvent: Re-deliver a previously sent webhook event to its endpoint
+- resendWorkspaceInvite: Resend the invitation email for an expired workspace invite
+- resetOrganizationIdpAttributesConfig: Reset an organization's IdP attribute mapping config back to environment defaults
+- resetOrganizationRoleConfig: Reset selected properties of an organization's role config back to environment defaults
+- resetUserAuthenticationFactors: Delete an AuthKit user's enrolled MFA second factors
+- restartOrganizationDomainVerification: Restart DNS verification for an organization domain by issuing a fresh verification token
+- revokeInvitation: Revoke a pending AuthKit user invitation
+- revokeUserSession: Revoke an AuthKit user session so it can no longer be used to authenticate
+- revokeUserSessions: Revoke all active AuthKit user sessions for a user so they can no longer be used to authenticate
+- sendSetupLinksEmails: Send Admin Portal setup-link invitation emails to organization admins for the given intent
+- sendTestEmail: Send a test email to the signed-in user to verify an environment's email provider configuration
+- sendTestWebhook: Send a test event to a webhook endpoint to verify delivery (Sandbox environments only)
+- setApplicationPermissions: Replace the set of permission scopes assigned to a Connect application
+- setAuthkitApplicationLogoutUris: Set the full list of allowed logout URIs for an AuthKit application (supports dry-run validation)
+- setAuthkitApplicationRedirectUris: Set the full list of allowed redirect URIs for an AuthKit application (supports dry-run validation)
+- setAuthkitApplicationWebOrigins: Set the full list of allowed web origins (CORS) for an AuthKit application (supports dry-run)
+- setAuthkitOauthResources: Replace the AuthKit OAuth protected-resource URIs configured for an environment
+- setAutoMappedCustomAttributes: Enable the set of auto-mapped Directory Sync custom attributes for an environment
+- setDirectoryCustomAttributeMappings: Set how a Directory Sync directory's IdP attributes map onto custom attributes, then resync users
+- setEmailNotificationPreferences: Update the current dashboard user's email notification subscription preferences by category
+- setIdpAttributes: Set the environment's IdP attribute configuration, marking each attribute enabled and/or required
+- setLogoutUris: Set the full list of allowed logout URIs for an environment (supports dry-run validation)
+- setPermissionsEnabledForApiKeys: Set which permissions are grantable to API keys in an environment
+- setPermissionsEnabledForUserApiKeys: Set which permissions are grantable to user API keys in an environment
+- setRedirectUris: Set the full list of allowed redirect URIs for an environment or application (supports dry-run). List the current URIs and their IDs first …
+- setSsoAttributeMappings: Update a connection's SAML/SSO attribute map and reconcile affected user profiles Set how an SSO connection's IdP attributes map onto custo…
+- testActionEndpoint: Trigger a test execution of an environment's configured Action endpoint with a sample context payload
+- unbindManagedListFromEnvironment: Unbind a Radar managed list from an environment so its action no longer applies
+- updateAppBranding: Update an application's branding assets such as light and dark logos and theme settings
+- updateApplication: Update a Connect application's name, description, and logo images
+- updateAuthkitApplication: Update an AuthKit application's URLs, session timeouts, and token expiry settings
+- updateAuthkitEmailSettings: Toggle which AuthKit transactional emails WorkOS sends for an environment
+- updateAuthkitExternalLoginUri: Set the environment's AuthKit external login URI where unauthenticated users are redirected
+- updateAuthkitImpersonationSettings: Enable or disable AuthKit user impersonation for an environment, revoking active impersonated sessions when disabled
+- updateAuthkitSettings: Update an environment's AuthKit authentication settings: auth methods, password policy, MFA, sessions, and signup
+- updateConnection: Update an SSO connection's settings such as SAML/OIDC configuration and name
+- updateConnectionFromDiscoveryEndpoint: Update an OIDC SSO connection by fetching configuration from its discovery endpoint
+- updateConnectionFromMetadataUrl: Update a SAML SSO connection from the identity provider's metadata URL
+- updateConnectionFromMetadataXml: Update a SAML SSO connection from pasted identity provider metadata XML
+- updateConnectionGroupWithRoleMapping: Rename a connection group Create or replace group-to-role mappings for an SSO connection Delete directory group-to-role mappings by ID in t…
+- updateCorsConfig: Set the full list of allowed web origins (CORS) for an environment (supports dry-run validation)
+- updateCustomEmailProvider: Update a custom email provider's sender, reply-to, and credentials (e.g. Amazon SES)
+- updateCustomMappedCustomAttribute: Update the description of a custom-mapped custom attribute
+- updateCustomProvider: Update a custom Pipes data provider's settings such as slug in the current environment
+- updateDirectory: Update a Directory Sync connection's settings and provider credentials for an organization
+- updateDirectoryAttributeMap: Update a Directory Sync attribute map controlling how IdP user attributes are mapped
+- updateDirectoryConfig: Update a directory's group-sync configuration in the current environment
+- updateEnvironmentLocalization: Update an environment's default locale and whether localization is enabled
+- updateEnvironmentOrganizationAdminCollectionEnabled: Toggle whether an environment collects organization admin contacts
+- updateEnvironmentSsoSigninConsent: Toggle whether an environment requires SSO sign-in consent
+- updateFlag: Update a feature flag's name, description, owner, and tags
+- updateFlagEnvironment: Update a feature flag's per-environment state, access type, and enabled organizations and users
+- updateIdpAttributesConfig: Update whether SSO and Directory Sync custom attribute mapping are enabled in the IdP attributes config
+- updateInitiateLoginUrl: Update the initiate-login URL on an environment's default AuthKit application
+- updateJitProvisioningConfiguration: Update an organization's name, external ID, metadata, and related settings
+- updateMyself: Update the signed-in dashboard user's own first and last name
+- updateNotification: Update a dashboard notification's state, such as marking it read
+- updateOauthCredentials: Update a social OAuth provider's client credentials and toggle whether it is enabled for AuthKit sign-in
+- updateOrganization: Update an organization's name, external ID, metadata, and related settings
+- updateOrganizationUserlandSettings: Update an organization's name, external ID, metadata, and related settings
+- updatePermission: Update a custom permission's name and description (system permissions are immutable)
+- updatePipesProvider: Update a Pipes integration's settings and optionally its custom provider definition atomically in the environment
+- updatePortalSettings: Update an environment's Admin Portal default success/redirect links
+- updateRadarSettings: Update an environment's Radar bot/fraud detection rules and challenge settings
+- updateRadarSettingsMode: Set an environment's Radar mode to off, log-only, or enforce
+- updateResourceType: Update an FGA resource type's name, description, and relationships in the environment
+- updateRole: Update a role's name, description, and assigned permissions in the environment
+- updateRoleConfig: Update an environment or organization role config's default role, priority order, and SSO/dsync assignment toggles
+- updateRoleOnOrganizationMembership: Change the role(s) assigned to an AuthKit user's organization membership
+- updateStripeConfiguration: Toggle Stripe entitlements and seat-sync for an environment's Stripe Connect integration
+- updateSyncForDirectoryGroups: Update which directory groups are synced by toggling group configs on a directory's allow list
+- updateUser: Update an AuthKit end user's name, email, locale, metadata, or external ID
+- updateWebhookEndpoint: Update a webhook endpoint's URL, subscribed events, and active/inactive state
+- updateWorkspaceDetails: Rename the current workspace
+- updateWorkspaceMemberRole: Change a workspace member's role
+- updateWorkspaceMfaRequirement: Set whether MFA is required for the current workspace
+- upsertActionsEndpoint: Create or update the Actions endpoint of a given type for an environment, setting its URL, fail-open, and state
+- upsertAndDeleteGroupRoleMappings: Create or replace directory group-to-role mappings for a Directory Sync directory Delete directory group-to-role mappings by ID in the curr…
+- upsertJwtTemplate: Create or update the JWT access-token template for an environment
+- validateJwtTemplate: Validate the structure of a JWT template for an environment without saving it
+- verifyCustomEmailDomain: Verify the environment's custom email-sending domain and activate billing once verified
+- verifyEmailChangeAccess: Verify the code proving the signed-in dashboard user owns their current email before changing it
+- verifyRedirectUri: Check whether a redirect URI is valid for the environment's Google OAuth credential
