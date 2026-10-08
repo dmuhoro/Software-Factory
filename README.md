@@ -349,6 +349,46 @@ The profile detector selects a repository-specific verification contract:
 
 Unsupported or ambiguous projects should be explicitly configured rather than silently executed with guessed commands.
 
+## Remote control plane
+
+The loop can now be started, listed, inspected, and watched from an authenticated HTTP API or from
+the in-browser operator panel.
+
+- **REST:**
+  -  — start a run. Headers: , .
+    Body: 
+    → .
+  -  — draft a parser-accepted task document from a natural-language goal.
+    Body: 
+    → 
+  -  — list all runs for the authenticated tenant.
+  -  — return the durable run record for the authenticated tenant (404 for
+    a foreign run).
+  -  — SSE stream of recorded events, ending with .
+- **Browser panel:** the **Unattended Loop** tab in the frontend lets an operator paste a tenant API
+  key (kept in memory only, never persisted to storage or the URL), draft a goal, submit a run, and
+  tail its live stream.
+
+## Remote control plane
+
+The loop can now be started, listed, inspected, and watched from an authenticated HTTP API or from
+the in-browser operator panel.
+
+- **REST:**
+  - `POST /api/loop/runs` — start a run. Headers: `X-API-Key: <tenant key>`, `X-Tenant-Id: <tenant>`.
+    Body: `{ "tenantId": "<tenant>", "repo": "/path/in/workspace", "taskDocument": "/path/in/workspace/task.md" }`
+    → `202 { runId, repo, taskDocument, status: "running" }`.
+  - `POST /api/loop/goals` — draft a parser-accepted task document from a natural-language goal.
+    Body: `{ "tenantId": "<tenant>", "repo": "...", "goal": "...", "providerId": "...", "model": "..." }`
+    → `201 { taskDocument: "/path/.factory-goal-drafts/...", draft, title, milestones, providerId, model }`.
+  - `GET /api/loop/runs` — list all runs for the authenticated tenant.
+  - `GET /api/loop/runs/:id` — return the durable run record for the authenticated tenant (404 for
+    a foreign run).
+  - `GET /api/loop/runs/:id/events` — SSE stream of recorded events, ending with `event: done`.
+- **Browser panel:** the **Unattended Loop** tab in the frontend lets an operator paste a tenant API
+  key (kept in memory only, never persisted to storage or the URL), draft a goal, submit a run, and
+  tail its live stream.
+
 ## Security and safety model
 
 Software Factory follows these non-negotiable policies:
