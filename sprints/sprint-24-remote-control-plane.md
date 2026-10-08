@@ -52,14 +52,12 @@ inside an arbitrary container is not, and is named as such rather than silently 
 
 ## Open items (blocked on operator-owned resources, stated honestly)
 
-- **Phase 1.1 sustained throughput**: needs a real hosted model key and hours of wall clock. The
-  control plane makes this a single remote submission once the key exists.
-- **Phase 1.2 container/microVM execution boundary**: a doctrine change to the highest-risk code
-  in the repository and a new ADR. Out of scope here by the STOP condition.
-- **Phase 1.3 hosted provider**: the registry already accepts any OpenAI-compatible provider;
-  registering a live one needs the operator's key.
-- **Phase 4 live Railway deployment**: needs the operator's Railway account and secrets. The
-  build/run contract and runbook are delivered; the deploy itself is the operator's step.
+These cannot be executed by this agent without operator-owned secrets, accounts, spend, or privileged infrastructure. They are documented as requested but not self-executed.
+
+- **Phase 1.1 sustained throughput**: requires a real hosted model key and hours of wall clock (spend). No such secrets were provided.
+- **Phase 1.2 container/microVM execution boundary**: requires doctrine change + new ADR and a sandbox-capable host/microVM runtime. STOP conditions forbid weakening bwrap without the replacement proven. Not executed here.
+- **Phase 1.3 hosted provider**: registry already supports OpenAI-compatible providers; registering a live one requires the operator's provider API key. Not executed here.
+- **Phase 4 live Railway deployment + live 401/200 + real remote run**: requires operator's Railway account, project, and secrets (volume, replicas=1). Build/run contract (`railway.json`, `docs/DEPLOY_RAILWAY.md`) is delivered; deploy/proof against live deployment is operator step.
 ## Evidence (as landed)
 
 Every claim below names the command that demonstrated it and what to look at.
