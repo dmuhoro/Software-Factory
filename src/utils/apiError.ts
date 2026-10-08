@@ -273,6 +273,8 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   SCOPED_CREDENTIAL_EXPIRED: { status: 401, message: 'The presented credential has expired.' },
   SCOPED_CREDENTIAL_REVOKED: { status: 401, message: 'The presented credential has been revoked.' },
   CREDENTIAL_SCOPE_INSUFFICIENT: { status: 403, message: 'The presented credential does not hold the scope this route requires.' },
+  // Sprint 25 phase 4: graduated enforcement. `off` is refused in every environment.
+  ENFORCEMENT_OFF_REFUSED: { status: 400, message: 'Enforcement cannot be disabled. Use \'log-only\' to observe without enforcing.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */
