@@ -623,6 +623,35 @@ test('a unit whose own verification already passes on the starting tree is refus
   });
 });
 
+test('a unit that creates a new file inside a new directory is committed, not refused', async () => {
+  // Found by the first run against a real external repository (FundiOS). The gate
+  // `claimed-files-exist` refused every attempt with "claimed file is unchanged from HEAD" even
+  // though the file was present and new. The cause was `git status --porcelain` without
+  // `--untracked-files=all`: git collapses an untracked directory to one `?? dir/` entry, so the
+  // ground-truth path list held the directory, not the file it was asked about. Creating a file in
+  // a new directory is ordinary work, so the gate must see it.
+  const repo = makeTarget('nested-newfile');
+  const task = writeTask('nested-newfile', [
+    '### M1: Add a proof document under a new directory',
+    'type: docs',
+    "verify: node -e \"process.exit(require('fs').existsSync('docs/verification/proof.md')?0:1)\"",
+    '- [ ] docs/verification/proof.md exists',
+    '',
+  ].join('\n'));
+
+  await withStub(() => ({ files: [{ path: 'docs/verification/proof.md', content: 'proof\n' }] }), async () => {
+    const outcome = await ExecutionLoopService.run({ repo, taskDocument: task, tenantId: TENANT });
+    const { record } = outcome;
+
+    assert.equal(outcome.exitCode, 0, `expected a clean run, got ${outcome.exitCode}: ${record.hardStop ?? record.refusal ?? ''}`);
+    const m1 = record.units.find((unit) => unit.unitId === 'M1')!;
+    assert.equal(m1.status, 'done', 'a new file in a new directory was refused');
+    assert.equal(record.commits.length, 1, 'the verified unit produced one commit');
+    assert.ok(fs.existsSync(path.join(repo, 'docs/verification/proof.md')), 'the new file is on disk');
+    assert.equal(porcelain(repo), '', 'the run leaves a clean tree');
+  });
+});
+
 test('a verification command masked by the sandbox is refused before the model is dialled, once', async () => {
   // The real case (sprint 22, finding 5): the sandbox masks /home, this machine's npm lives
   // under it, and a sandboxed verify command died with an opaque exit 127 that burned three

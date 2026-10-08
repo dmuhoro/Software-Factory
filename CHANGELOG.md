@@ -4,6 +4,31 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.2 — the first run against a real external repository
+
+FundiOS, cloned, driven end to end by the loop. It found a defect that a green suite never could,
+because every fixture wrote a flat file into a repository root.
+
+- **A new file in a new directory was wrongly refused** (`groundTruthService`, `executionLoopService`).
+  `git status --porcelain` collapses an untracked directory to a single `?? dir/` entry, so the
+  ground-truth path list held `docs/verification/` where the gate was asked about
+  `docs/verification/proof.md`. The `claimed-files-exist` gate then refused every attempt with
+  "claimed file is unchanged from HEAD", the unit went STUCK after the attempt cap, and a perfectly
+  ordinary change never committed. Fixed at the root: path enumeration now uses
+  `--untracked-files=all`, in both the ground-truth service and the loop's rollback snapshot
+  (`treePaths`). A Daftari run had never hit it because its units edited existing files.
+- **`scripts/verify-fundios-e2e.ts`** (`npm run verify:fundios -- --repo <scratch clone>`). Drives
+  the real `GoalIntakeService.draft` and `ExecutionLoopService.run` against a real clone with a
+  local stub model port, and asserts on git history — one commit, the `Verified:` / `Proof:` /
+  `AI-Assisted:` trailers, the file on disk, and a clean tree. Idempotent: it resets the scratch
+  clone to its upstream first, so a re-run does not trip the `no-op-unit` gate. This is the
+  command behind the claim that the loop works on a repository it has never seen.
+- **Evidence:** `artifacts/sprint-25/fundios-e2e-evidence.txt` — `completed`, unit `M1:done`,
+  21 gates executed and 0 refused, commit `0265c7a4a9bb` carrying the verified trailers.
+- **Failing-first:** `test/loop-execution.test.ts` gains "a unit that creates a new file inside a
+  new directory is committed, not refused". Observed failing with the fix reverted (1 fail), passing
+  with it (1 pass). Full suite: **296/296**.
+
 ### 4.13.1 — deploy fixes found by the first live Railway rollout
 
 Three defects, all found by taking 4.13.0 to a real host instead of a green local suite.
