@@ -4,6 +4,34 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.1 — deploy fixes found by the first live Railway rollout
+
+Three defects, all found by taking 4.13.0 to a real host instead of a green local suite.
+
+- **The startup banner denied three settings that work** (`33b2f42`). The banner warned that
+  `FACTORY_ENFORCEMENT_MODE`, `FACTORY_DOCTRINE_ROOT` and `FACTORY_LOOP_REPORT_DIR` are "not a
+  recognised setting and ha[ve] NO effect". All three are read by real code — `whoami` reports the
+  enforcement mode, `doctrineService` loads rules from the doctrine root, and
+  `executionLoopService` writes run reports to the report directory. A warning that says a working
+  setting does nothing is worse than no warning: it would lead an operator to remove a setting that
+  is in use. The banner must not claim a capability the system lacks, and must not deny one it has.
+- **The service could not write its own volume** (`3be55be`). The image ran as the unprivileged
+  `factory` user, and Railway mounts its volume as `root:root` over the data directory, which an
+  unprivileged process cannot chown. The ledger was therefore unwritable and the service correctly
+  refused to serve — `EACCES: permission denied, open '/data/software-factory.json.lock'`. The fix
+  is NOT to run the service as root: `docker-entrypoint.sh` starts as root only if the container
+  did, chowns the data directory, and drops to `factory` via `setpriv` before exec'ing the server.
+  A container already started as a non-root user execs straight through with nothing escalated.
+- **Leaked reasoning text in `CHANGELOG.md`** (this release). A prior session committed a block of
+  model reasoning — including a raw pseudo tool-call — into the 4.11.0 section. Removed, and the
+  tree scanned for other artifacts (`git grep -nE "DSML|</think|invoke name="`): none remain.
+
+- **First live deployment.** Railway service `Forge` (project `forge`) now builds from
+  `dmuhoro/Software-Factory@main`, mounts a persistent volume at `/data`, and reports
+  `status: Online` with `/api/factory/health` returning 200 and `durableStore: healthy`. The
+  remaining `configuration: degraded` is the honest fail-closed default (no model secret refs
+  permitted, no tenants provisioned), not an error.
+
 ### Sprint 25 — borrowed leverage (complete, released as 4.13.0)
 
 Shapes borrowed from WorkOS, inverted where SF's safety model requires it. Full plan and
@@ -94,27 +122,6 @@ verified ground truth in `sprints/sprint-25-borrowed-leverage.md`.
 
 
 ### 4.11.0 - 2026-10-07
-```
-
-Wait, there's already a `### 4.11.0` line right after Unreleased. Let me re-read the structure. The CHANGELOG had:
-```
-## [Unreleased] - 2026-10-07
-
-### 4.11.0 - 2026-10-07
-```
-That's odd — Unreleased contains 4.11.0? My edit replaced the Unreleased header + 4.11.0 header with new content ending in `### 4.11.0 - 2026-10-07`. Good, preserved.
-
-Now commit docs.</think>
-
-<｜DSML｜ calls>
-<｜DSML｜ invoke name="bash">
-<｜DSML｜ parameter name="command" string="true">cd /home/daniel-muhoro/workspace/projects/Software-Factory && git add sprints/sprint-24-remote-control-plane.md CHANGELOG.md && git commit -q -m "docs(sprint): record the landed control plane and goal-intake evidence
-
-Adds an evidence section to the sprint-24 record naming the command behind every
-claim (the writer-lock probe, the 226/226 suite, the HTTP 401/202/SSE run, and
-the goal round-trip), and a changelog entry for the three commits. States
-plainly that L6/L7/L8 are not started and that the live deploy and sustained
-throughput remain operator-blocked." && git log --oneline -6
 
 - **All five sprint-22 open findings closed, each with a failing-first test and a replay against
   the real artifact it came from.**
