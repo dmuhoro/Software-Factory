@@ -111,7 +111,7 @@ function referencedFileContents(repo: string, unit: WorkUnit): Array<{ path: str
 }
 
 /** Bounded view of the repository so the model sees what exists without a whole-tree dump. */
-function fileInventory(repo: string, limit = 400): string[] {
+export function fileInventory(repo: string, limit = 400): string[] {
   const out: string[] = [];
   const skip = new Set(['.git', 'node_modules', 'dist', 'build', 'target', '.data', '.factory-worktrees']);
   const walk = (dir: string, depth: number): void => {

@@ -265,6 +265,7 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LOOP_TASK_DOCUMENT_OUTSIDE_WORKSPACE: { status: 403, message: 'The task document is outside the approved workspace.' },
   LOOP_RUN_ALREADY_ACTIVE: { status: 409, message: 'A run is already active for this repository; the loop is the only writer of the target tree.' },
   LOOP_GOAL_REQUIRED: { status: 400, message: 'A goal describing the intended outcome is required.' },
+  LOOP_GOAL_MODEL_REQUIRED: { status: 400, message: 'A registered providerId and model are required to draft a goal.' },
   LOOP_GOAL_DRAFT_INVALID: { status: 422, message: 'The drafted task document was not accepted by the loop parser; the goal is too ambiguous to plan.' },
 });
 

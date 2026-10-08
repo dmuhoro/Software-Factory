@@ -160,14 +160,19 @@ export class LoopControlService {
   }
 }
 
-function resolveRepo(raw: unknown): string {
+/** Validates a target repository: required, inside the approved workspace, and a git repository. */
+export function resolveLoopRepo(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.trim()) throw new Error('LOOP_REPO_REQUIRED');
   const resolved = resolveWithin(raw, { code: 'LOOP_REPO_OUTSIDE_WORKSPACE', mustExist: true, mustBeDirectory: true });
   if (!isGitRepository(resolved)) throw new Error('LOOP_REPO_NOT_GIT');
   return resolved;
 }
 
-function resolveTaskDocument(raw: unknown): string {
+/** Validates a task document path: required and inside the approved workspace. */
+export function resolveLoopTaskDocument(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.trim()) throw new Error('LOOP_TASK_DOCUMENT_REQUIRED');
   return resolveWithin(raw, { code: 'LOOP_TASK_DOCUMENT_OUTSIDE_WORKSPACE', mustExist: true });
 }
+
+const resolveRepo = resolveLoopRepo;
+const resolveTaskDocument = resolveLoopTaskDocument;
