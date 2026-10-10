@@ -4,6 +4,28 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.7 — the audit trail reports the enrichment's real resilience context
+
+Every persisted transformation claimed `retryAttempts: 0` and
+`circuitBreakerStatus: 'CLOSED'` — the orchestrator wrote those constants
+(`src/services/pipelineOrchestrator.ts`). So a request that had just been retried three
+times through the Gemini circuit breaker, or one that was answered while the breaker sat
+`HALF_OPEN`, was recorded as "no retries, breaker healthy". The fields looked measured and
+were not.
+
+- **The real values are now threaded through.** `GeminiService.transformTelemetry` returns
+  the attempt count from `withExponentialBackoff` and `circuitBreaker.getState()` — the live
+  breaker state — and the orchestrator records those in the transformation's audit trail
+  (`src/services/geminiService.ts`, `src/services/pipelineOrchestrator.ts`).
+- **`UNKNOWN` is a first-class state.** A legacy row written before the field existed has no
+  knowable breaker state; `TransformationAuditTrail` now allows `'UNKNOWN'` and the store
+  uses it instead of the `'UNKNOWN' as never` type lie (`src/models/telemetry.ts`,
+  `src/services/telemetryStore.ts`).
+- **`test/orchestrator-audit-truth.test.ts`** drives the real orchestrator with an enrichment
+  stub that reports `attempts: 3`, `circuitBreakerState: 'HALF_OPEN'`, and asserts the
+  persisted record carries those values. **Failing-first:** reverting the orchestrator to the
+  constants fails the test. Full suite: **305/305**.
+
 ### 4.13.6 — the ingest path fails closed when the ledger refuses the write
 
 Every persistence test proved the happy path — a write lands, a replay deduplicates, the

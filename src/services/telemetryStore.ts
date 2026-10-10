@@ -332,7 +332,7 @@ export class AppwriteTelemetryStore implements TelemetryStore {
       // used rather than "now", so a missing value sorts as oldest instead of masquerading as
       // recent and outranking real history.
       auditTrail: this.parseColumn<TransformationRecord['auditTrail']>(row.auditTrailJson, row, 'auditTrailJson')
-        ?? { startedAt: EPOCH, completedAt: EPOCH, durationMs: 0, retryAttempts: 0, circuitBreakerStatus: 'UNKNOWN' as never },
+        ?? { startedAt: EPOCH, completedAt: EPOCH, durationMs: 0, retryAttempts: 0, circuitBreakerStatus: 'UNKNOWN' },
       errorMessage: row.errorMessage ? String(row.errorMessage) : undefined,
       errorCode: row.errorCode ? String(row.errorCode) : undefined,
       createdAt: String(row.createdAt ?? EPOCH),
