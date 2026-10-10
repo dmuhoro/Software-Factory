@@ -182,3 +182,49 @@ is not typed with an `as never` lie.
 - `test/orchestrator-audit-truth.test.ts` — real orchestrator, enrichment stub reporting
   `attempts: 3`/`HALF_OPEN`; the persisted record must carry those values. **Failing-first:**
   reverting the orchestrator to the constants fails it. Full suite: **305/305**.
+
+## WP-4 — Cross-tenant read/write refusal (4.13.8)
+
+**The defect:** the tenant registry routes were *unbound*. `GET /api/tenants` returned every
+partition to any authenticated caller, and `GET /api/tenants/:id` read the id straight from the
+path and returned that tenant's quota and guardrails — no check that the id was the caller's own.
+`validateTenantRequest` inspects the header/body/query claim and never `req.params`, so it could
+not have caught this even if the route had called it. Any root or admin-scoped credential could
+enumerate every tenant and read any tenant's profile. That is precisely a *cross-tenant read*
+failure — the WP-4 acceptance criterion.
+
+**Fix (`src/api/routes/tenants.routes.ts`):**
+- `GET /api/tenants` returns all partitions to a `platform_operator` only; a tenant credential
+  sees exactly its own.
+- `GET /api/tenants/:id` refuses with `TENANT_CREDENTIAL_MISMATCH` unless the id is the caller's
+  own tenant or the caller is a `platform_operator`.
+
+**Also corrected (auth-honesty, same WP):** `src/services/rbacService.ts` claimed in its class
+doc that "`requirePermission` is the guard. It is called by routes" and that a permission-less
+role "still cannot start a run". No such guard exists and `RbacService.check` is called by no
+route — the enforced boundary is the credential-scope check in `tenantAuthMiddleware`. The doc
+now states what is actually enforced and names route-level role enforcement as a tracked follow-up.
+Shipping the false claim would be a protection the code does not provide.
+
+**Evidence:**
+- `test/wp4-cross-tenant-read.test.ts` — real router, real provisioned tenants: a tenant
+  credential listing partitions sees only itself; reading another tenant by id is `403`
+  `TENANT_CREDENTIAL_MISMATCH`; its own profile is `200`; a platform operator enumerates;
+  `/api/telemetry/history` and `/api/telemetry/audit` refuse a foreign `?tenantId=`, answer
+  their own. **Failing-first:** reverting `tenants.routes.ts` to HEAD fails the list-leak and
+  read-by-id arms (2 fail / 5 pass); with the fix 7/7.
+- `test/l4-durable-tenancy.test.ts` — added scoped-credential durability: a provisioned scoped
+  key resolves after a simulated restart with its grant intact; a revoked scoped key stays
+  revoked (`SCOPED_CREDENTIAL_REVOKED`). Closes the auth-durability proof for scoped keys, which
+  the suite previously covered only for root keys.
+- Full suite: **314/314**.
+
+**Named open items (honest, not worked around):**
+- **Rate-limit buckets are per-process.** `src/api/middleware/rateLimiter.ts` keeps a module-scope
+  `Map`; a restart resets a tenant's window and N replicas each hold their own bucket. The limiter
+  keys on the authenticated principal (not a caller-supplied header) and is HTTP-testable, so the
+  *control* is real; only its *durability/sharedness* is not. Cross-replica limiting needs a shared
+  store with an atomic token decrement — a follow-up, deliberately not faked.
+- **RBAC role enforcement is not wired.** Roles/permissions are resolved and reported (`whoami`),
+  and credentials are scope-enforced at the boundary; the role→permission layer is not yet called
+  in front of routes (see `rbacService.ts`).
