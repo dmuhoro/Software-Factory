@@ -302,3 +302,28 @@ line but a `SECURITY`-class verification failure scores `< 40` and persists that
 `recordLaunchQuality` to the old presence-based rubric makes the known-bad job score 45 and fails
 the e2e arm; reverting the evaluator's security fail-closed branch fails the known-bad, real-scan,
 and e2e arms (3/5). Full suite: **325/325**.
+
+## WP-9 — CI/CD, backups, restore, and load (4.13.11)
+
+**Most of this package already existed, and the honest work was to prove it, not rebuild it.**
+`.github/workflows/verify.yml` is a real gate — it runs `actionlint`, the Appwrite scope check,
+typecheck, `npm test`, build, layers 1–4 over HTTP, storage-backend selection, the secret gate, the
+release-record check, the integration and docs checks, the KB-MCP self-test, and the Rust
+fmt/clippy/tests. A checksummed `WorkspaceService.backup`/`restore` already existed, routed at
+`POST /api/workspace/backup` and `POST /api/workspace/restore/:backupId`.
+
+**Two real gaps remained, and both were proof gaps:**
+
+1. **Restore was never shown to return the data.** The existing test asserted only that the stored
+   *checksum* came back — it would have passed if `restore` never swapped the live document. The
+   test now creates a job *after* the backup, restores, and asserts that post-backup job is **gone**
+   while the original remains. **Failing-first:** deleting `DurableStore.replaceDocument(data)` from
+   `WorkspaceService.restore` fails it.
+2. **No load test existed.** `test/wp9-load.test.ts` boots the real app on an ephemeral port and
+   fires **60 concurrent** `POST /api/factory-jobs`, asserting all succeeded, the ledger holds
+   exactly 60 unique records, and they survive a drop-and-re-hydrate from disk. **Failing-first:**
+   a store that drops an interleaved write fails the count assertion.
+
+**Pipeline is the gate.** Both tests run under the `npm test` step that `verify.yml` already
+executes, so CI gates them without a new job. Single-writer correctness across processes was
+already proven by `test/durable-store-writer-lock.test.ts`. Full suite: **326/326**.
