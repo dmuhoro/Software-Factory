@@ -4,6 +4,33 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.9 — the execution boundary is recorded and enforced (WP-7)
+
+The factory runs commands on repositories it did not author. It carried an isolation mechanism
+and escape tests for several sprints, but no ADR named the boundary, its scope, or its holes —
+and one hole let the doctrine switch the sandbox off.
+
+- **`ADR-010: The execution boundary is bwrap, and escape is asserted`** (Accepted) records the
+  three distinct mechanisms honestly: the loop's bwrap sandbox (the strong one), the
+  `ExecutionBoundaryService` snapshot/env boundary (no bwrap, no network unshare), and the
+  `SandboxPolicyService` policy registry (executes nothing). It names the open gaps.
+- **The sandbox can no longer be disabled.** `parseLoopConfig` refused nothing before, but
+  `runCommand` fell through to a bare `sh -c` whenever `sandbox.enabled` was false — R-14 in
+  prose, breakable in config. A doctrine that disables the sandbox is now refused at load
+  (`src/services/doctrineService.ts`), so the loop can never run a verification command bare.
+- **Path containment decides on real paths.** `ExecutionBoundaryService.createManifest` and
+  `SandboxPolicyService.createPolicy` re-implemented containment as a `path.resolve` prefix
+  comparison, which a symlink inside the workspace defeats. Both now route through
+  `pathGuard.resolveWithin` — the canonical guard whose own header warns that a duplicated
+  check is a chance to forget symlink resolution.
+- **`test/wp7-execution-boundary.test.ts`** — the doctrine-disabled refusal, plus traversal and
+  symlink-escape refusal on both boundary services and `pathGuard`. **Failing-first:** reverting
+  the doctrine guard fails arm 1; reverting the two services fails the symlink arms (2/6).
+  Full suite: **320/320**.
+
+**Named open gap (in ADR-010):** `verificationProfileService.executeVerification` runs
+unsandboxed via `POST /api/factory-jobs/:id/verify`. Highest-priority follow-up.
+
 ### 4.13.8 — the tenant registry is no longer a cross-tenant read hole (WP-4)
 
 `GET /api/tenants` returned every partition to any authenticated caller, and

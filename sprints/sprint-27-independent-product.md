@@ -228,3 +228,43 @@ Shipping the false claim would be a protection the code does not provide.
 - **RBAC role enforcement is not wired.** Roles/permissions are resolved and reported (`whoami`),
   and credentials are scope-enforced at the boundary; the role→permission layer is not yet called
   in front of routes (see `rbacService.ts`).
+
+## WP-7 — Isolated execution boundary (4.13.9)
+
+**The missing artifact was the record.** The factory runs commands on repositories it did not
+author, and had three separate isolation mechanisms built at different times with different
+strengths — but no ADR named the boundary, so the strongest was easily mistaken for the weakest.
+`ADR-010: The execution boundary is bwrap, and escape is asserted` (Accepted) is that record.
+
+**Two real code gaps closed alongside it:**
+
+1. **The doctrine could disable the sandbox.** R-14 says verification commands "run sandboxed and
+   fail closed; a command that cannot be sandboxed is refused, never run bare" — but
+   `runCommand` (`src/services/groundTruthService.ts:135`) falls through to a bare `sh -c` when
+   `sandbox.enabled` is false, and `parseLoopConfig` accepted `enabled: false`. R-14 was prose the
+   code could be configured to break. `parseLoopConfig` now **refuses** a doctrine that disables
+   the sandbox, so the only doctrine the loop loads has it on.
+2. **Containment was a string prefix, not a real path.** `ExecutionBoundaryService.createManifest`
+   and `SandboxPolicyService.createPolicy` compared `path.resolve` prefixes, which a symlink inside
+   the workspace defeats. Both now use `pathGuard.resolveWithin` — whose own header names the
+   duplicated-prefix check as the defect it exists to prevent.
+
+**Honest scope (in ADR-010):** the three mechanisms are documented for what each actually provides.
+`ExecutionBoundaryService` runs no bwrap and does not unshare the network (`network:'disabled'` is
+a label); `SandboxPolicyService` executes nothing (`planRun` → `PLANNED`). The bwrap sandbox — used
+by the loop's verify stage and the `no-op-unit` gate — is the strong boundary, and its escapes were
+already refused by `test/loop-sandbox.test.ts`.
+
+**Named open gap:** `verificationProfileService.executeVerification` (`:31`) runs unsandboxed and is
+reachable from the live route `POST /api/factory-jobs/:id/verify` via `factoryJobService.verifyRepository`
+(`:93`). It runs the target repo's own declared scripts (not caller argv), so the exposure is bounded,
+but it is outside the boundary and not covered by R-14 today. Highest-priority follow-up: route it
+through `runCommand` with the doctrine sandbox, or refuse when the sandbox cannot start.
+
+**Evidence:**
+- `test/wp7-execution-boundary.test.ts` — a doctrine with `sandbox.enabled:false` is refused; both
+  boundary services refuse traversal and symlink escapes; `pathGuard` refuses absolute, traversal,
+  and symlink escapes. **Failing-first:** reverting the doctrine guard fails arm 1; reverting the two
+  services fails the symlink arms (2/6). Full suite: **320/320**.
+- Docs moved with the code: `docs/adr/ADR-010-isolated-execution-boundary.md`, indexed in
+  `docs/OPERATIONS.md`.
