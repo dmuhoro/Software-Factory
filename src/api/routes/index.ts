@@ -17,6 +17,7 @@ import proofRoutes from './proof.routes';
 import operationsRoutes from './operations.routes';
 import loopRoutes from './loop.routes';
 import whoamiRoutes from './whoami.routes';
+import usageRoutes from './usage.routes';
 
 const router = Router();
 
@@ -35,5 +36,7 @@ router.use('/operations', operationsRoutes);
 router.use('/loop', loopRoutes);
 // Self-describing authz. Not a public path: it answers for the authenticated caller only.
 router.use('/whoami', whoamiRoutes);
+// The caller's own metered usage. Also answers only for the authenticated caller.
+router.use('/usage', usageRoutes);
 
 export default router;

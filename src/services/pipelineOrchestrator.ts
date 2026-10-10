@@ -8,6 +8,7 @@ import { TenantService } from './tenantService';
 import { NicheAdapterService } from './nicheAdapterService';
 import { GeminiService } from './geminiService';
 import { AppwriteService } from './appwriteService';
+import { UsageMeteringService } from './usageMeteringService';
 import { validateIncomingTelemetry, emitMalformedContextError } from '../utils/validation';
 import { classifyDependencyFailure, OperationalError } from '../utils/operationalError';
 import { TelemetryLogger } from '../utils/telemetryLogger';
@@ -126,6 +127,10 @@ export class PipelineOrchestrator {
       });
       throw classified;
     }
+
+    // Meter the consumption now: the tokens were spent whether or not the later Appwrite write
+    // succeeds. Keyed on the correlation id so a retry of this cycle cannot double-count.
+    UsageMeteringService.record({ tenantId: payload.tenantId, source: 'ai-transform', tokens: aiResult.tokensUsed, correlationId, model: aiResult.model });
 
     // Layer 6: Asynchronous database update in Appwrite
     const transformationId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
