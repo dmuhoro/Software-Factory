@@ -23,6 +23,7 @@ It is genuinely built:
 | Release + rollback with a real health check | `src/services/releaseService.ts:18`, `:22` |
 | Niche adapters carrying real compliance guardrails | `src/configurations/factory.config.ts:39` |
 | Path-traversal guards on all file writes | `src/services/factoryJobService.ts:87` |
+| Isolated execution boundary: verification commands run in bwrap, never bare | `ADR-010`; `test/loop-sandbox.test.ts`, `test/wp7-execution-boundary.test.ts` |
 | 137 tests across 20 files, six defence layers | `test/` |
 
 What is real, in one line: **the governance, tenancy, evidence and release machinery is real and

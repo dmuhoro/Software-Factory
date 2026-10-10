@@ -198,7 +198,13 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   const enableNetwork = reqBoolean('loop.json:sandbox', sandbox, 'enableNetwork');
   const writableDirs = reqStringArray('loop.json:sandbox', sandbox, 'writableDirs', 0, 50);
   const bwrapBinary = reqString('loop.json:sandbox', sandbox, 'bwrapBinary', 400);
-  if (!sandboxEnabled && enableNetwork) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:sandbox: enableNetwork only means something when the sandbox is enabled');
+  // R-14: verification commands run sandboxed and fail closed; a command that cannot be
+  // sandboxed is refused, never run bare. A doctrine that disables the sandbox would make
+  // `runCommand` fall through to its bare `sh -c` path, so it is refused here -- at the
+  // config boundary that governs the loop -- rather than left for a caller to remember.
+  if (!sandboxEnabled) {
+    throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:sandbox:enabled must be true; verification commands are never run bare (R-14)');
+  }
 
   const config: LoopConfig = {
     version,

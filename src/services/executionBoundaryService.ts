@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { DurableStore } from './durableStore';
 import { detectVerificationProfile, FailureClass, VerificationProfile } from './verificationProfileService';
+import { resolveWithin, isGitRepository } from '../utils/pathGuard';
 
 export interface ExecutionManifest { id: string; tenantId: string; sourcePath: string; snapshotPath: string; sourceCommit: string; profile: VerificationProfile; network: 'disabled'; environment: 'sanitized'; timeoutMs: number; maxOutputBytes: number; createdAt: string; }
 export interface IsolatedRun { manifest: ExecutionManifest; passed: boolean; exitCode: number; output: string; failedStep?: string; failureClass?: FailureClass; completedAt: string; }
@@ -15,7 +16,10 @@ function classify(step: string, output: string): FailureClass { const value = `$
 
 export class ExecutionBoundaryService {
   public static createManifest(tenantId: string, sourcePath: string, options: { timeoutMs?: number; maxOutputBytes?: number } = {}): ExecutionManifest {
-    const root = path.resolve(sourcePath); const approved = path.resolve(process.env.FACTORY_WORKSPACE_ROOT || process.cwd()); if (!(root === approved || root.startsWith(`${approved}${path.sep}`))) throw new Error('EXECUTION_SOURCE_OUTSIDE_APPROVED_WORKSPACE'); if (!fs.existsSync(path.join(root, '.git'))) throw new Error('EXECUTION_SOURCE_NOT_GIT');
+    // Containment is decided on REAL paths by the canonical guard, not on a string prefix:
+    // a prefix check is defeated by a symlink inside the workspace that points outside it.
+    const root = resolveWithin(sourcePath, { code: 'EXECUTION_SOURCE_OUTSIDE_APPROVED_WORKSPACE', mustExist: false });
+    if (!isGitRepository(root)) throw new Error('EXECUTION_SOURCE_NOT_GIT');
     const snapshotPath = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-execution-')); copyTree(root, snapshotPath); const profile = detectVerificationProfile(snapshotPath); const manifest: ExecutionManifest = { id: DurableStore.id('execution', `${tenantId}:${root}`), tenantId, sourcePath: root, snapshotPath, sourceCommit: commit(root), profile, network: 'disabled', environment: 'sanitized', timeoutMs: Math.min(options.timeoutMs ?? 120000, 300000), maxOutputBytes: Math.min(options.maxOutputBytes ?? 2_000_000, 5_000_000), createdAt: new Date().toISOString() };
     DurableStore.upsert('backups', manifest.id, manifest as unknown as Record<string, unknown>); return manifest;
   }

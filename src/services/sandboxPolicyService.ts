@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DurableStore } from './durableStore';
+import { resolveWithin } from '../utils/pathGuard';
 
 export type SandboxRuntime = 'local-restricted' | 'docker-isolated';
 export interface SandboxPolicy { id: string; tenantId: string; runtime: SandboxRuntime; sourcePath: string; writablePath: string; network: 'disabled' | 'allowlisted'; allowedHosts: string[]; secretRefs: string[]; cpuSeconds: number; memoryMb: number; diskMb: number; processLimit: number; timeoutMs: number; image?: string; createdAt: string; }
 export interface SandboxRun { id: string; tenantId: string; policyId: string; status: 'PLANNED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'; exitCode?: number; stdout?: string; stderr?: string; artifacts: string[]; startedAt: string; completedAt?: string; }
 
-function approved(source: string): string { const root = path.resolve(process.env.FACTORY_WORKSPACE_ROOT || process.cwd()); const value = path.resolve(source); if (!(value === root || value.startsWith(`${root}${path.sep}`))) throw new Error('SANDBOX_SOURCE_OUTSIDE_APPROVED_WORKSPACE'); return value; }
+function approved(source: string): string { return resolveWithin(source, { code: 'SANDBOX_SOURCE_OUTSIDE_APPROVED_WORKSPACE', mustExist: false }); }
 function tenantOf(value: Record<string, unknown>): string { return String(value.tenantId ?? ''); }
 
 export class SandboxPolicyService {
