@@ -4,6 +4,20 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.4 — the build says which build it is
+
+A live URL gave no way to tell which build was serving it. The deployed code was
+current, but the badge read the literal `v3.2.0-PROD` and the health payload
+carried no version, so "is this the latest?" was unanswerable from the outside.
+
+- **`src/configurations/buildInfo.ts`** — reads `package.json` at runtime, checks the
+  package `name` before trusting the manifest, resolves against both the working
+  directory and the entrypoint, and reports `unknown` rather than guessing.
+- **`/api/factory/health`** now returns `name` and `version`; the UI header badge is
+  fed by that field instead of a literal.
+- **`test/health-version.test.ts`** asserts the payload version equals the real
+  `package.json` version. Failing-first: reverted to a constant, the test fails.
+
 ### 4.13.3 — the Docker self-host route
 
 Railway is the hosted route, and it is unpaid. The same image now runs on a

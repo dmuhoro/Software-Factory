@@ -4,6 +4,7 @@ import { DurableStore, LEDGER_VERSION } from '../../services/durableStore';
 import { resolveRuntimeConfig } from '../../configurations/runtimeConfig';
 import { classifyReadiness } from '../../services/healthService';
 import { NICHE_REGISTRY } from '../../configurations/factory.config';
+import { APP_NAME, APP_VERSION } from '../../configurations/buildInfo';
 
 const router = Router();
 const startedAt = Date.now();
@@ -27,6 +28,10 @@ router.get('/health', (_req: Request, res: Response) => {
     // Honest runtime identity. This process is Node; it is not the Rust/Tokio engine.
     runtime: 'software-factory-node',
     engine: 'modular-monolith',
+    // The deployed artifact's own name and version, read from package.json at runtime.
+    // Without this a live URL gave no way to tell which build was actually serving.
+    name: APP_NAME,
+    version: APP_VERSION,
     ledgerVersion: LEDGER_VERSION,
     uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),

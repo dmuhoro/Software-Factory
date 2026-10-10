@@ -79,6 +79,9 @@ export default function App() {
 
   // Real-time Health and Metrics State
   const [healthData, setHealthData] = useState<SystemHealthStats | null>(null);
+  // The deployed artifact's own version, read from the server's health payload. Never a
+  // hardcoded label: the whole point is that a live URL states which build it is serving.
+  const [appVersion, setAppVersion] = useState<string>('unknown');
   const [metricsTimeSeries, setMetricsTimeSeries] = useState<RustTimeSeriesMetric[]>([]);
   const [healthLoading, setHealthLoading] = useState<boolean>(false);
 
@@ -203,6 +206,7 @@ export default function App() {
       if (hRes.ok) {
         const hJson = await hRes.json();
         setLastUpdatedTime(new Date().toLocaleTimeString());
+        if (typeof hJson.version === 'string') setAppVersion(hJson.version);
         if (hJson.systemHealth) {
           setHealthData({
             heapUsedMb: hJson.systemHealth.memory.heapUsedMb,
@@ -553,8 +557,11 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-semibold text-lg tracking-tight text-white">SOFTWARE FACTORY</h1>
-                <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-indigo-950 text-indigo-300 border border-indigo-800">
-                  v3.2.0-PROD
+                <span
+                  className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-indigo-950 text-indigo-300 border border-indigo-800"
+                  title="Version reported by the running server, read from its own package.json"
+                >
+                  v{appVersion}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
