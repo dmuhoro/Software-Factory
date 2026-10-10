@@ -4,6 +4,27 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.3 — the Docker self-host route
+
+Railway is the hosted route, and it is unpaid. The same image now runs on a
+single Docker host with one command and a persistent volume, so the product no
+longer depends on a paid platform.
+
+- **`docker-compose.yml`** — builds the existing `Dockerfile`, publishes the
+  server on `8080`, mounts the named volume `sf-data` at `/data` (durable store,
+  backups, previews, releases, loop reports), health-checks `/api/factory/health`,
+  and forbids privilege escalation (`no-new-privileges`). It reads `.env.docker`
+  only — never the developer's `.env` — so a dev-only `ALLOW_INSECURE_LOCAL=true`
+  cannot leak into a production container, and the flag is forced off.
+- **`docs/DEPLOY_DOCKER.md`** — first run, durability proof, upgrade, stop/wipe.
+- **Verified:** image builds; container reports `healthy`; `durableStore: healthy`;
+  `configuration: degraded` (the honest fail-closed default with no Appwrite or
+  tenant credentials configured); the SPA is served; the durable store's archive
+  advanced across `docker compose restart`, proving the volume persists state.
+- **Fail-closed proven:** when the dev `.env` was inherited, the app refused to
+  start (exit 78) on `ALLOW_INSECURE_LOCAL=true`; the compose was corrected to
+  not read it.
+
 ### 4.13.2 — the first run against a real external repository
 
 FundiOS, cloned, driven end to end by the loop. It found a defect that a green suite never could,
