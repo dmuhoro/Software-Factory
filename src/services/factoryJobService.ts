@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { DurableStore } from './durableStore';
 import { ContextIndexService, seedBuiltInContexts } from './contextIndexService';
 import { detectVerificationProfile, executeVerification, VerificationProfile, FailureClass } from './verificationProfileService';
+import { evaluateProduct } from './productEvaluationService';
 import { ApprovalPolicyService } from './approvalPolicyService';
 import { FailureService } from './failureService';
 import { isWithin, resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
@@ -119,15 +120,30 @@ export class FactoryJobService {
 
   public static recordLaunchQuality(tenantId: string, id: string) {
     const job = this.get(tenantId, id); if (!job) throw new Error('FACTORY_JOB_NOT_FOUND');
-    const dimensions = {
-      verification: job.verificationRun?.passed ? 25 : 0,
-      security: job.evidence.some((item) => item.kind.toLowerCase().includes('security')) ? 20 : 0,
-      evidence: Math.min(20, job.evidence.length * 5),
-      operability: job.repositoryRun && job.preview ? 15 : 0,
-      productDiscipline: job.productBrief && job.implementationPlan ? 20 : 0,
+    // Build the signals the pure evaluator scores, then delegate. The score is a function of
+    // what the product did, not of which metadata objects happen to be present.
+    const failureClass = job.verificationRun?.failureClass;
+    const hasSecurityEvidence = job.evidence.some((item) => item.kind.toLowerCase().includes('security'));
+    const signals = {
+      verificationPassed: job.verificationRun?.passed === true,
+      failureClass,
+      // A security failure class is a real BLOCKED signal. Otherwise this scorer has only the
+      // job metadata: a recorded security review is treated as the signal that a scan was run
+      // and passed, and its absence fails closed.
+      securityStatus: failureClass === 'SECURITY' ? 'BLOCKED' as const : hasSecurityEvidence ? 'PASSED' as const : undefined,
+      highSeverityFindings: 0,
+      reviewApproved: undefined,
+      reviewFindings: 0,
+      changedFiles: job.repositoryRun?.changedFiles.length ?? 0,
+      evidenceKinds: job.evidence.map((item) => item.kind),
+      hasRepositoryRun: Boolean(job.repositoryRun),
+      hasPreview: Boolean(job.preview),
+      hasProductBrief: Boolean(job.productBrief),
+      hasImplementationPlan: Boolean(job.implementationPlan),
+      unitsStuck: 0,
     };
-    const score = Object.values(dimensions).reduce((sum, value) => sum + value, 0);
-    return ContextIndexService.recordQuality({ tenantId, jobId: id, productName: job.title, score, baselineScore: ContextIndexService.qualityBaseline(), dimensions, evidenceKinds: job.evidence.map((item) => item.kind) });
+    const evaluation = evaluateProduct(signals);
+    return ContextIndexService.recordQuality({ tenantId, jobId: id, productName: job.title, score: evaluation.score, baselineScore: ContextIndexService.qualityBaseline(), dimensions: evaluation.dimensions, evidenceKinds: job.evidence.map((item) => item.kind) });
   }
 
 }

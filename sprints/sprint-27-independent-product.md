@@ -268,3 +268,37 @@ through `runCommand` with the doctrine sandbox, or refuse when the sandbox canno
   services fails the symlink arms (2/6). Full suite: **320/320**.
 - Docs moved with the code: `docs/adr/ADR-010-isolated-execution-boundary.md`, indexed in
   `docs/OPERATIONS.md`.
+
+## WP-8 — Evaluation harness (4.13.10)
+
+**The score existed; the measurement did not.** `FactoryJobService.recordLaunchQuality` already
+persisted a 0–100 score, but every dimension was a function of *which metadata objects were
+present on the job*, not of what the product actually did. A job whose verification failed but
+whose evidence list happened to contain a `security-*` line still collected the 20 security
+points. The number looked measured and was not — the exact class of false confidence this
+sprint exists to remove.
+
+**The harness is now a pure function of observed signals.** `src/services/productEvaluationService.ts`
+exports `evaluateProduct(signals)`, which keeps the existing five dimensions and weights
+(verification 25, security 20, evidence 20, operability 15, productDiscipline 20) so baselines
+and history stay comparable, and:
+- **fails closed** — an unobserved dimension scores 0, never full marks: no security scan
+  observed is 0, not a pass; a verification "pass" carrying a failure class is treated as a
+  failure;
+- **reacts to real badness** — a `BLOCKED` security scan, a failed verification, an empty diff,
+  a rejected adversarial review, and stuck units each zero or reduce their dimension;
+- **names its deductions** — `reasons` lists every lost point, so a score can be argued with.
+
+`recordLaunchQuality` now builds signals from the job and delegates. A `SECURITY` verification
+failure is a real `BLOCKED` signal; metadata-only absence fails closed.
+
+**Proof against a real artifact, not a fixture.** The test plants a high-severity AWS key in a
+real temp git repo and runs the **real** `QualityGateService.scan`, which returns `BLOCKED`
+(deterministic secret scan; no `package-lock.json`, so the network-bound audit is skipped), and
+asserts the evaluated score is low. A seeded job with a brief, a plan, and a `security-*` evidence
+line but a `SECURITY`-class verification failure scores `< 40` and persists that score.
+
+**Evidence:** `test/wp8-product-evaluation.test.ts` (5 arms). **Failing-first:** reverting
+`recordLaunchQuality` to the old presence-based rubric makes the known-bad job score 45 and fails
+the e2e arm; reverting the evaluator's security fail-closed branch fails the known-bad, real-scan,
+and e2e arms (3/5). Full suite: **325/325**.

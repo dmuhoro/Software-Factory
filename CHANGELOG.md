@@ -4,6 +4,29 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.10 — the quality score measures the product, not its metadata (WP-8)
+
+`FactoryJobService.recordLaunchQuality` persisted a 0–100 score whose every dimension was a
+function of *which metadata objects were present* on the job. A job whose verification failed
+but whose evidence list held a `security-*` line still collected the security points. The
+number looked measured and was not.
+
+- **`src/services/productEvaluationService.ts`** — `evaluateProduct(signals)`, a pure function
+  over observed signals. It keeps the existing five dimensions and weights (verification 25,
+  security 20, evidence 20, operability 15, productDiscipline 20) so history stays comparable,
+  fails closed (an unobserved dimension scores 0, not full marks), reacts to real badness
+  (blocked scan, failed verification, empty diff, rejected review, stuck units), and returns a
+  named `reasons` list for every deduction.
+- **`recordLaunchQuality` delegates.** It builds signals from the job and calls the evaluator.
+  A `SECURITY` verification failure is a real `BLOCKED` signal; metadata-only absence fails
+  closed.
+- **`test/wp8-product-evaluation.test.ts`** — the known-bad product (verification failed, real
+  security scan `BLOCKED`, review rejected) scores `< 40`; a clean product scores 100; a real
+  temp git repo with a planted AWS key is scanned by the **real** `QualityGateService.scan` and
+  scores low. **Failing-first:** reverting `recordLaunchQuality` to the old presence-based rubric
+  makes the known-bad job score 45 and fails the e2e arm; reverting the security fail-closed
+  branch fails 3/5 arms. Full suite: **325/325**.
+
 ### 4.13.9 — the execution boundary is recorded and enforced (WP-7)
 
 The factory runs commands on repositories it did not author. It carried an isolation mechanism
