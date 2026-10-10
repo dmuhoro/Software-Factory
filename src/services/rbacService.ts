@@ -2,10 +2,9 @@
  * Resource-scoped RBAC: principal → role → permission → resource.
  *
  * Phase 3 answered "what may this *credential* do", derived from the request. This
- * answers "what may this *role* do, and to which resource". Both must pass. A
- * credential scoped to `loop:write` held by an `auditor` still cannot start a run,
- * because the auditor has no such permission; and an `operator` whose binding covers
- * one repository cannot touch another, because the binding does not reach it.
+ * answers "what may this *role* do, and to which resource" — a resource-scoped model
+ * that is resolved and reported today, and whose route-level enforcement is a tracked
+ * follow-up (see "What is enforced today, and what is not" below).
  *
  * ## Why the roles are a closed set
  *
@@ -20,11 +19,16 @@
  * the staging repo" is expressible, and the alternative — a global cancel right — is
  * not the default anyone falls into.
  *
- * ## Where this is enforced
+ * ## What is enforced today, and what is not
  *
- * `requirePermission` is the guard. It is called by routes, and it reads the principal
- * that `tenantAuthMiddleware` already resolved, so there is one place that decides who
- * the caller is and one place that decides what they may do with it.
+ * The enforced boundary is the credential-scope check in `tenantAuthMiddleware`: a scoped
+ * credential may reach only the routes its scopes cover. This RBAC model is the richer,
+ * resource-aware layer built on top, and it is honest that only part of it is wired.
+ * `RbacService.check` is implemented and unit-tested, but no route calls it yet, so an
+ * `auditor` binding does not by itself refuse a `loop:cancel` today. Roles and permissions
+ * ARE resolved and surfaced (`whoami` reports them), so a caller can be told what it holds.
+ * Enforcing the role/permission layer in front of routes is a tracked follow-up
+ * (sprint-27, WP-4 open item) — not a protection this code provides.
  */
 
 import type { AuthenticatedPrincipal } from '../api/middleware/tenantAuth';

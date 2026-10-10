@@ -121,6 +121,36 @@ test('L4: a provisioned credential still authenticates after a restart', async (
   assert.equal(owner?.tenantId, TENANT, 'the digest must be read back from the ledger, not from the old heap');
 });
 
+test('L4: a scoped credential survives a restart instead of quietly disappearing', async () => {
+  const TENANT = 'tenant_l4_scoped_durable';
+  seedTenant(TENANT);
+  const scoped = await TenantService.provisionScopedCredential(TENANT, { scopes: ['loop:read'], ttlSeconds: 3600 });
+  assert.equal((await TenantService.resolveCredentialOwner(scoped.apiKey))?.kind, 'scoped', 'precondition: it resolves before the restart');
+
+  simulateRestart();
+
+  const owner = await TenantService.resolveCredentialOwner(scoped.apiKey);
+  assert.equal(owner?.kind, 'scoped', 'a scoped credential must be read back from the ledger, not the old heap');
+  assert.equal(owner?.credentialId, scoped.id);
+  assert.deepEqual(owner?.scopes, ['loop:read'], 'the grant must survive, not be widened or lost');
+});
+
+test('L4: a scoped-credential revocation survives a restart', async () => {
+  const TENANT = 'tenant_l4_scoped_revoke';
+  seedTenant(TENANT);
+  const scoped = await TenantService.provisionScopedCredential(TENANT, { scopes: ['loop:read'], ttlSeconds: 3600 });
+  TenantService.revokeScopedCredential(TENANT, scoped.id);
+  await assert.rejects(() => TenantService.resolveCredentialOwner(scoped.apiKey), /SCOPED_CREDENTIAL_REVOKED/, 'precondition: it is refused before the restart');
+
+  simulateRestart();
+
+  await assert.rejects(
+    () => TenantService.resolveCredentialOwner(scoped.apiKey),
+    /SCOPED_CREDENTIAL_REVOKED/,
+    'a revoked scoped credential must not come back when the process restarts',
+  );
+});
+
 test('L4: a suspended tenant stays suspended after a restart', async () => {
   const TENANT = 'tenant_l4_suspend';
   seedTenant(TENANT, IndustryNiche.HEALTHCARE);

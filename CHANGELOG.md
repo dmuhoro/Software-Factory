@@ -4,6 +4,31 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.8 — the tenant registry is no longer a cross-tenant read hole (WP-4)
+
+`GET /api/tenants` returned every partition to any authenticated caller, and
+`GET /api/tenants/:id` read the id straight from the path and returned that tenant's quota
+and guardrails — with no check that the id was the caller's own. `validateTenantRequest`
+inspects the header/body/query claim and never `req.params`, so it could not have caught
+this even had the route called it. Any root or admin-scoped credential could enumerate
+every tenant and read any tenant's profile: a cross-tenant read.
+
+- **The registry is tenant-bound.** `GET /api/tenants` returns all partitions only to a
+  `platform_operator`; a tenant credential sees exactly its own. `GET /api/tenants/:id`
+  refuses with `TENANT_CREDENTIAL_MISMATCH` unless the id is the caller's own or the caller
+  is a `platform_operator` (`src/api/routes/tenants.routes.ts`).
+- **Auth honesty.** `src/services/rbacService.ts` claimed a `requirePermission` guard "called
+  by routes". No such guard exists and `RbacService.check` is called by no route; the
+  enforced boundary is the credential-scope check in `tenantAuthMiddleware`. The doc now
+  states what is actually enforced and names route-level role enforcement as a follow-up.
+- **Scoped-credential durability proof.** `test/l4-durable-tenancy.test.ts` now shows a
+  provisioned scoped key survives a simulated restart with its grant, and a revoked one stays
+  revoked — previously only root keys had restart coverage.
+- **`test/wp4-cross-tenant-read.test.ts`** drives the real router with real provisioned
+  tenants: list-isolation, read-by-id refusal (403), own-profile read (200), platform
+  enumeration, and foreign-`?tenantId=` refusal on `/api/telemetry/history` and `/audit`.
+  **Failing-first:** reverting `tenants.routes.ts` fails 2/7. Full suite: **314/314**.
+
 ### 4.13.7 — the audit trail reports the enrichment's real resilience context
 
 Every persisted transformation claimed `retryAttempts: 0` and
