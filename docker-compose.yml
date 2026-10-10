@@ -1,0 +1,42 @@
+services:
+  software-factory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: software-factory:local
+    container_name: software-factory
+    ports:
+      - "8080:3000"
+    restart: unless-stopped
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      ALLOW_INSECURE_LOCAL: "false"
+      FACTORY_DATA_DIR: /data
+      FACTORY_WORKSPACE_ROOT: /data/workspace
+      FACTORY_BACKUP_DIR: /data/backups
+      FACTORY_PREVIEW_DIR: /data/previews
+      FACTORY_RELEASE_DIR: /data/releases
+      FACTORY_LOOP_REPORT_DIR: /data/loop-reports
+      FACTORY_DOCTRINE_ROOT: /app/doctrine
+      FACTORY_ENFORCEMENT_MODE: enforce
+    volumes:
+      - sf-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/factory/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  sf-data:
