@@ -92,4 +92,25 @@ trip/reset-able circuit breakers, and `hpaReplicas ?? 5` — claims about a Rust
 runtime this service does not run.
 
 **Fix:** the dashboard consumes only what `classifyReadiness()` and
-`process.memoryUsage()` actually produce. *(See WP-2 completion below.)*
+`process.memoryUsage()` actually produce — status, readiness checks, heap/RSS/pressure,
+uptime and the deployed version. Removed the fabricated threadpool, jemalloc heap,
+trippable circuit breakers and HPA pod counts, deleted the dead fabricated components
+(`TelemetryHealthBar`, `RustMetricsCharts`, `LatencyHeatmap`) and the "Rust Tokio Engine"
+tab, and replaced the header chips with the real readiness status.
+
+**Evidence:**
+- `test/health-truthfulness.test.ts` — two arms: the API payload contains only measurable
+  fields and none of the invented ones, and the health UI source contains no
+  fabricated-runtime tokens. **Failing-first:** injecting `threadpool` into the dashboard
+  fails arm 2; the payload assertions fail without `checkDetails`. With the fix: 2 pass.
+- Full suite: **299/299**.
+
+## WP-2b — Error-trace honesty (open)
+
+The stream tab still renders a *simulated* Rust error trace: `generateRustStackTrace`
+(`src/utils/validation.ts`) invents `tokio-runtime-worker` frames, `rustc` panic paths and
+register dumps with `Math.random()`, and the trace view hard-codes `RUST_BACKTRACE=full`,
+`RAX/RBX/RIP/RSP` registers and `[tokio-worker-12]` log lines. This is the same defect
+class as WP-2 — a claim about a runtime the service does not run — in the error path,
+where fabricated evidence is most dangerous. It is a separate layer because it rewrites
+the error-display model, and it is the next honesty item.
