@@ -307,6 +307,24 @@ test('L4: a version-4 ledger is migrated forward and loses nothing', () => {
   });
 });
 
+test('L4: a version-5 ledger is migrated forward and loses nothing', () => {
+  // The usageEvents collection was added in version 6. A v5 deployment must migrate, not be
+  // quarantined: the same additive rule that carried v4 forward to v5 carries v5 to v6.
+  withIsolatedLedger((dir) => {
+    fs.writeFileSync(path.join(dir, 'software-factory.json'), JSON.stringify({
+      version: 5,
+      telemetry: { 'doc_keep_me_v5': { tenantId: 'tenant_v5', payload: { k: 'v' } } },
+      tenants: { 'tenant_v5': { id: 'tenant_v5', name: 'kept' } },
+      audits: [{ tenantId: 'tenant_v5', note: 'pre-migration' }],
+    }));
+    assert.equal(DurableStore.get('telemetry', 'doc_keep_me_v5')?.tenantId, 'tenant_v5', 'a v5 record must still be readable');
+    assert.equal(DurableStore.get('tenants', 'tenant_v5')?.name, 'kept', 'the tenants collection must survive the migration');
+    assert.equal(DurableStore.audits('tenant_v5').length, 1, 'the audit log must survive the migration');
+    assert.equal(readLedgerIn(dir).version, LEDGER_VERSION, 'the document must be rewritten at the current version');
+    assert.deepEqual(readLedgerIn(dir).usageEvents, {}, 'the new collection must start empty, not absent');
+  });
+});
+
 test('L4: a ledger written by a newer build is refused instead of being coerced', () => {
   withIsolatedLedger((dir) => {
     fs.writeFileSync(path.join(dir, 'software-factory.json'), JSON.stringify({

@@ -147,6 +147,8 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   READINESS_CRITERION_NOT_RECOGNIZED: { status: 400, message: 'That readiness criterion is not recognized.' },
   SANDBOX_SECRET_REFERENCE_INVALID: { status: 400, message: 'That secret reference is not valid.' },
   TENANT_CONTEXT_REQUIRED: { status: 400, message: 'A tenant context is required.' },
+  USAGE_SOURCE_REQUIRED: { status: 400, message: 'A usage event must name its source.' },
+  USAGE_TOKENS_INVALID: { status: 400, message: 'A usage figure must be a whole, non-negative number of tokens.' },
 
   // ── Refused by policy. The request was understood and denied on purpose. ────
   EXECUTION_SOURCE_OUTSIDE_APPROVED_WORKSPACE: { status: 403, message: 'The source path is outside the approved workspace.' },

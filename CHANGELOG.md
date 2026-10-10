@@ -4,6 +4,33 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.12 — per-tenant usage is metered from what was actually consumed (WP-10, part 1)
+
+Every tier declared a `maxDailyAiTokens` budget and nothing ever read it. A budget with no meter
+is unenforceable, and the meter could not be built on the numbers the code reported, because they
+were fabricated: the deterministic fallback claimed `tokensUsed: 420` and the live path defaulted
+to `|| 512` when the provider returned no usage.
+
+- **`src/services/usageMeteringService.ts`** — a durable per-tenant, per-UTC-day meter.
+  Records only observed usage; refuses a figure that is not a non-negative integer
+  (`USAGE_TOKENS_INVALID`) rather than rounding it; and is idempotent on
+  `(tenant, source, correlationId)` via `DurableStore.deterministicId`, so a retry cannot
+  double-count.
+- **Token honesty.** `geminiService` now reports `tokensUsed: 0` on the no-key fallback and
+  `result.usage?.totalTokenCount ?? 0` on the live path — no fabricated constant.
+- **Wired to the real path.** `pipelineOrchestrator` meters the enrichment's reported tokens on
+  every cycle, keyed on the correlation id.
+- **`GET /api/usage`** — the caller's own metered consumption; answers for the authenticated
+  principal only (no `?tenantId=`).
+- Ledger version 5 → 6 adds the `usageEvents` collection; a v5 document migrates forward and
+  loses nothing (additive, like v4 → v5).
+- **Enforcement is deliberately out of scope**: the daily budget can only be exercised against
+  real model usage, which lands with WP-5. This layer measures; it does not yet cap.
+- **`test/wp10-usage-metering.test.ts`** (7 arms). **Failing-first:** restoring `tokensUsed: 420`
+  fails the honesty arms (2/7); removing the orchestrator's record call fails the wiring arm;
+  breaking idempotency fails the retry arm. `l4-durable-tenancy.test.ts` gains a v5 → v6
+  migration arm. Full suite: **334/334**.
+
 ### 4.13.11 — restore is proven to return the data, and the service is load-tested (WP-9)
 
 The CI pipeline is already the gate (typecheck, `npm test`, build, layers 1–4, secrets, release,

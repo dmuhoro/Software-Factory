@@ -71,7 +71,9 @@ export class GeminiService {
       const durationMs = Date.now() - startTime;
       return {
         output,
-        tokensUsed: 420,
+        // No API call was made, so no tokens were consumed. Reporting a plausible constant
+        // here would be a fabricated usage figure, and metering measures usage.
+        tokensUsed: 0,
         durationMs,
         model: 'gemini-3.8-flash (deterministic-runner)',
         // No API call was attempted, so there were no retries and the breaker was not consulted.
@@ -138,7 +140,9 @@ ${JSON.stringify(payload, null, 2)}`;
 
     return {
       output: result.parsed,
-      tokensUsed: result.usage?.totalTokenCount || 512,
+      // Report only what the provider actually returned. A missing usage figure is zero, not a
+      // substitute constant that would silently become metered usage.
+      tokensUsed: result.usage?.totalTokenCount ?? 0,
       durationMs,
       model: GeminiConfig.defaultModel,
       attempts,

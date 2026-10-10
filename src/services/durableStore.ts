@@ -18,16 +18,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const LEDGER_VERSION = 5 as const;
+export const LEDGER_VERSION = 6 as const;
 
 /**
  * Oldest document this build can still read and migrate forward.
  *
- * Version 4 lacked the `tenants` collection. Bumping the version while refusing anything
- * older would have routed every existing deployment through the corrupt-document recovery
- * path, which quarantines the live ledger and resets it -- the schema change would have
- * destroyed the data it was meant to preserve. A missing collection is coerced to empty by
- * `hydrate`, so the migration is additive and needs no record rewrite.
+ * Version 4 lacked the `tenants` collection; version 5 lacked `usageEvents`. Bumping the
+ * version while refusing anything older would have routed every existing deployment through
+ * the corrupt-document recovery path, which quarantines the live ledger and resets it -- the
+ * schema change would have destroyed the data it was meant to preserve. A missing collection
+ * is coerced to empty by `hydrate`, so the migration is additive and needs no record rewrite.
  */
 export const MIN_LEDGER_VERSION = 4 as const;
 
@@ -37,7 +37,7 @@ export const LEDGER_COLLECTIONS = [
   'clientWorkspaces', 'handovers', 'clientAcceptances', 'hostedDeployments', 'modelProviders',
   'agentRuns', 'worktrees', 'proofRecords', 'queueJobs', 'executionRuns',
   'deploymentObservations', 'mergeRecords', 'securityScans', 'projectAdapters',
-  'tenants', 'factoryLoopRuns',
+  'tenants', 'factoryLoopRuns', 'usageEvents',
 ] as const;
 
 export type LedgerCollection = (typeof LEDGER_COLLECTIONS)[number];

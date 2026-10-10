@@ -327,3 +327,37 @@ fmt/clippy/tests. A checksummed `WorkspaceService.backup`/`restore` already exis
 **Pipeline is the gate.** Both tests run under the `npm test` step that `verify.yml` already
 executes, so CI gates them without a new job. Single-writer correctness across processes was
 already proven by `test/durable-store-writer-lock.test.ts`. Full suite: **326/326**.
+
+## WP-10 — Scale & economics: metering, budgets, queue isolation (4.13.12, part 1)
+
+**The declared budget had no reader.** Every tier carries `maxDailyAiTokens`
+(`factory.config.ts:97-109`, `models/tenant.ts:27`), and nothing anywhere metered or enforced it.
+Building that meter on the numbers the code reported was impossible, because they were fabricated:
+the deterministic fallback claimed `tokensUsed: 420` and the live path defaulted to `|| 512` when
+the provider returned no usage metadata.
+
+**The meter (`src/services/usageMeteringService.ts`)** records only observed usage, per tenant per
+UTC day, in a new durable `usageEvents` collection (ledger v5 → v6, additive migration). It refuses
+a figure that is not a non-negative integer (`USAGE_TOKENS_INVALID`) rather than rounding it, and is
+idempotent on `(tenant, source, correlationId)` through `DurableStore.deterministicId`, so a retry
+cannot double-count. `geminiService` now reports `0` on the fallback and
+`result.usage?.totalTokenCount ?? 0` on the live path; the orchestrator meters the enrichment's
+reported tokens each cycle, keyed on the correlation id. `GET /api/usage` reports the caller's own
+consumption and answers for the authenticated principal only.
+
+**Scope decision (operator-approved).** Metering is built now; **enforcement of the daily token
+budget is deferred** to WP-5, because a budget can only be honestly exercised against real model
+usage. This layer measures; it does not yet cap. That is recorded here rather than faked.
+
+**Evidence:** `test/wp10-usage-metering.test.ts` (7 arms) — exact day totals, cross-tenant
+non-leakage, idempotency, invalid-figure refusal, fallback-honesty, no-fabricated-constant
+source invariant, orchestrator wiring, and the self-only route. **Failing-first:** restoring
+`tokensUsed: 420` fails the honesty arms (2/7); removing the orchestrator record call fails the
+wiring arm; breaking idempotency fails the retry arm. `l4-durable-tenancy.test.ts` gains a v5 → v6
+migration arm. Full suite: **334/334**.
+
+**Still open in WP-10 (part 2):** per-tenant queue isolation / fair-share concurrency. Today
+`ResourceGovernorService.admit` (`executionLoopService.ts:346`) caps **global** host concurrency;
+there is no per-tenant cap and no fair-share, so one tenant's runs can consume the whole budget.
+That needs cross-run per-tenant in-flight tracking and a tier-derived cap, and is a distinct
+concern from metering — the next layer.
