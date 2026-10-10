@@ -27,11 +27,11 @@ const root = process.cwd();
 
 test('the error envelope is the real, deterministic JSON -- no synthesized trace field', async () => {
   const { emitMalformedContextError, emitSecurityError } = await import('../src/utils/validation');
-  const malformed = emitMalformedContextError('a description') as Record<string, unknown>;
+  const malformed = emitMalformedContextError('a description') as unknown as Record<string, unknown>;
   assert.deepEqual(Object.keys(malformed).sort(), ['code', 'message', 'status']);
   assert.equal(malformed.rustTrace, undefined, 'no trace field may be attached to an error');
 
-  const security = emitSecurityError('REFUSED', 'a reason') as Record<string, unknown>;
+  const security = emitSecurityError('REFUSED', 'a reason') as unknown as Record<string, unknown>;
   assert.equal(security.rustTrace, undefined, 'no trace field may be attached to an error');
 
   const source = fs.readFileSync(path.resolve(root, 'src/utils/validation.ts'), 'utf8');

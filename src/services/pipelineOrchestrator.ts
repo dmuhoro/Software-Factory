@@ -9,7 +9,7 @@ import { NicheAdapterService } from './nicheAdapterService';
 import { GeminiService } from './geminiService';
 import { AppwriteService } from './appwriteService';
 import { validateIncomingTelemetry, emitMalformedContextError } from '../utils/validation';
-import { classifyDependencyFailure } from '../utils/operationalError';
+import { classifyDependencyFailure, OperationalError } from '../utils/operationalError';
 import { TelemetryLogger } from '../utils/telemetryLogger';
 
 export interface PipelineExecutionResult {
@@ -60,8 +60,28 @@ export class PipelineOrchestrator {
       };
     }
 
-    // Layer 3: Store raw telemetry document in Appwrite
-    const { documentId, deduplicated } = await AppwriteService.recordTelemetryEvent(payload);
+    // Layer 3: Store raw telemetry document in the selected storage backend.
+    // A failure here means nothing was persisted. It must be named as a ledger fault and
+    // must NOT fall through to the generic enrichment message, which claims the record was
+    // accepted -- a claim that is the opposite of the truth when the write is what failed.
+    let rawWrite: { documentId: string; deduplicated: boolean };
+    try {
+      rawWrite = await AppwriteService.recordTelemetryEvent(payload);
+    } catch (error) {
+      TelemetryLogger.error('Raw telemetry persistence failed; nothing was accepted', {
+        tenantId: payload.tenantId,
+        niche: payload.niche,
+        correlationId,
+        metadata: { reason: (error as Error)?.message },
+      });
+      throw new OperationalError(
+        'LEDGER_UNAVAILABLE',
+        'The telemetry record could not be persisted. The request was rejected and nothing was stored; retry when the ledger is writable.',
+        503,
+        { cause: error, rawPayloadPersisted: false, retryAfterSeconds: 15 },
+      );
+    }
+    const { documentId, deduplicated } = rawWrite;
 
     // Layer 4: Swappable domain adapter processing
     const adapterResult = NicheAdapterService.processAdapter(payload.niche, payload.payload);

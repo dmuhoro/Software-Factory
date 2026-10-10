@@ -130,3 +130,35 @@ real correlation id, tenant, record id, guardrails and latency.
   holds no generator; the UI holds no source-level diagnostic tokens. **Failing-first:** injecting
   `rust_begin_unwind` into the dashboard fails arm 2. With the fix: 2 pass.
 - Full suite: **301/301**.
+
+## WP-3 — Persistence closure (4.13.6, code-only half)
+
+**The defect:** persistence had happy-path tests only. A raw-write failure fell through
+`classifyDependencyFailure`'s default branch, whose message — *"the telemetry record was
+accepted but structured enrichment failed"* — asserted acceptance while
+`rawPayloadPersisted` was `false`. Wrong in the direction that loses data: the caller reads
+"accepted" and does not retry. `src/services/pipelineOrchestrator.ts:63-64`.
+
+**Fix (code-only half):** the layer-3 raw write is wrapped so a failure becomes an explicit
+`OperationalError('LEDGER_UNAVAILABLE', …, 503, { rawPayloadPersisted: false })` with a message
+that claims no acceptance.
+
+**Evidence:**
+- `test/ingest-fails-closed.test.ts` — real router, real provisioned tenant, injected failing
+  store: non-2xx `LEDGER_UNAVAILABLE`, `rawPayloadPersisted:false`, no success artefact, no
+  claim of acceptance; plus a control that a healthy ledger is not named a ledger fault.
+  **Failing-first:** old code answered `ENRICHMENT_DEGRADED` (3 pass / 1 fail); fixed 3/3.
+- Full suite: **304/304**.
+
+**Blocked half (named, not worked around):** "Appwrite persistence real / write survives
+restart *against Appwrite*" needs a reachable Appwrite endpoint and a provisioned database.
+`scripts/e2e-tenant-roundtrip.ts` (via `scripts/verify-storage-backend.sh --require-appwrite`)
+is the harness; `fra.cloud.appwrite.io` times out from this host, so the real-backend write
+path cannot be exercised here. Local durability/idempotency/restart are covered by
+`test/founder-mode.test.ts` and `test/l4-durable-tenancy.test.ts`.
+
+**Deferred honesty item (WP-3c):** the persisted transformation audit trail still carries
+`circuitBreakerStatus: 'CLOSED'` (`src/models/telemetry.ts:42`,
+`src/services/pipelineOrchestrator.ts:127`) although the Node pipeline runs no circuit
+breaker. It is a schema field woven through the model and store, so removing it is its own
+layer rather than a drive-by edit.

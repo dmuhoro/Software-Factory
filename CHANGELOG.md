@@ -4,6 +4,32 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.6 — the ingest path fails closed when the ledger refuses the write
+
+Every persistence test proved the happy path — a write lands, a replay deduplicates, the
+ledger survives a restart. None proved the failure path. So when the raw write threw, the
+ingest route fell through `classifyDependencyFailure`'s default branch, which answers *"the
+telemetry record was accepted but structured enrichment failed"* while setting
+`rawPayloadPersisted: false`. The message asserted the acceptance the flag denied: a caller
+would read it and not retry a record that was, in fact, lost.
+
+- **The raw write is now named as a ledger fault.** A failure at layer 3
+  (`AppwriteService.recordTelemetryEvent`) is wrapped in an explicit
+  `OperationalError('LEDGER_UNAVAILABLE', …, 503, { rawPayloadPersisted: false })`, so the
+  response says the record could not be persisted and nothing was stored — never that it
+  was accepted. `src/services/pipelineOrchestrator.ts`.
+- **`test/ingest-fails-closed.test.ts`** drives the real router with a real provisioned
+  tenant and injects a failing store: the response must be a non-2xx `LEDGER_UNAVAILABLE`
+  with `rawPayloadPersisted: false`, no success artefact and no claim of acceptance; a
+  healthy ledger must not be reported as a ledger fault. **Failing-first:** against the
+  previous code the failure was `ENRICHMENT_DEGRADED` (3 pass / 1 fail); with the fix,
+  3/3. Full suite: **304/304**.
+- **Still open (blocked):** proving idempotent persistence against *real Appwrite* needs a
+  reachable endpoint and a provisioned database. `scripts/e2e-tenant-roundtrip.ts` is the
+  harness, but `fra.cloud.appwrite.io` times out from this host, so the real-backend write
+  path cannot be exercised here — the local durable store's write/restart/idempotency is
+  already covered by `test/founder-mode.test.ts` and `test/l4-durable-tenancy.test.ts`.
+
 ### 4.13.5 — the error view stops inventing a Rust panic
 
 The stream tab showed a "Raw Rust Backend Error Stack Trace" for errors raised by
