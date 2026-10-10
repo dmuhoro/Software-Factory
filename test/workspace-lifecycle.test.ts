@@ -41,7 +41,15 @@ test('backup and restore preserve the durable ledger', () => {
   FactoryJobService.create({ tenantId: 'tenant_re_8841', title: 'Backup proof', problem: 'Ledger must survive restore', desiredOutcome: 'Restore succeeds', acceptanceCriteria: [] });
   const backup = WorkspaceService.backup('tenant_re_8841');
   assert.ok(fs.existsSync(backup.file));
+  // Mutate AFTER the backup. A restore that merely returned the stored checksum without swapping
+  // the live document would leave this second job in place. "Restore returns the data" means the
+  // live state reverts, so the post-backup job must be gone.
+  FactoryJobService.create({ tenantId: 'tenant_re_8841', title: 'Created after backup', problem: 'Must not survive restore', desiredOutcome: 'Gone', acceptanceCriteria: [] });
+  assert.equal(FactoryJobService.list('tenant_re_8841').length, 2);
   assert.equal(WorkspaceService.restore('tenant_re_8841', backup.id).checksum, backup.checksum);
+  const jobs = FactoryJobService.list('tenant_re_8841');
+  assert.equal(jobs.length, 1, 'restore must swap the live ledger back, not just return a checksum');
+  assert.equal(jobs[0].title, 'Backup proof');
 });
 
 test('continuation report exposes incomplete work and delivery is blocked by pending tasks', () => {

@@ -4,6 +4,24 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.11 — restore is proven to return the data, and the service is load-tested (WP-9)
+
+The CI pipeline is already the gate (typecheck, `npm test`, build, layers 1–4, secrets, release,
+docs, Rust), and a checksummed backup/restore already existed. But the restore test only asserted
+that a *checksum* came back — it would have passed even if `restore` never touched the live
+ledger. And nothing fired concurrent requests at the real API and checked that none were lost.
+
+- **`test/workspace-lifecycle.test.ts`** — backup, then create a second job *after* the backup,
+  then restore, and assert the post-backup job is **gone** and the original remains. "Restore
+  returns the data" now means the live document reverts. **Failing-first:** removing
+  `DurableStore.replaceDocument` from `WorkspaceService.restore` fails the test.
+- **`test/wp9-load.test.ts`** — boots the real app on an ephemeral port and fires **60 concurrent**
+  `POST /api/factory-jobs` over the real transport, then asserts every one succeeded, the ledger
+  holds exactly 60 unique records, and they survive dropping the in-memory copy and re-hydrating
+  from disk. **Failing-first:** a store that drops an interleaved write makes the count assertion
+  fail. Both tests run under the existing `npm test` step, so the pipeline is the gate for them.
+  Full suite: **326/326**.
+
 ### 4.13.10 — the quality score measures the product, not its metadata (WP-8)
 
 `FactoryJobService.recordLaunchQuality` persisted a 0–100 score whose every dimension was a
