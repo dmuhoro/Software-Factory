@@ -48,7 +48,7 @@ export class GeminiService {
     eventType: string,
     payload: Record<string, unknown>,
     correlationId: string
-  ): Promise<{ output: StructuredAiOutput; tokensUsed: number; durationMs: number; model: string }> {
+  ): Promise<{ output: StructuredAiOutput; tokensUsed: number; durationMs: number; model: string; attempts: number; circuitBreakerState: 'CLOSED' | 'HALF_OPEN' | 'OPEN' }> {
     const startTime = Date.now();
     const schema = getNicheResponseSchema(niche);
     const client = getGeminiClient();
@@ -74,6 +74,9 @@ export class GeminiService {
         tokensUsed: 420,
         durationMs,
         model: 'gemini-3.8-flash (deterministic-runner)',
+        // No API call was attempted, so there were no retries and the breaker was not consulted.
+        attempts: 0,
+        circuitBreakerState: circuitBreaker.getState() as 'CLOSED' | 'HALF_OPEN' | 'OPEN',
       };
     }
 
@@ -138,6 +141,8 @@ ${JSON.stringify(payload, null, 2)}`;
       tokensUsed: result.usage?.totalTokenCount || 512,
       durationMs,
       model: GeminiConfig.defaultModel,
+      attempts,
+      circuitBreakerState: circuitBreaker.getState() as 'CLOSED' | 'HALF_OPEN' | 'OPEN',
     };
   }
 

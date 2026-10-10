@@ -162,3 +162,23 @@ path cannot be exercised here. Local durability/idempotency/restart are covered 
 `src/services/pipelineOrchestrator.ts:127`) although the Node pipeline runs no circuit
 breaker. It is a schema field woven through the model and store, so removing it is its own
 layer rather than a drive-by edit.
+
+## WP-3c — Audit-trail honesty (4.13.7)
+
+**Correction to the WP-2/3c framing:** the product *does* run a real circuit breaker
+(`src/utils/circuitBreaker.ts`, guarding Gemini enrichment in `geminiService.ts`). The defect
+was not a fictional breaker but a **fictional reading of it**: the orchestrator wrote the
+constants `retryAttempts: 0` and `circuitBreakerStatus: 'CLOSED'`, so a retried, half-open
+request was recorded as "no retries, breaker healthy". The Appwrite schema has a
+`retry_attempts` column but no circuit-breaker column; both values travel inside the
+`auditTrailJson` blob.
+
+**Fix:** `GeminiService.transformTelemetry` now returns the attempt count from
+`withExponentialBackoff` and the live `circuitBreaker.getState()`, and the orchestrator
+records them. `TransformationAuditTrail` gained an explicit `'UNKNOWN'` state so a legacy row
+is not typed with an `as never` lie.
+
+**Evidence:**
+- `test/orchestrator-audit-truth.test.ts` — real orchestrator, enrichment stub reporting
+  `attempts: 3`/`HALF_OPEN`; the persisted record must carry those values. **Failing-first:**
+  reverting the orchestrator to the constants fails it. Full suite: **305/305**.

@@ -39,7 +39,12 @@ export interface TransformationAuditTrail {
   tokensConsumed?: number;
   modelUsed?: string;
   retryAttempts: number;
-  circuitBreakerStatus: 'CLOSED' | 'HALF_OPEN' | 'OPEN';
+  /**
+   * The enrichment circuit breaker's state at the moment the record was written, read from
+   * the live breaker rather than asserted. `UNKNOWN` is the honest value for a legacy row
+   * written before this column existed: the state is not knowable, so it is not guessed.
+   */
+  circuitBreakerStatus: 'CLOSED' | 'HALF_OPEN' | 'OPEN' | 'UNKNOWN';
 }
 
 export interface StructuredAiOutput<T = Record<string, unknown>> {
