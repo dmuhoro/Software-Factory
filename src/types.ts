@@ -22,35 +22,35 @@ export interface TelemetryExecutionLog {
 
 export type AutoRefreshInterval = 'manual' | '5s' | '30s';
 
+export interface HealthCheckDetail {
+  name: string;
+  state: 'pass' | 'warn' | 'fail';
+  detail: string;
+}
+
+/**
+ * The runtime health a Node process can actually measure.
+ *
+ * This shape is deliberately narrow. A previous version carried `rustTokioHeapMb`,
+ * `totalWorkerThreads`, `circuitBreakers`, `hpaReplicas` and `saturationPercent` --
+ * fields the Node server never sends. The dashboard read them anyway, threw on
+ * `systemHealth.threadpool`, swallowed the exception, and rendered nothing while
+ * looking like a health board. Every field below maps to a value the server really
+ * produces, so the display cannot claim a runtime this service does not run.
+ */
 export interface SystemHealthStats {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  name: string;
+  version: string;
   heapUsedMb: number;
   heapTotalMb: number;
   rssMb: number;
-  rustTokioHeapMb: number;
   memoryPressureScore: number;
-  totalWorkerThreads: number;
-  activeTasks: number;
-  queuedTasks: number;
-  saturationPercent: number;
-  workStealingEfficiency: string;
-  circuitBreakerState: 'CLOSED' | 'HALF_OPEN' | 'OPEN';
-  circuitBreakers?: {
-    geminiEngine: 'CLOSED' | 'HALF_OPEN' | 'OPEN';
-    appwriteLedger: 'CLOSED' | 'HALF_OPEN' | 'OPEN';
-    downstreamGateways: 'CLOSED' | 'HALF_OPEN' | 'OPEN';
-  };
-  hpaReplicas: number;
-  uptimeSeconds?: number;
-  lastUpdated?: string;
-}
-
-export interface RustTimeSeriesMetric {
-  time: string;
-  throughputRpm: number;
-  latencyP50: number;
-  latencyP95: number;
-  latencyP99: number;
-  tokenRateK: number;
+  uptimeSeconds: number;
+  checks: Record<string, string>;
+  checkDetails: HealthCheckDetail[];
+  recovery: { occurredAt: string; restoredFromBackup: boolean; recordsLost: number } | null;
+  lastUpdated: string;
 }
 
 export interface TenantConfigFlags {

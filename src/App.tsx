@@ -32,11 +32,9 @@ import {
 } from 'lucide-react';
 import { IndustryNiche } from './models/tenant';
 import { ALL_COLLECTION_BLUEPRINTS, APPWRITE_DATABASE_CONFIG } from './models/appwriteSchema';
-import { TelemetryExecutionLog, SystemHealthStats, RustTimeSeriesMetric, TenantConfigFlags, AutoRefreshInterval } from './types';
-import { TelemetryHealthBar } from './components/TelemetryHealthBar';
+import { TelemetryExecutionLog, SystemHealthStats, TenantConfigFlags, AutoRefreshInterval } from './types';
 import { HealthDashboard } from './components/HealthDashboard';
 import { RecentExecutionsSidebar } from './components/RecentExecutionsSidebar';
-import { RustMetricsCharts } from './components/RustMetricsCharts';
 import { TenantSettingsToggle } from './components/TenantSettingsToggle';
 import { LoopControlPanel } from './components/LoopControlPanel';
 import { ComparePayloadsModal } from './components/ComparePayloadsModal';
@@ -82,7 +80,6 @@ export default function App() {
   // The deployed artifact's own version, read from the server's health payload. Never a
   // hardcoded label: the whole point is that a live URL states which build it is serving.
   const [appVersion, setAppVersion] = useState<string>('unknown');
-  const [metricsTimeSeries, setMetricsTimeSeries] = useState<RustTimeSeriesMetric[]>([]);
   const [healthLoading, setHealthLoading] = useState<boolean>(false);
 
   // Execution History Logs
@@ -198,10 +195,7 @@ export default function App() {
   const fetchHealthAndMetrics = useCallback(async () => {
     setHealthLoading(true);
     try {
-      const [hRes, mRes] = await Promise.all([
-        fetch('/api/factory/health'),
-        fetch('/api/factory/metrics'),
-      ]);
+      const hRes = await fetch('/api/factory/health');
 
       if (hRes.ok) {
         const hJson = await hRes.json();
@@ -209,29 +203,19 @@ export default function App() {
         if (typeof hJson.version === 'string') setAppVersion(hJson.version);
         if (hJson.systemHealth) {
           setHealthData({
+            status: hJson.status,
+            name: hJson.name ?? 'unknown',
+            version: hJson.version ?? 'unknown',
             heapUsedMb: hJson.systemHealth.memory.heapUsedMb,
             heapTotalMb: hJson.systemHealth.memory.heapTotalMb,
             rssMb: hJson.systemHealth.memory.rssMb,
-            rustTokioHeapMb: hJson.systemHealth.memory.rustTokioHeapMb,
             memoryPressureScore: hJson.systemHealth.memory.memoryPressureScore,
-            totalWorkerThreads: hJson.systemHealth.threadpool.totalWorkerThreads,
-            activeTasks: hJson.systemHealth.threadpool.activeTasks,
-            queuedTasks: hJson.systemHealth.threadpool.queuedTasks,
-            saturationPercent: hJson.systemHealth.threadpool.saturationPercent,
-            workStealingEfficiency: hJson.systemHealth.threadpool.workStealingEfficiency,
-            circuitBreakerState: hJson.systemHealth.circuitBreakers.geminiEngine,
-            circuitBreakers: hJson.systemHealth.circuitBreakers,
-            hpaReplicas: hJson.kubernetes?.hpaReplicas || 5,
-            uptimeSeconds: hJson.uptimeSeconds,
+            uptimeSeconds: hJson.uptimeSeconds ?? 0,
+            checks: hJson.checks ?? {},
+            checkDetails: hJson.checkDetails ?? [],
+            recovery: hJson.recovery ?? null,
             lastUpdated: new Date().toLocaleTimeString(),
           });
-        }
-      }
-
-      if (mRes.ok) {
-        const mJson = await mRes.json();
-        if (mJson.metrics?.timeSeries) {
-          setMetricsTimeSeries(mJson.metrics.timeSeries);
         }
       }
     } catch {
@@ -240,7 +224,6 @@ export default function App() {
       setHealthLoading(false);
     }
   }, []);
-
   useEffect(() => {
     handleNicheSwitch(IndustryNiche.REAL_ESTATE);
   }, [handleNicheSwitch]);
@@ -479,57 +462,6 @@ export default function App() {
     });
   };
 
-  // Manual reset of downstream circuit breakers (Gemini, Appwrite, Downstream Gateways)
-  const handleResetCircuitBreaker = (service: 'geminiEngine' | 'appwriteLedger' | 'downstreamGateways' | 'all') => {
-    setHealthData((prev) => {
-      if (!prev) return prev;
-      const currentBreakers = prev.circuitBreakers || {
-        geminiEngine: 'CLOSED',
-        appwriteLedger: 'CLOSED',
-        downstreamGateways: 'CLOSED',
-      };
-      if (service === 'all') {
-        return {
-          ...prev,
-          circuitBreakers: {
-            geminiEngine: 'CLOSED',
-            appwriteLedger: 'CLOSED',
-            downstreamGateways: 'CLOSED',
-          },
-          circuitBreakerState: 'CLOSED',
-        };
-      }
-      return {
-        ...prev,
-        circuitBreakers: {
-          ...currentBreakers,
-          [service]: 'CLOSED',
-        },
-        circuitBreakerState: service === 'geminiEngine' ? 'CLOSED' : prev.circuitBreakerState,
-      };
-    });
-  };
-
-  // Simulate trip of downstream circuit breaker for testing resilience & fault tolerance
-  const handleTripCircuitBreaker = (service: 'geminiEngine' | 'appwriteLedger' | 'downstreamGateways') => {
-    setHealthData((prev) => {
-      if (!prev) return prev;
-      const currentBreakers = prev.circuitBreakers || {
-        geminiEngine: 'CLOSED',
-        appwriteLedger: 'CLOSED',
-        downstreamGateways: 'CLOSED',
-      };
-      return {
-        ...prev,
-        circuitBreakers: {
-          ...currentBreakers,
-          [service]: 'OPEN',
-        },
-        circuitBreakerState: service === 'geminiEngine' ? 'OPEN' : prev.circuitBreakerState,
-      };
-    });
-  };
-
   // Toggle tenant configuration flag
   const handleToggleTenantFlag = (tenantId: string, flag: keyof TenantConfigFlags) => {
     setTenantConfigs((prev) => {
@@ -565,15 +497,17 @@ export default function App() {
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Multi-Tenant B2B SaaS Engine • Appwrite Gateway + Rust Tokio + Gemini Structured AI
+                Multi-Tenant B2B SaaS Control Plane • Node runtime • Durable ledger + Gemini Structured AI
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/80 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span className="text-slate-300 font-mono">Tokio Workers: 32 Active</span>
+              <span className={`w-2 h-2 rounded-full ${healthData?.status === 'unhealthy' ? 'bg-rose-400' : healthData?.status === 'degraded' ? 'bg-amber-400' : 'bg-emerald-400'} animate-pulse`}></span>
+              <span className="text-slate-300 font-mono">
+                {healthData ? `Readiness: ${healthData.status}` : 'Readiness: connecting…'}
+              </span>
             </div>
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/80 text-xs">
               <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
@@ -598,7 +532,6 @@ export default function App() {
             { id: 'stream', label: 'Telemetry Stream & Logs', icon: Terminal },
             { id: 'appwrite', label: 'Appwrite Multi-Tenant DB', icon: Database },
             { id: 'gemini', label: 'Gemini JSON Schemas', icon: Cpu },
-            { id: 'rust', label: 'Rust Tokio Engine', icon: Server },
             { id: 'governance', label: 'Constitution & ADRs', icon: FileText },
             { id: 'loop', label: 'Unattended Loop', icon: Play },
           ].map((tab) => {
@@ -630,7 +563,7 @@ export default function App() {
         {/* TAB 1: TELEMETRY STREAM & LOGS */}
         {activeTab === 'stream' && (
           <div className="space-y-6">
-            {/* Health Dashboard Component - Real-time Rust Tokio Polling & Saturation UI */}
+            {/* Runtime health - real readiness checks, memory and uptime only */}
             <HealthDashboard
               health={healthData}
               loading={healthLoading}
@@ -638,8 +571,6 @@ export default function App() {
               refreshInterval={refreshInterval}
               onChangeInterval={setRefreshInterval}
               lastUpdatedTime={lastUpdatedTime}
-              onResetCircuitBreaker={handleResetCircuitBreaker}
-              onTripCircuitBreaker={handleTripCircuitBreaker}
             />
 
             {/* Niche Selector Cards */}
@@ -1340,79 +1271,6 @@ export const REAL_ESTATE_RESPONSE_SCHEMA = {
   },
   required: ["status", "confidenceScore", "nicheSpecificResult", "recommendedActions", "anomaliesDetected", "complianceVerified"],
 };`}</pre>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: RUST TOKIO ENGINE & RECHARTS METRICS */}
-        {activeTab === 'rust' && (
-          <div className="space-y-6">
-            {/* Recharts Real-Time Data Visualization */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold text-white">
-                    Tokio Concurrency Telemetry & Performance Charts
-                  </h2>
-                  <p className="text-xs text-slate-400">
-                    Live telemetry metrics streaming from Tokio async workers, work-stealing queues, and token counters.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded bg-amber-950/60 border border-amber-800 text-amber-300 text-xs font-mono">
-                    Rust 1.78 + Tokio
-                  </span>
-                  <span className="px-2.5 py-1 rounded bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs font-mono">
-                    Zero GC Pauses
-                  </span>
-                </div>
-              </div>
-
-              {/* Recharts Component */}
-              <RustMetricsCharts data={metricsTimeSeries} />
-            </div>
-
-            {/* Architecture Blueprint Grid */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6 space-y-4">
-              <h3 className="text-sm font-semibold text-white">Engine Architecture & Concurrency Guarantees</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
-                  <div className="flex items-center gap-2 text-indigo-400 font-semibold text-xs">
-                    <Server className="w-4 h-4" />
-                    <span>Tokio Threadpool</span>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    Non-blocking worker pool with work-stealing scheduler handling 100k+ concurrent telemetry streams.
-                  </p>
-                </div>
-                <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
-                    <Lock className="w-4 h-4" />
-                    <span>DashMap Partitioning</span>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    Lock-free concurrent hashmap storing tenant profiles without lock contention or cross-tenant leakage.
-                  </p>
-                </div>
-                <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
-                  <div className="flex items-center gap-2 text-sky-400 font-semibold text-xs">
-                    <Sparkles className="w-4 h-4" />
-                    <span>NicheAdapter Trait</span>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    Zero-cost polymorphic abstraction with static dispatch for Real Estate, Healthcare, and Logistics.
-                  </p>
-                </div>
-                <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
-                  <div className="flex items-center gap-2 text-purple-400 font-semibold text-xs">
-                    <Boxes className="w-4 h-4" />
-                    <span>K8s HPA (3 to 50)</span>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    Dynamic autoscaling on CPU & memory saturation with rolling update zero-downtime deployment.
-                  </p>
-                </div>
               </div>
             </div>
           </div>

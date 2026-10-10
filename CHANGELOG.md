@@ -4,19 +4,29 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
-### 4.13.4 — the build says which build it is
+### 4.13.4 — the product says which build it is, and what it actually runs
 
-A live URL gave no way to tell which build was serving it. The deployed code was
-current, but the badge read the literal `v3.2.0-PROD` and the health payload
-carried no version, so "is this the latest?" was unanswerable from the outside.
+A live URL gave no way to tell which build was serving it, and the dashboard
+invented a Rust/Tokio runtime the Node service does not run.
 
-- **`src/configurations/buildInfo.ts`** — reads `package.json` at runtime, checks the
-  package `name` before trusting the manifest, resolves against both the working
-  directory and the entrypoint, and reports `unknown` rather than guessing.
-- **`/api/factory/health`** now returns `name` and `version`; the UI header badge is
-  fed by that field instead of a literal.
+- **The build now reports its own identity** (`src/configurations/buildInfo.ts`). Reads
+  `package.json` at runtime, checks the package `name` before trusting the manifest,
+  resolves against both the working directory and the entrypoint, and reports `unknown`
+  rather than guessing. `/api/factory/health` returns `name` and `version`; the UI header
+  badge is fed by that field instead of the literal `v3.2.0-PROD`.
 - **`test/health-version.test.ts`** asserts the payload version equals the real
   `package.json` version. Failing-first: reverted to a constant, the test fails.
+- **The health board stopped inventing a runtime.** It read
+  `systemHealth.threadpool.*`/`circuitBreakers`/`kubernetes`, none of which the API sends;
+  the throw was swallowed and the board rendered nothing. Removed the fabricated
+  threadpool, jemalloc heap, trippable circuit breakers and HPA pod counts; the board now
+  renders only `classifyReadiness()` and `process.memoryUsage()` — status, readiness
+  checks, heap/RSS/pressure, uptime and the deployed version. Deleted the dead fabricated
+  components (`TelemetryHealthBar`, `RustMetricsCharts`, `LatencyHeatmap`) and the
+  "Rust Tokio Engine" tab.
+- **`test/health-truthfulness.test.ts`** — the payload carries only measurable fields and
+  none of the invented ones, and the health UI source contains no fabricated-runtime
+  tokens. Failing-first recorded for both arms. Full suite: **299/299**.
 
 ### 4.13.3 — the Docker self-host route
 

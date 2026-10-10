@@ -36,6 +36,7 @@ router.get('/health', (_req: Request, res: Response) => {
     uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
     checks: readiness.checks,
+    checkDetails: readiness.details,
     recovery: DurableStore.lastRecovery() ?? null,
     systemHealth: {
       memory: { heapUsedMb, heapTotalMb, rssMb: Math.round(memory.rss / 1024 / 1024), memoryPressureScore: Math.round((heapUsedMb / heapTotalMb) * 100) },
