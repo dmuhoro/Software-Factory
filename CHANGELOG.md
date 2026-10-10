@@ -4,6 +4,34 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.5 — the error view stops inventing a Rust panic
+
+The stream tab showed a "Raw Rust Backend Error Stack Trace" for errors raised by
+the Node control plane. The frames were generated in the browser with
+`Math.random()` — a random worker id, a random panic line, a canned `rustc`
+backtrace and a fixed register dump — so the UI manufactured diagnostic evidence
+that matched no failure that ever happened. In an error path that is the worst
+place to fabricate: the operator reads a confident-looking stack trace and
+believes it.
+
+The product does ship a Rust crate (`software_factory/`, Axum + Tokio), but the
+running service is the Node control plane and it emits no Rust traces. Where a
+real trace is unavailable, the honest move is to show the real error envelope.
+
+- **Deleted the synthesizer** — `generateRustStackTrace`, `RustStackTraceInfo`,
+  `RustStackFrame` and the `rustTrace` field are gone (`src/utils/validation.ts`).
+  A `StandardErrorResponse` is now `{ status, code, message, details? }` and nothing else.
+- **The error view shows the real envelope** — error code, correlation id, tenant and the
+  server message, with the note that this is the Node control plane and no stack trace is
+  synthesized. Removed the panic origin, scheduler runtime, `RUST_BACKTRACE=full` badge,
+  `RAX/RBX/RIP/RSP` register snapshot and the fake `[tokio-worker-12]` success log; the
+  success trace now prints the real correlation id, tenant, record id, guardrails and latency.
+- **ADR-003 and the Sprint-04 label are kept**: the Rust crate is real and tracked, so the
+  governance record of it is true. Only the client-side *simulation* was false.
+- **`test/error-trace-truthfulness.test.ts`** — the emitter carries no trace field, and the
+  UI holds none of the source-level diagnostic tokens. Failing-first recorded for both arms.
+  Full suite: **301/301**.
+
 ### 4.13.4 — the product says which build it is, and what it actually runs
 
 A live URL gave no way to tell which build was serving it, and the dashboard

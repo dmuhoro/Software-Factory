@@ -38,7 +38,6 @@ import { RecentExecutionsSidebar } from './components/RecentExecutionsSidebar';
 import { TenantSettingsToggle } from './components/TenantSettingsToggle';
 import { LoopControlPanel } from './components/LoopControlPanel';
 import { ComparePayloadsModal } from './components/ComparePayloadsModal';
-import { generateRustStackTrace } from './utils/validation';
 import { downloadTenantAuditReport } from './utils/reportGenerator';
 
 interface TelemetryResult {
@@ -54,7 +53,7 @@ interface TelemetryResult {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'stream' | 'appwrite' | 'gemini' | 'rust' | 'governance' | 'loop'>('stream');
+  const [activeTab, setActiveTab] = useState<'stream' | 'appwrite' | 'gemini' | 'governance' | 'loop'>('stream');
   const [selectedTenant, setSelectedTenant] = useState<string>('tenant_re_8841');
   const [selectedNiche, setSelectedNiche] = useState<IndustryNiche>(IndustryNiche.REAL_ESTATE);
   const [eventType, setEventType] = useState<string>('PROPERTY_VALUATION_REQUEST');
@@ -257,7 +256,6 @@ export default function App() {
         status: 'error',
         code: 'MALFORMED_CONTEXT',
         message: errorMsg,
-        rustTrace: generateRustStackTrace('MALFORMED_CONTEXT', errorMsg),
       };
       setExecutionResult({
         status: 'error',
@@ -361,7 +359,6 @@ export default function App() {
           status: 'error',
           code: 'NETWORK_PIPELINE_ERROR',
           message: errorMsg,
-          rustTrace: generateRustStackTrace('NETWORK_PIPELINE_ERROR', errorMsg),
         },
       };
       setExecutionResult(errorResult);
@@ -794,7 +791,7 @@ export default function App() {
                             ? 'bg-amber-950/90 border-amber-500 text-amber-300 shadow-sm shadow-amber-950/50'
                             : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
                         }`}
-                        title="Toggle raw Rust backend error stack trace and Tokio diagnostic frames"
+                        title="Toggle diagnostic detail for the selected execution"
                       >
                         <Bug className={`w-3.5 h-3.5 ${showDetailedTrace ? 'text-amber-400' : 'text-slate-400'}`} />
                         <span>Detailed Trace {showDetailedTrace ? 'ON' : 'OFF'}</span>
@@ -925,7 +922,7 @@ export default function App() {
                               className="text-[11px] font-mono text-amber-400 hover:text-amber-300 flex items-center gap-1 underline transition"
                             >
                               <Bug className="w-3 h-3" />
-                              <span>{showDetailedTrace ? 'Hide Detailed Trace' : 'Inspect Raw Rust Trace'}</span>
+                              <span>{showDetailedTrace ? 'Hide error details' : 'Inspect error details'}</span>
                             </button>
                           </div>
                           <pre className="text-xs font-mono text-red-300 bg-red-950/60 p-3 rounded border border-red-900 overflow-x-auto">
@@ -936,30 +933,27 @@ export default function App() {
                           </p>
                         </div>
 
-                        {/* DETAILED RUST BACKEND STACK TRACE VIEW */}
+                        {/* ERROR DETAILS VIEW: the real envelope the server returned. */}
                         {showDetailedTrace && (
                           <div className="bg-slate-950 border border-amber-900/70 rounded-lg p-4 space-y-3 shadow-lg shadow-black/50">
                             <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
                               <div className="flex items-center gap-2">
                                 <Terminal className="w-4 h-4 text-amber-400" />
                                 <span className="text-xs font-semibold text-amber-300 font-mono">
-                                  Raw Rust Backend Error Stack Trace
+                                  Error Details
                                 </span>
                                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/80 text-amber-400 border border-amber-800">
-                                  RUST_BACKTRACE=full
+                                  server envelope
                                 </span>
                               </div>
                               <button
                                 onClick={() => {
-                                  const textToCopy =
-                                    executionResult.error?.rustTrace?.rawStackTrace ||
-                                    JSON.stringify(executionResult.error, null, 2);
-                                  navigator.clipboard.writeText(textToCopy);
+                                  navigator.clipboard.writeText(JSON.stringify(executionResult.error, null, 2));
                                   setCopiedTrace(true);
                                   setTimeout(() => setCopiedTrace(false), 2000);
                                 }}
                                 className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono flex items-center gap-1 transition"
-                                title="Copy raw backtrace to clipboard"
+                                title="Copy the error envelope to clipboard"
                               >
                                 {copiedTrace ? (
                                   <>
@@ -969,79 +963,66 @@ export default function App() {
                                 ) : (
                                   <>
                                     <Copy className="w-3 h-3 text-slate-400" />
-                                    <span>Copy Trace</span>
+                                    <span>Copy</span>
                                   </>
                                 )}
                               </button>
                             </div>
 
-                            {/* Thread & Panic Diagnostic Bar */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] font-mono">
                               <div className="bg-slate-900/90 p-2.5 rounded border border-slate-800">
-                                <span className="text-[10px] text-slate-500 uppercase block font-sans">Thread / Worker</span>
-                                <span className="text-amber-300 font-semibold truncate block">
-                                  {executionResult.error?.rustTrace?.thread || 'tokio-runtime-worker-4'}
+                                <span className="text-[10px] text-slate-500 uppercase block font-sans">Error Code</span>
+                                <span className="text-red-300 font-semibold truncate block">
+                                  {executionResult.error?.code || 'UNKNOWN'}
                                 </span>
                               </div>
                               <div className="bg-slate-900/90 p-2.5 rounded border border-slate-800">
-                                <span className="text-[10px] text-slate-500 uppercase block font-sans">Panic Origin</span>
+                                <span className="text-[10px] text-slate-500 uppercase block font-sans">Correlation ID</span>
                                 <span className="text-slate-300 truncate block">
-                                  {executionResult.error?.rustTrace?.panicLocation || 'crates/factory-engine/src/pipeline/ingest.rs:142:9'}
+                                  {executionResult.correlationId || 'N/A'}
                                 </span>
                               </div>
                               <div className="bg-slate-900/90 p-2.5 rounded border border-slate-800">
-                                <span className="text-[10px] text-slate-500 uppercase block font-sans">Scheduler Runtime</span>
-                                <span className="text-indigo-300 truncate block">
-                                  {executionResult.error?.rustTrace?.runtime || 'Tokio 1.38.0 Work-Stealing'}
+                                <span className="text-[10px] text-slate-500 uppercase block font-sans">Tenant</span>
+                                <span className="text-slate-300 truncate block">
+                                  {executionResult.tenantId || 'N/A'}
                                 </span>
                               </div>
                             </div>
 
-                            {/* Raw Stack Trace Box */}
                             <div>
                               <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block mb-1">
-                                Tokio Worker Backtrace Dump:
+                                Message:
                               </span>
-                              <pre className="text-[11px] font-mono text-amber-200/90 bg-slate-900/90 p-3.5 rounded-lg border border-amber-950/80 overflow-x-auto leading-relaxed whitespace-pre font-mono max-h-56">
-                                {executionResult.error?.rustTrace?.rawStackTrace ||
-                                  `thread 'tokio-runtime-worker-2' panicked at crates/factory-engine/src/pipeline/ingest.rs:142:9:\n${executionResult.error?.message || 'MalformedContextException: Ingestion validation failed'}\nstack backtrace:\n   0: rust_begin_unwind\n             at /rustc/eeb90cda1969383f56a2637cbd3037bdf598841c/library/std/src/panicking.rs:665:5\n   1: core::panicking::panic_fmt\n             at /rustc/eeb90cda1969383f56a2637cbd3037bdf598841c/library/core/src/panicking.rs:74:14\n   2: software_factory_core::pipeline::guardrails::enforce_tenant_isolation\n             at ./crates/factory-engine/src/pipeline/guardrails.rs:89:17\n   3: software_factory_core::pipeline::ingest::validate_payload_schema\n             at ./crates/factory-engine/src/pipeline/ingest.rs:142:9\n   4: software_factory_core::engine::tokio_worker::process_telemetry_batch\n             at ./crates/factory-engine/src/engine/tokio_worker.rs:214:13\n   5: tokio::runtime::task::core::CoreStage::poll\n             at /cargo/registry/src/index.crates.io-6f17d22bba15001f/tokio-1.38.0/src/runtime/task/core.rs:328:13`}
+                              <pre className="text-[11px] font-mono text-amber-200/90 bg-slate-900/90 p-3.5 rounded-lg border border-amber-950/80 overflow-x-auto leading-relaxed whitespace-pre-wrap max-h-56">
+                                {executionResult.error?.message || 'No message provided'}
                               </pre>
                             </div>
 
-                            {/* CPU Register Snapshot */}
-                            <div className="bg-slate-900/70 p-2.5 rounded border border-slate-800 text-[11px] font-mono text-slate-400">
-                              <span className="text-slate-500 font-sans text-[10px] uppercase font-semibold block mb-1">
-                                CPU Architectural Register State:
-                              </span>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
-                                <span>RAX: <span className="text-slate-200">{executionResult.error?.rustTrace?.registers?.rax || '0x00007ffe812c4000'}</span></span>
-                                <span>RBX: <span className="text-slate-200">{executionResult.error?.rustTrace?.registers?.rbx || '0x000055c110da2180'}</span></span>
-                                <span>RIP: <span className="text-slate-200">{executionResult.error?.rustTrace?.registers?.rip || '0x00007f3b8912e540'}</span></span>
-                                <span>RSP: <span className="text-slate-200">{executionResult.error?.rustTrace?.registers?.rsp || '0x00007ffe812c3f80'}</span></span>
-                              </div>
-                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              This process is the Node control plane. Errors are returned as deterministic JSON; no stack trace is synthesized.
+                            </p>
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* Detailed Trace for Successful Execution as well */}
+                    {/* Execution trace for a successful ingest. */}
                     {showDetailedTrace && executionResult.status === 'success' && (
                       <div className="bg-slate-950 border border-indigo-900/60 rounded-lg p-3.5 space-y-2">
                         <div className="flex items-center justify-between text-xs text-indigo-300 font-mono">
                           <span className="flex items-center gap-1.5 font-semibold">
                             <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-                            Rust Tokio Worker Execution Trace (Zero Bottlenecks)
+                            Execution Trace
                           </span>
-                          <span className="text-[10px] text-emerald-400">Pipeline Stages 1-6 Green</span>
+                          <span className="text-[10px] text-emerald-400">status: success</span>
                         </div>
                         <pre className="text-[11px] font-mono text-slate-300 bg-slate-900/90 p-3 rounded border border-slate-800 overflow-x-auto">
-{`[tokio-worker-12] Ingest correlationId: ${executionResult.correlationId}
-[tokio-worker-12] Tenant partition verified: ${executionResult.tenantId} (${executionResult.niche})
-[tokio-worker-12] Appwrite database record initialized: ${executionResult.transformationId || executionResult.audit?.rawDocumentId || 'doc_live'}
-[tokio-worker-12] Guardrails applied: [${executionResult.audit?.guardrailsApplied?.join(', ') || 'OK'}]
-[tokio-worker-12] Gemini 1.5 Pro structured schema inference latency: ${executionResult.durationMs}ms
-[tokio-worker-12] Database ledger updated with zero conflation`}
+{`correlationId: ${executionResult.correlationId}
+tenant: ${executionResult.tenantId} (${executionResult.niche})
+appwrite record: ${executionResult.transformationId || executionResult.audit?.rawDocumentId || 'N/A'}
+guardrails applied: [${executionResult.audit?.guardrailsApplied?.join(', ') || 'none reported'}]
+structured inference latency: ${executionResult.durationMs}ms`}
                         </pre>
                       </div>
                     )}

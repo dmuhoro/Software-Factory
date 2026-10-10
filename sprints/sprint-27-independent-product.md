@@ -105,12 +105,28 @@ tab, and replaced the header chips with the real readiness status.
   fails arm 2; the payload assertions fail without `checkDetails`. With the fix: 2 pass.
 - Full suite: **299/299**.
 
-## WP-2b — Error-trace honesty (open)
+## WP-2b — Error-trace honesty (done)
 
-The stream tab still renders a *simulated* Rust error trace: `generateRustStackTrace`
-(`src/utils/validation.ts`) invents `tokio-runtime-worker` frames, `rustc` panic paths and
-register dumps with `Math.random()`, and the trace view hard-codes `RUST_BACKTRACE=full`,
-`RAX/RBX/RIP/RSP` registers and `[tokio-worker-12]` log lines. This is the same defect
-class as WP-2 — a claim about a runtime the service does not run — in the error path,
-where fabricated evidence is most dangerous. It is a separate layer because it rewrites
-the error-display model, and it is the next honesty item.
+The stream tab rendered a *simulated* Rust error trace: `generateRustStackTrace`
+(`src/utils/validation.ts`) invented `tokio-runtime-worker` frames, `rustc` panic paths and
+register dumps with `Math.random()`, and the trace view hard-coded `RUST_BACKTRACE=full`,
+`RAX/RBX/RIP/RSP` registers and `[tokio-worker-12]` log lines. Same defect class as WP-2 — a
+claim about a runtime the service does not run — in the error path, where fabricated
+evidence is most dangerous.
+
+**Finding that scoped the fix:** the product really does ship a Rust crate (`software_factory/`,
+Axum + Tokio), but the Dockerfile does not build it and the running service is the Node control
+plane (`dist/server.cjs`). ADR-003 and the "Sprint 04: Rust Tokio [DONE]" label are therefore
+**true governance records of a real crate** and are kept; only the client-side *simulation* was
+false.
+
+**Fix:** deleted `generateRustStackTrace`/`RustStackTraceInfo`/`RustStackFrame` and the
+`rustTrace` field; the error view shows the real envelope (code, correlation id, tenant,
+server message) and states that no stack trace is synthesized; the success trace prints the
+real correlation id, tenant, record id, guardrails and latency.
+
+**Evidence:**
+- `test/error-trace-truthfulness.test.ts` — the emitter carries no trace field and validation.ts
+  holds no generator; the UI holds no source-level diagnostic tokens. **Failing-first:** injecting
+  `rust_begin_unwind` into the dashboard fails arm 2. With the fix: 2 pass.
+- Full suite: **301/301**.
