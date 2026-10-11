@@ -325,6 +325,27 @@ test('L4: a version-5 ledger is migrated forward and loses nothing', () => {
   });
 });
 
+test('L4: a version-6 ledger is migrated forward and loses nothing', () => {
+  // The operatorCaps collection was added in version 7. A v6 deployment must migrate, not be
+  // quarantined: the same additive rule that carried v4 forward to v5 and v5 to v6 carries v6
+  // to v7, so an operator working today is not torn down by an upgrade tomorrow.
+  withIsolatedLedger((dir) => {
+    fs.writeFileSync(path.join(dir, 'software-factory.json'), JSON.stringify({
+      version: 6,
+      telemetry: { 'doc_keep_me_v6': { tenantId: 'tenant_v6', payload: { k: 'v' } } },
+      tenants: { 'tenant_v6': { id: 'tenant_v6', name: 'kept' } },
+      usageEvents: { 'evt_keep_me': { tenantId: 'tenant_v6', source: 'ai-transform', tokens: 5 } },
+      audits: [{ tenantId: 'tenant_v6', note: 'pre-migration' }],
+    }));
+    assert.equal(DurableStore.get('telemetry', 'doc_keep_me_v6')?.tenantId, 'tenant_v6', 'a v6 record must still be readable');
+    assert.equal(DurableStore.get('tenants', 'tenant_v6')?.name, 'kept', 'the tenants collection must survive the migration');
+    assert.equal(DurableStore.get('usageEvents', 'evt_keep_me')?.tokens, 5, 'the usageEvents collection must survive the migration');
+    assert.equal(DurableStore.audits('tenant_v6').length, 1, 'the audit log must survive the migration');
+    assert.equal(readLedgerIn(dir).version, LEDGER_VERSION, 'the document must be rewritten at the current version');
+    assert.deepEqual(readLedgerIn(dir).operatorCaps, {}, 'the new collection must start empty, not absent');
+  });
+});
+
 test('L4: a ledger written by a newer build is refused instead of being coerced', () => {
   withIsolatedLedger((dir) => {
     fs.writeFileSync(path.join(dir, 'software-factory.json'), JSON.stringify({

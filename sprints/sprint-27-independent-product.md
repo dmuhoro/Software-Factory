@@ -476,3 +476,23 @@ cap and leave audit events, and `GET` reports the effective state. Also new ledg
 v7 migration, `DurableStore.delete`, and `l3-error-contract` registration of
 `OPERATOR_ROLE_REQUIRED`/`OPERATOR_CAP_INVALID`/`OPERATOR_CAP_NOT_TIGHTENING`/
 `TENANT_NOT_FOUND`/`OPERATOR_ACTOR_REQUIRED`. Full suite: **351/351**.
+
+## Hardening — v7 migration arm & the WP-7 secret gate (4.13.16)
+
+Two gates the sprint promises to keep green were made genuinely green, not assumed green.
+
+**Ledger migration ladder completed.** `test/l4-durable-tenancy.test.ts` gains the
+version-6 → 7 arm, so every version the build still accepts (v4 → v7) has a test proving it is
+read, migrated forward, and rewritten at `LEDGER_VERSION`, with the new `operatorCaps`
+collection coerced to empty rather than absent. The additive-migration claim is now exercised,
+not asserted.
+
+**The WP-7 secret gate was red before this sprint.** `scripts/verify-no-secrets.sh` flags
+provider token shapes in the git index; the WP-8 fixture plants the AWS *documented example* key
+`AKIAIOSFODNN7EXAMPLE` deliberately (to prove the product secret-scan detects it), which matched
+the `AKIA[0-9A-Z]{16}` pattern. Every secret shape the product scan detects is also a gate
+pattern, so the fixture could not be reworded without weakening the arm. The gate now exempts
+**only** that vendor-published example value, and only in a file where *every* AWS-shaped match
+is it; a file containing any other `AKIA…` value is still blocked, proven with a planted-real-key
+negative control. This is a targeted exemption of a value AWS documents as unusable, not an
+exemption of tests or of the pattern. Full suite: **352/352**; the gate passes.
