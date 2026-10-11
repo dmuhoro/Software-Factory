@@ -57,6 +57,24 @@ for pattern in "${PATTERNS[@]}"; do
   # binaries; a base64 blob matching a token pattern is not a finding worth blocking on.
   if hits=$(git grep --cached -I -l -E -- "$pattern" -- . 2>/dev/null); then
     hits=$(printf '%s\n' "$hits" | grep -v '^\.env\.example$' | grep -v '^$')
+    if [ "$pattern" = 'AKIA[0-9A-Z]{16}' ]; then
+      # The vendor-published example access key id AKIAIOSFODNN7EXAMPLE is not a credential: it is
+      # the literal example value from the AWS documentation, shipped in AWS's own SDK test suites
+      # precisely because it can never authenticate a request, and the WP-8 fixture plants it to
+      # prove the product secret-scan detects it. It is exempted *only* here, and only when every
+      # AWS-shaped match in the file is that documented example -- a file that also contains any
+      # other AKIA-shaped value is still a finding, because exempting a real key is the one thing
+      # this gate exists to prevent.
+      filtered=''
+      while IFS= read -r file; do
+        keep=0
+        while IFS= read -r m; do
+          [ -n "$m" ] && [ "$m" != 'AKIAIOSFODNN7EXAMPLE' ] && keep=1 && break
+        done < <(git grep --cached -h -o -E -- "$pattern" -- "$file" 2>/dev/null | sort -u)
+        [ "$keep" -eq 1 ] && filtered+="$file"$'\n'
+      done < <(printf '%s\n' "$hits")
+      hits=$filtered
+    fi
     if [ -n "$hits" ]; then
       note "staged/tracked files match a credential pattern ($pattern):"
       printf '%s\n' "$hits" | sed 's/^/         /'

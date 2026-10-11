@@ -53,6 +53,22 @@ This adds the operator's durable handle on both.
   refuses a tenant credential with 403 and applies a platform operator's set/clear with audit
   events. `l3-error-contract` registers the four new codes. Full suite: **351/351**.
 
+### 4.13.16 — ledger migration arm for v7 and the WP-7 secret gate made true-green
+
+Hardening pass over the new layers and the two gates the sprint promises to keep green.
+
+- **`test/l4-durable-tenancy.test.ts`** gains the version-6 → 7 migration arm, completing the
+  ladder the ledger claims: every past version is read, migrated forward, and rewritten at
+  `LEDGER_VERSION`, and the new `operatorCaps` collection is coerced to empty, never absent.
+  Additive migrations do not quarantine old ledgers.
+- **`scripts/verify-no-secrets.sh`** — the WP-7 gate was red before this sprint: the WP-8
+  fixture plants the AWS *documented example* key `AKIAIOSFODNN7EXAMPLE` on purpose, and the
+  index scan flagged it. Since every secret shape the product scan detects is also a gate
+  pattern (there is no disjoint value), the gate now exempts **only** that vendor-published
+  example string, and only when *every* AWS-shaped match in the file is it — a file that also
+  contains any other `AKIA…` value is still blocked (verified with a planted-real-key negative
+  control). The gate is green again without masking what it exists to catch.
+
 ### 4.13.13 — per-tenant queue isolation and fair-share (WP-10, part 2)
 
 The resource governor capped *host* concurrency but had no notion of who was asking, so one
