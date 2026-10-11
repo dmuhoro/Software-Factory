@@ -43,8 +43,8 @@ closing the honesty and provisioning gaps below, not porting Forge's loop.
 | **WP-2** | Remove fabricated runtime telemetry the Node process never measures | no reachable metric is invented; dashboard renders real fields |
 | WP-3 | Appwrite persistence real, idempotent, failure-tested | write survives restart; failure test fails closed |
 | WP-4 | Durable auth/rate-limits + cross-tenant security tests | cross-tenant read/write refused |
-| WP-5 | Model productionisation: startup validation, cost caps | unsupported model fails startup; cap refuses |
-| WP-6 | Repository tooling / PR flow | loop opens a real PR |
+| WP-5 | Operator caps & audit (renumbered by operator directive; the original "model productionisation" stays behind its hosted-model-key input) | operator cap overrides enforced and audited *(WP-5, part 1 done below)* |
+| WP-6 | Daily AI-token budget guard (renumbered by operator directive; the original "repository tooling / PR flow" stays behind its GitHub input) | a spent tenant is refused with 429 before the model is called |
 | WP-7 | Isolated execution boundary (ADR + doctrine) | ADR accepted; escape test refused |
 | WP-8 | Evaluation harness scoring generated products | harness scores a known-bad product low |
 | WP-9 | CI/CD, backups, restore + load tests | restore returns the data; pipeline is the gate |
@@ -55,6 +55,13 @@ WP-6 … WP-11 depend on operator inputs that are not code: a GitHub App/token, 
 hosted model key with spend, Appwrite provisioning, and a chosen customer. They
 are sequenced but cannot be *completed* without those inputs; the blocker is
 named in each case rather than worked around.
+
+**Renumbering (operator directive):** the *code* halves of the blocked packages
+are being delivered under adjusted numbers — WP-6 is now the daily AI-token
+budget guard (the enforcement WP-10 part 1 explicitly deferred) and WP-5 is the
+operator caps & audit layer. The original WP-5 (model productionisation) and
+WP-6 (PR flow) remain blocked exactly as recorded above; renaming the number
+does not silently resurrect them.
 
 ---
 
@@ -401,3 +408,38 @@ slot, refusing a second repository for the same tenant with `TENANT_CONCURRENCY_
 the slot on settle, and admitting again. **Failing-first:** removing the `TenantQueueService.acquire`
 call in `submit` lets the overloaded submission through (integration arm fails); removing the
 settle-path release leaves `inFlightCount` at 1. Full suite: **340/340**.
+
+## WP-6 (as renumbered) — the daily AI-token budget is enforced at the spend boundary (4.13.14)
+
+WP-10 part 1 built the meter and explicitly did *not* cap: "a budget can only be honestly
+exercised against real model usage." The meter was exactly that — a number with a reader and
+no wallet. This layer ties the number to the boundary that spends.
+
+**`PipelineOrchestrator.execute` now refuses a cycle before it calls the model** when the
+tenant's metered consumption for today already meets or exceeds `maxDailyAiTokens`
+(`usageMeteringService.budgetState` + the guard immediately before the Gemini call). The
+refusal is a `429` (`AI_BUDGET_EXCEEDED`) with a `Retry-After` that reaches the next UTC
+midnight, so a client can obey it, and the refused cycle **never calls the model**, records no
+metered spend, and writes no transformation record.
+
+Three decisions deserve recording:
+
+- **The check sits at the spend boundary** — right before enrichment, after the raw record is
+  durable — not in a helper nothing real calls. A single model call can still overshoot the
+  remaining allowance (its cost is unknowable until it returns); the guarantee the quota can
+  honestly make is *no further spend once the day's allowance is gone*.
+- **Fail closed.** A tenant with no measurable allowance (`reason: 'unknown'`/`'unset'`) is
+  refused (`AI_BUDGET_UNKNOWN`, 500) rather than run unbudgeted. A tenant whose profile vanished
+  mid-request gets the same treatment. "No budget" never means "unlimited".
+- **The meter stays the source of truth.** `budgetState` answers *is it spent?* against the
+  durable `usageEvents` ledger; it does not pretend to reserve or atomically decrement a balance it
+  does not own.
+
+**Evidence:** `test/wp6-budget-guard.test.ts` (5 arms) — under-budget runs and is metered;
+a spent tenant is refused before the model is called (429, Retry-After within a day, no
+transformation record, no added spend); `consumed == allowance` counts as spent; an unknown
+principal fails closed as `unknown`, never unlimited; and the **live** `POST /api/telemetry/ingest`
+answers a spent tenant with `429` + `AI_BUDGET_EXCEEDED` + `Retry-After` on the wire.
+**Failing-first:** deleting the guard lets a spent tenant reach the enrichment stub; a
+`budgetState` reporting `exhausted: false` for a full tenant fails the retaliation arm. Full
+suite: **345/345**.

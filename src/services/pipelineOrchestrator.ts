@@ -101,6 +101,33 @@ export class PipelineOrchestrator {
     // The raw document is already durable at this point. If enrichment fails, the error
     // must carry that fact so the caller is never told the data was lost when it was not,
     // and so a retry is safe (the idempotency key prevents duplication).
+    //
+    // The daily AI-token budget is enforced HERE, immediately before the model is called,
+    // and not anywhere cheaper: this is the spend boundary. The meter is the source of truth
+    // for what was already consumed, so a tenant at or over its allowance is refused before
+    // any new spend happens. An individual call can still overshoot the remaining allowance
+    // (a model call's cost is unknowable until it returns); the boundary guarantees no further
+    // spend once the day's allowance is gone, which is the guarantee the quota can honestly
+    // make. Fail closed: a tenant with no measurable allowance is refused, never run
+    // unbudgeted as if it had an unlimited budget.
+    const budget = UsageMeteringService.budgetState(payload.tenantId);
+    if (budget.exhausted) {
+      if (budget.reason === 'spent') {
+        throw new OperationalError(
+          'AI_BUDGET_EXCEEDED',
+          'This tenant has spent its daily AI-token allowance; enrichment is refused until the UTC day resets.',
+          429,
+          { retryAfterSeconds: budget.retryAfterSeconds, details: { rawPayloadPersisted: true } },
+        );
+      }
+      throw new OperationalError(
+        'AI_BUDGET_UNKNOWN',
+        'This tenant has no measurable daily AI-token allowance; enrichment is refused rather than run unbudgeted.',
+        500,
+        { details: { rawPayloadPersisted: true } },
+      );
+    }
+
     let aiResult: Awaited<ReturnType<typeof GeminiService.transformTelemetry>>;
     try {
       aiResult = await GeminiService.transformTelemetry(
