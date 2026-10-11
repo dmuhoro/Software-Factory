@@ -4,6 +4,29 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.13 — per-tenant queue isolation and fair-share (WP-10, part 2)
+
+The resource governor capped *host* concurrency but had no notion of who was asking, so one
+tenant with many repositories could take every admitted slot. The global cap was a race, not a
+guarantee.
+
+- **`src/services/tenantQueueService.ts`** — per-tenant admission decided before any work
+  starts. A tier-derived cap (starter 1, professional 2, enterprise 4; an environment value may
+  only tighten), fair-share `floor(globalCap / competitors)` so no single tenant can take the
+  whole host when others compete, and a conservative cap for a tenant the registry does not know
+  — never a wave-through.
+- **Enforced at the real boundary.** `LoopControlService.submit` reserves a per-tenant slot
+  before the loop starts and releases it when the run settles, or when the run refuses before
+  creating a record. A tenant at its share is refused `TENANT_CONCURRENCY_LIMIT` (409) by name,
+  never queued silently.
+- **`src/utils/apiError.ts`** — registers `TENANT_CONCURRENCY_LIMIT` (409) plus the internal
+  `TENANT_QUEUE_LEASE_*` faults (500); `test/l3-error-contract.test.ts` now names the new code.
+- **`test/wp10-tenant-queue.test.ts`** (6 arms) — tier caps, host-cap-beats-tier, fair-share
+  under competition, release frees the slot, and the live submit path reserving/refusing/
+  releasing. **Failing-first:** removing the acquire in `submit` lets an overloaded submission
+  through; removing the settle-path release leaves the tenant's count stuck. Full suite:
+  **340/340**.
+
 ### 4.13.12 — per-tenant usage is metered from what was actually consumed (WP-10, part 1)
 
 Every tier declared a `maxDailyAiTokens` budget and nothing ever read it. A budget with no meter

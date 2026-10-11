@@ -17,9 +17,16 @@
  *  - One run per repository at a time. The loop assumes it is the only writer of the target tree;
  *    two runs on one repository would interleave commits. A second submission while one is live
  *    is refused by name.
+ *  - One tenant cannot occupy the whole host. The resource governor bounds *host* concurrency but
+ *    has no notion of who is asking, so a single tenant with many repositories could take every
+ *    admitted slot. `TenantQueueService` reserves a per-tenant share before the run starts and
+ *    releases it when the run settles; a tenant at its share is refused by name rather than queued
+ *    silently, so the client decides whether to wait or to shed load.
  */
+import { randomUUID } from 'node:crypto';
 import { ConfirmationService, type IssuedConfirmation } from './confirmationService';
 import { ExecutionLoopService, type LoopRunOutcome } from './executionLoopService';
+import { TenantQueueService } from './tenantQueueService';
 import type { LoopRunRecord, LoopStatus } from './loopTypes';
 import { resolveWithin, isGitRepository } from '../utils/pathGuard';
 
@@ -82,6 +89,15 @@ export class LoopControlService {
     const busy = this.activeByRepo.get(repo);
     if (busy) throw new Error(`LOOP_RUN_ALREADY_ACTIVE:${busy}`);
 
+    // Reserve this tenant's share *before* any work starts. The lease id is deliberately not the
+    // run id: it is generated here so the slot can be released even when the run refuses before it
+    // ever creates a record.
+    const leaseId = randomUUID();
+    const admission = TenantQueueService.acquire(input.tenantId, leaseId);
+    if (!admission.admitted) {
+      throw new Error(`TENANT_CONCURRENCY_LIMIT:${admission.reasons.join(';')}`);
+    }
+
     let runId = '';
     const runPromise = ExecutionLoopService.run({
       repo,
@@ -93,7 +109,9 @@ export class LoopControlService {
 
     if (!runId) {
       // The run refused before it created a record (dirty tree, unreadable document, doctrine
-      // drift). Surface the real refusal rather than reporting a run that does not exist.
+      // drift). Release the reserved slot and surface the real refusal rather than reporting a
+      // run that does not exist.
+      TenantQueueService.release(leaseId);
       await runPromise;
       throw new Error('the loop resolved without creating a run record');
     }
@@ -107,6 +125,7 @@ export class LoopControlService {
     const release = (): void => {
       this.active.delete(runId);
       if (this.activeByRepo.get(repo) === runId) this.activeByRepo.delete(repo);
+      TenantQueueService.release(leaseId);
     };
     void runPromise.then(release, release);
 
