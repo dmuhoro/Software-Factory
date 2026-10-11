@@ -13,12 +13,22 @@
  *  - A figure that is not a non-negative integer is refused, not coerced. A meter that rounds,
  *    guesses, or accepts `NaN` is not a meter.
  *
- * Enforcement of the daily token *budget* is deliberately out of scope here: it can only be
- * exercised against real model usage, which lands with WP-5. This service measures; it does
- * not yet cap.
+ * Enforcement lives with the caller that spends: `PipelineOrchestrator` refuses a cycle whose
+ * tenant is already at or over its daily allowance before it calls the model, using
+ * `budgetState`. This service measures the consumption the budget is enforced against, and
+ * answers the one question the boundary needs (is the allowance spent?) without pretending to
+ * reserve or atomically decrement a balance it does not own.
  */
 
 import { DurableStore } from './durableStore';
+import { TenantService } from './tenantService';
+
+/** Whole seconds from now until the next UTC midnight. Never 0: "now" is inside today. */
+function secondsUntilUtcMidnight(): number {
+  const now = new Date();
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0));
+  return Math.max(1, Math.ceil((next.getTime() - now.getTime()) / 1000));
+}
 
 export interface UsageEvent {
   id: string;
@@ -37,6 +47,26 @@ export interface UsageSummary {
   day: string;
   tokens: number;
   events: number;
+}
+
+/**
+ * Where a tenant stands against its daily AI-token allowance at this instant. The allowance is
+ * whatever the tenant profile declares; the consumption is the meter's own durable count.
+ *
+ * `reason` separates the two ways a tenant can have no spend available: the allowance is
+ * *spent* (refusable as a retryable policy refusal) or the allowance is *unset/unknown* (a
+ * configuration fault the boundary must refuse rather than spend against -- never a
+ * wave-through). Budgets are whole non-negative integers; anything else is unmeasurable.
+ */
+export interface BudgetState {
+  tenantId: string;
+  /** The declared `maxDailyAiTokens`. `null` when the profile or its allowance is unmeasurable. */
+  budget: number | null;
+  consumed: number;
+  remaining: number;
+  exhausted: boolean;
+  retryAfterSeconds?: number;
+  reason: 'spent' | 'unset' | 'unknown';
 }
 
 function utcDay(at: string): string {
@@ -90,5 +120,30 @@ export class UsageMeteringService {
       byDay.set(day, { tokens: current.tokens + event.tokens, events: current.events + 1 });
     }
     return [...byDay.entries()].map(([day, value]) => ({ tenantId, day, ...value })).sort((a, b) => b.day.localeCompare(a.day));
+  }
+
+  /**
+   * Answers, durably, whether a tenant may still spend today. Never throws: a profile without a
+   * measurable allowance is reported as exhausted with `reason: 'unset'`/`'unknown'` so the
+   * boundary can fail closed on it, rather than guessing at an allowance the code cannot read.
+   */
+  public static budgetState(tenantId: string): BudgetState {
+    const profile = TenantService.getTenant(tenantId);
+    const allowance = typeof profile?.quota?.maxDailyAiTokens === 'number' ? profile.quota.maxDailyAiTokens : null;
+    const measurable = allowance !== null && Number.isInteger(allowance) && allowance >= 0;
+    // A budget of 0 is measurable and fully spent on arrival.
+    const budget = measurable ? (allowance as number) : null;
+    const consumed = this.daily(tenantId).tokens;
+    const exhausted = !measurable ? true : consumed >= budget;
+    const reason: BudgetState['reason'] = !profile ? 'unknown' : !measurable ? 'unset' : 'spent';
+    return {
+      tenantId,
+      budget,
+      consumed,
+      remaining: measurable ? Math.max(0, budget - consumed) : 0,
+      exhausted,
+      ...(exhausted && reason === 'spent' ? { retryAfterSeconds: secondsUntilUtcMidnight() } : {}),
+      reason,
+    };
   }
 }

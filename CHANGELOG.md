@@ -4,6 +4,28 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.14 — the daily AI-token budget is enforced at the spend boundary (WP-6, as renumbered)
+
+WP-10 part 1 built the meter and deliberately deferred capping until a budget could be exercised
+against real model usage. This layer ties the meter to the boundary that spends.
+
+- **`PipelineOrchestrator.execute`** refuses a cycle before the model is called once the tenant's
+  metered usage for today meets or exceeds `maxDailyAiTokens` — `AI_BUDGET_EXCEEDED` (429) with
+  a `Retry-After` reaching the next UTC midnight. The refused cycle never calls the model,
+  records no spend, and writes no transformation record.
+- **`usageMeteringService.budgetState`** answers *is the allowance spent?* against the durable
+  `usageEvents` ledger and never throws: a principal with no measurable allowance is reported as
+  spent/unknown (`AI_BUDGET_UNKNOWN`, 500) so the boundary fails closed instead of running
+  unbudgeted.
+- **`utils/apiError.ts`** registers `AI_BUDGET_EXCEEDED` (429) and `AI_BUDGET_UNKNOWN` (500);
+  `utils/operationalError.ts` adds both to the typed `OperationalErrorCode`.
+- **`test/wp6-budget-guard.test.ts`** (5 arms) — under-budget runs; a spent tenant is refused
+  before enrichment (model never called, 429, Retry-After within a day, no record, no spend);
+  `consumed == allowance` is spent; an unknown principal fails closed; and the live
+  `POST /api/telemetry/ingest` answers a spent tenant with 429 on the wire. **Failing-first:**
+  deleting the guard lets the spent tenant reach the model; `exhausted: false` for a full tenant
+  fails the retaliation arm. Full suite: **345/345**.
+
 ### 4.13.13 — per-tenant queue isolation and fair-share (WP-10, part 2)
 
 The resource governor capped *host* concurrency but had no notion of who was asking, so one

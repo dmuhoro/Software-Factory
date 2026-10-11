@@ -18,7 +18,10 @@ export type OperationalErrorCode =
   | 'ENRICHMENT_UNAVAILABLE'
   | 'LEDGER_UNAVAILABLE'
   | 'DEPENDENCY_TIMEOUT'
-  | 'TENANT_NOT_ONBOARDED';
+  | 'TENANT_NOT_ONBOARDED'
+  // Sprint 27 (WP-6): the daily AI-token allowance is enforced at the spend boundary.
+  | 'AI_BUDGET_EXCEEDED'
+  | 'AI_BUDGET_UNKNOWN';
 
 export interface OperationalErrorOptions {
   /** The unmodified upstream failure. Logged, never returned. */

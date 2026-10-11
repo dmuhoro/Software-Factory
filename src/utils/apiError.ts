@@ -186,6 +186,12 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   AUTONOMY_COST_BUDGET_EXCEEDED: { status: 409, message: 'The autonomy cost budget is exhausted.' },
   AUTONOMY_SESSION_NOT_ACTIVE: { status: 409, message: 'The autonomy session is not active.' },
   AUTONOMY_STEP_BUDGET_EXCEEDED: { status: 409, message: 'The autonomy step budget is exhausted.' },
+  // Sprint 27 (WP-6, as renumbered): the daily AI-token allowance is enforced before the model
+  // is called. 429 is honest: the request is fine, the tenant is momentarily out of allowance,
+  // and the day boundary decides when to retry. The companion AI_BUDGET_UNKNOWN is an internal
+  // configuration fault (no measurable allowance), so it is 500, never a retryable 4xx.
+  AI_BUDGET_EXCEEDED: { status: 429, message: 'The tenant has spent its daily AI-token allowance; enrichment is refused until the UTC day resets.' },
+  AI_BUDGET_UNKNOWN: { status: 500, message: 'The tenant has no measurable daily AI-token allowance; enrichment is refused rather than run unbudgeted.' },
   DELIVERY_EVIDENCE_REQUIRED: { status: 409, message: 'Delivery evidence is required before this step.' },
   HOSTED_DEPLOYMENT_APPROVAL_REQUIRED: { status: 409, message: 'This deployment requires an approval decision first.' },
   HOSTED_TARGET_SECRET_REFERENCE_REQUIRED: { status: 409, message: 'This target requires a secret reference.' },
