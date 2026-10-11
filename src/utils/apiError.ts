@@ -271,6 +271,16 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LOOP_GOAL_DRAFT_INVALID: { status: 422, message: 'The drafted task document was not accepted by the loop parser; the goal is too ambiguous to plan.' },
   LOOP_RUN_NOT_CANCELABLE: { status: 409, message: 'Only a running loop run can be cancelled.' },
   LOOP_CONFIRMATION_INVALID: { status: 400, message: 'The confirmation token is missing, expired or already used.' },
+  // Sprint 27: per-tenant queue isolation. A tenant at its concurrent-run limit is a state
+  // precondition, not a broken request: it may retry once a run settles. The status is 409
+  // for the same reason LOOP_RUN_ALREADY_ACTIVE is -- the request is valid and the resource
+  // is momentarily unavailable to this tenant.
+  TENANT_CONCURRENCY_LIMIT: { status: 409, message: 'This tenant already holds its share of concurrent runs; retry once one settles.' },
+  // Internal programming faults: the queue's lease protocol was violated. A caller should
+  // never see these; if one escapes, it is a bug in this process, so they are 500 and never
+  // describe the tenant or the lease.
+  TENANT_QUEUE_LEASE_REQUIRED: { status: 500, message: 'The run queue was asked to reserve a slot without a lease.' },
+  TENANT_QUEUE_LEASE_REUSED: { status: 500, message: 'The run queue was asked to reserve a slot with a lease already in use.' },
   // Sprint 25 phase 3: scoped, expiring tenant credentials.
   SCOPED_CREDENTIAL_EXPIRED: { status: 401, message: 'The presented credential has expired.' },
   UNAUTHORIZED: { status: 401, message: 'Valid API credentials are required.' },

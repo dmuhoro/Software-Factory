@@ -48,7 +48,7 @@ closing the honesty and provisioning gaps below, not porting Forge's loop.
 | WP-7 | Isolated execution boundary (ADR + doctrine) | ADR accepted; escape test refused |
 | WP-8 | Evaluation harness scoring generated products | harness scores a known-bad product low |
 | WP-9 | CI/CD, backups, restore + load tests | restore returns the data; pipeline is the gate |
-| WP-10 | Scale & economics: queue isolation, budgets, metering | metering matches usage |
+| WP-10 | Scale & economics: queue isolation, budgets, metering | metering matches usage; per-tenant queue isolation holds; daily-token budget enforced (part 3) |
 | WP-11 | One real customer wedge | an outcome metric beats the incumbent |
 
 WP-6 … WP-11 depend on operator inputs that are not code: a GitHub App/token, a
@@ -361,3 +361,43 @@ migration arm. Full suite: **334/334**.
 there is no per-tenant cap and no fair-share, so one tenant's runs can consume the whole budget.
 That needs cross-run per-tenant in-flight tracking and a tier-derived cap, and is a distinct
 concern from metering — the next layer.
+
+## WP-10 (part 2) — Per-tenant queue isolation and fair-share (4.13.13)
+
+**The isolation gap.** `ResourceGovernorService.admit` caps *host* concurrency but has no notion
+of who is asking. One tenant with many repositories could take every admitted slot, so the global
+cap was a race, not a guarantee. That was more than an SLA concern: a bursty tenant could hold the
+host at full parallelism while every other tenant's submissions piled up behind it, with no tenant
+warning that anything was amiss.
+
+**`src/services/tenantQueueService.ts`** — admission is decided before any work starts, on three
+rules that each fail closed:
+- **Tier-derived cap.** A `starter` tenant holds one concurrent run, `professional` two,
+  `enterprise` four. `FACTORY_TENANT_CONCURRENCY` may only tighten, never loosen past the tier.
+- **Fair-share.** A tenant holds at most `floor(globalCap / competitors)` of the host's admitted
+  slots, where `competitors` is the number of distinct tenants holding a slot plus this one. Alone
+  on the host a tenant may use its whole tier cap; the moment a second tenant arrives neither can
+  grow past half. Non-preemptive by design: a run already holding a slot is never killed, the
+  division takes effect on the next admission.
+- **Unknown principal = conservative cap.** A tenant the registry does not know has no tier to
+  divide by, so it is capped like a `starter`, never waved through.
+
+**Wired at the live boundary**, not beside it: `LoopControlService.submit` (the path every HTTP
+and CLI submission goes through) reserves a per-tenant slot before the loop starts, keyed by a
+generated lease id, and releases it when the run settles — and on the path where a run refuses
+before creating a record. A tenant at its share is refused `TENANT_CONCURRENCY_LIMIT` (409) by
+name, with the reason (tenant cap, host cap, or both) in the detail; the client decides whether to
+wait or to shed load. No silent queueing.
+
+**Honest scope, named not faked:** in-flight tracking is process-local, exactly like loop
+cancellation — "in flight" is a fact about this process's execution and needs nothing persisted
+between restarts. A multi-replica deployment would need a shared counter with an atomic
+decrement, which is a follow-up.
+
+**Evidence:** `test/wp10-tenant-queue.test.ts` (6 arms) — tier caps for all three tiers plus the
+unknown-tenant cap; the host cap winning over the tier; two competing tenants each held to their
+fair share while the host fills; release freeing a slot; and the real submission path reserving a
+slot, refusing a second repository for the same tenant with `TENANT_CONCURRENCY_LIMIT`, freeing
+the slot on settle, and admitting again. **Failing-first:** removing the `TenantQueueService.acquire`
+call in `submit` lets the overloaded submission through (integration arm fails); removing the
+settle-path release leaves `inFlightCount` at 1. Full suite: **340/340**.
