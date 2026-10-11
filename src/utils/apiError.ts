@@ -287,6 +287,13 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   // describe the tenant or the lease.
   TENANT_QUEUE_LEASE_REQUIRED: { status: 500, message: 'The run queue was asked to reserve a slot without a lease.' },
   TENANT_QUEUE_LEASE_REUSED: { status: 500, message: 'The run queue was asked to reserve a slot with a lease already in use.' },
+  // Sprint 27: operator cap & audit controls. Only a platform operator may change a tenant's
+  // overrides; every cap is tighten-only, so the effective bound is always min(base, override).
+  OPERATOR_ROLE_REQUIRED: { status: 403, message: 'Only a platform operator may change a tenant\'s operational caps.' },
+  OPERATOR_CAP_INVALID: { status: 400, message: 'An operator cap must be a whole non-negative number (concurrency at least 1).' },
+  OPERATOR_CAP_NOT_TIGHTENING: { status: 409, message: 'An operator cap may only tighten, never raise, the tenant\'s base allowance.' },
+  TENANT_NOT_FOUND: { status: 404, message: 'The requested tenant is not registered.' },
+  OPERATOR_ACTOR_REQUIRED: { status: 500, message: 'A cap change must record who ordered it.' },
   // Sprint 25 phase 3: scoped, expiring tenant credentials.
   SCOPED_CREDENTIAL_EXPIRED: { status: 401, message: 'The presented credential has expired.' },
   UNAUTHORIZED: { status: 401, message: 'Valid API credentials are required.' },

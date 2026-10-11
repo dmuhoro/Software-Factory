@@ -26,6 +26,33 @@ against real model usage. This layer ties the meter to the boundary that spends.
   deleting the guard lets the spent tenant reach the model; `exhausted: false` for a full tenant
   fails the retaliation arm. Full suite: **345/345**.
 
+### 4.13.15 — operator cap & audit controls (WP-5, as renumbered)
+
+Concurrency came from the tier in code; the AI-token budget came from the quota at
+registration. Neither could change at runtime, and a change to either would have been silent.
+This adds the operator's durable handle on both.
+
+- **`src/services/operatorCapService.ts`** — a per-tenant override (`concurrency`,
+  `dailyAiTokens`) persisted in a new `operatorCaps` durable collection (ledger bumped to v7
+  with the same additive migration as `usageEvents`), attributable via `updatedBy` and a
+  bumping `revision`.
+- **Tighten-only by construction.** `set` refuses a value above the base re-derived from the
+  live tenant profile (`OPERATOR_CAP_NOT_TIGHTENING`); every consumer reads the effective cap
+  as `Math.min(base, override)`, so even an override that slips past validation can only shrink
+  a cap, never grow it. `clear` restores the base.
+- **Enforced at the real boundaries.** `TenantQueueService.limitFor`/`admit` bind the
+  concurrency path; `usageMeteringService.budgetState` binds the allowance the daily budget is
+  enforced against.
+- **`src/api/routes/operator.routes.ts`** — `GET/POST/DELETE /api/operator/tenants/:id/caps`,
+  platform-operator only (`OPERATOR_ROLE_REQUIRED`); every successful change writes a
+  `tenant.cap.change` audit event (durable, attributable) via `recordAuditEvent`.
+- **`DurableStore.delete`** added for the override clear path.
+- **`test/wp5-operator-caps.test.ts`** (6 arms) — tighten-only refusal; a written cap is durable
+  across a reload, attributable, and binds `limitFor`/`budgetState` (clear restores the base); a
+  rogue override planted in the ledger clamps to `min` and cannot raise a cap; live route
+  refuses a tenant credential with 403 and applies a platform operator's set/clear with audit
+  events. `l3-error-contract` registers the four new codes. Full suite: **351/351**.
+
 ### 4.13.13 — per-tenant queue isolation and fair-share (WP-10, part 2)
 
 The resource governor capped *host* concurrency but had no notion of who was asking, so one

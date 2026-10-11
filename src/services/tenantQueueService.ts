@@ -29,6 +29,7 @@
 
 import { TenantService } from './tenantService';
 import { ResourceGovernorService } from './resourceGovernorService';
+import { OperatorCapService } from './operatorCapService';
 import { TenantSubscriptionTier } from '../models/tenant';
 
 /** Concurrent runs a tier may hold, before any operator or environment tightening. */
@@ -83,7 +84,10 @@ export class TenantQueueService {
   /** The cap this tenant may hold when nobody else is competing. */
   public static limitFor(tenantId: string): number {
     const profile = TenantService.getTenant(tenantId);
-    return this.tierLimit(profile ? profile.tier : 'unregistered');
+    const base = this.tierLimit(profile ? profile.tier : 'unregistered');
+    // An operator override is tighten-only by construction: the effective cap is the minimum.
+    const override = OperatorCapService.get(tenantId)?.concurrency;
+    return override === undefined ? base : Math.min(base, override);
   }
 
   public static globalCap(): number {
@@ -125,7 +129,7 @@ export class TenantQueueService {
     const holders = new Set([...this.inFlight.entries()].filter(([, count]) => count > 0).map(([id]) => id));
     const competitors = holders.has(tenantId) ? holders.size : holders.size + 1;
     const fairShare = Math.max(1, Math.floor(globalCap / Math.max(1, competitors)));
-    const limit = Math.min(tierLimit, fairShare);
+    const limit = Math.min(this.limitFor(tenantId), fairShare);
     const reasons: string[] = [];
 
     if (globalCap < 1) reasons.push('GLOBAL_CAPACITY:0');
