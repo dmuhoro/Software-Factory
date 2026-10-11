@@ -22,6 +22,7 @@
 
 import { DurableStore } from './durableStore';
 import { TenantService } from './tenantService';
+import { OperatorCapService } from './operatorCapService';
 
 /** Whole seconds from now until the next UTC midnight. Never 0: "now" is inside today. */
 function secondsUntilUtcMidnight(): number {
@@ -129,7 +130,13 @@ export class UsageMeteringService {
    */
   public static budgetState(tenantId: string): BudgetState {
     const profile = TenantService.getTenant(tenantId);
-    const allowance = typeof profile?.quota?.maxDailyAiTokens === 'number' ? profile.quota.maxDailyAiTokens : null;
+    // An operator cap override is tighten-only: the enforceable allowance is the minimum of the
+    // subscription quota and the override, so a wrong override can never raise the budget.
+    const override = OperatorCapService.get(tenantId)?.dailyAiTokens;
+    let allowance = typeof profile?.quota?.maxDailyAiTokens === 'number' ? profile.quota.maxDailyAiTokens : null;
+    if (allowance !== null && override !== undefined && Number.isInteger(override) && override >= 0) {
+      allowance = Math.min(allowance, override);
+    }
     const measurable = allowance !== null && Number.isInteger(allowance) && allowance >= 0;
     // A budget of 0 is measurable and fully spent on arrival.
     const budget = measurable ? (allowance as number) : null;

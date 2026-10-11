@@ -18,16 +18,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const LEDGER_VERSION = 6 as const;
+export const LEDGER_VERSION = 7 as const;
 
 /**
  * Oldest document this build can still read and migrate forward.
  *
- * Version 4 lacked the `tenants` collection; version 5 lacked `usageEvents`. Bumping the
- * version while refusing anything older would have routed every existing deployment through
- * the corrupt-document recovery path, which quarantines the live ledger and resets it -- the
- * schema change would have destroyed the data it was meant to preserve. A missing collection
- * is coerced to empty by `hydrate`, so the migration is additive and needs no record rewrite.
+ * Version 4 lacked the `tenants` collection; version 5 lacked `usageEvents`; version 6 lacked
+ * `operatorCaps`. Bumping the version while refusing anything older would have routed every
+ * existing deployment through the corrupt-document recovery path, which quarantines the live
+ * ledger and resets it -- the schema change would have destroyed the data it was meant to
+ * preserve. A missing collection is coerced to empty by `hydrate`, so the migration is additive
+ * and needs no record rewrite.
  */
 export const MIN_LEDGER_VERSION = 4 as const;
 
@@ -37,7 +38,7 @@ export const LEDGER_COLLECTIONS = [
   'clientWorkspaces', 'handovers', 'clientAcceptances', 'hostedDeployments', 'modelProviders',
   'agentRuns', 'worktrees', 'proofRecords', 'queueJobs', 'executionRuns',
   'deploymentObservations', 'mergeRecords', 'securityScans', 'projectAdapters',
-  'tenants', 'factoryLoopRuns', 'usageEvents',
+  'tenants', 'factoryLoopRuns', 'usageEvents', 'operatorCaps',
 ] as const;
 
 export type LedgerCollection = (typeof LEDGER_COLLECTIONS)[number];
@@ -81,6 +82,8 @@ export interface DurableState {
   projectAdapters: Record<string, Record<string, unknown>>;
   tenants: Record<string, Record<string, unknown>>;
   factoryLoopRuns: Record<string, Record<string, unknown>>;
+  usageEvents: Record<string, Record<string, unknown>>;
+  operatorCaps: Record<string, Record<string, unknown>>;
 }
 
 /** Audit log is append-only but bounded; an unbounded array is a disk-exhaustion risk. */
@@ -411,6 +414,18 @@ export class DurableStore {
   public static get(collection: LedgerCollection, id: string): Record<string, unknown> | undefined {
     if (!LEDGER_COLLECTIONS.includes(collection)) throw new Error(`LEDGER_COLLECTION_UNKNOWN:${collection}`);
     return this.ensureLoaded()[collection][id];
+  }
+
+  /** Removes a record, returning `true` when one was present. */
+  public static delete(collection: LedgerCollection, id: string): boolean {
+    if (!LEDGER_COLLECTIONS.includes(collection)) throw new Error(`LEDGER_COLLECTION_UNKNOWN:${collection}`);
+    const state = this.ensureLoaded();
+    const present = Object.prototype.hasOwnProperty.call(state[collection], id);
+    if (present) {
+      delete state[collection][id];
+      this.persist();
+    }
+    return present;
   }
 
   public static list(collection: LedgerCollection): Record<string, unknown>[] {

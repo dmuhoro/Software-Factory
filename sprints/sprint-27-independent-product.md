@@ -43,12 +43,12 @@ closing the honesty and provisioning gaps below, not porting Forge's loop.
 | **WP-2** | Remove fabricated runtime telemetry the Node process never measures | no reachable metric is invented; dashboard renders real fields |
 | WP-3 | Appwrite persistence real, idempotent, failure-tested | write survives restart; failure test fails closed |
 | WP-4 | Durable auth/rate-limits + cross-tenant security tests | cross-tenant read/write refused |
-| WP-5 | Operator caps & audit (renumbered by operator directive; the original "model productionisation" stays behind its hosted-model-key input) | operator cap overrides enforced and audited *(WP-5, part 1 done below)* |
+| WP-5 | Operator caps & audit (renumbered by operator directive; the original "model productionisation" stays behind its hosted-model-key input) | operator cap overrides enforced and audited (4.13.15) |
 | WP-6 | Daily AI-token budget guard (renumbered by operator directive; the original "repository tooling / PR flow" stays behind its GitHub input) | a spent tenant is refused with 429 before the model is called |
 | WP-7 | Isolated execution boundary (ADR + doctrine) | ADR accepted; escape test refused |
 | WP-8 | Evaluation harness scoring generated products | harness scores a known-bad product low |
 | WP-9 | CI/CD, backups, restore + load tests | restore returns the data; pipeline is the gate |
-| WP-10 | Scale & economics: queue isolation, budgets, metering | metering matches usage; per-tenant queue isolation holds; daily-token budget enforced (part 3) |
+| WP-10 | Scale & economics: queue isolation, budgets, metering | metering matches usage; per-tenant queue isolation holds; daily-token budget enforced (WP-6) |
 | WP-11 | One real customer wedge | an outcome metric beats the incumbent |
 
 WP-6 … WP-11 depend on operator inputs that are not code: a GitHub App/token, a
@@ -443,3 +443,36 @@ answers a spent tenant with `429` + `AI_BUDGET_EXCEEDED` + `Retry-After` on the 
 **Failing-first:** deleting the guard lets a spent tenant reach the enrichment stub; a
 `budgetState` reporting `exhausted: false` for a full tenant fails the retaliation arm. Full
 suite: **345/345**.
+
+## WP-5 (as renumbered) — operator caps & audit controls (4.13.15)
+
+Concurrency was tier-derived in code (`TenantQueueService`) and tokens quota-derived at
+registration; neither could be changed at runtime, and a change to either would have been
+silent. This layer is the operator's durable handle on both.
+
+**`OperatorCapService`** persists a per-tenant override (`concurrency`, `dailyAiTokens`) in the
+durable ledger (new `operatorCaps` collection; ledger bumped to v7 with the same additive
+migration as `usageEvents`), attributable via `updatedBy` and a bumping `revision`.
+
+- **Tighten-only by construction, not by convention.** `set` refuses a value above the base
+  re-derived from the live tenant profile (`OPERATOR_CAP_NOT_TIGHTENING`), and every consumer
+  reads the effective cap as `Math.min(base, override)` — so even a stale override that slips
+  past validation can only shrink a cap, never grow it. `clear` restores the base.
+- **Enforced on the real paths.** `TenantQueueService.limitFor`/`admit` bind the concurrency
+  boundary; `usageMeteringService.budgetState` binds the allowance the daily budget is enforced
+  against. An override that changed a database row but not those boundaries would be a column
+  nobody reads.
+- **Operator-only, audited.** `POST/DELETE /api/operator/tenants/:id/caps` require a
+  `platform_operator` principal (`OPERATOR_ROLE_REQUIRED`); every successful change writes a
+  `tenant.cap.change` audit event (action `set`/`clear`, actor, revision) into the store's
+  durable audit trail via `recordAuditEvent`.
+
+**Evidence:** `test/wp5-operator-caps.test.ts` (6 arms) — tighten-only refusal (above-base,
+empty, negative, and against an unmeasurable allowance); a written cap is durable across a
+store reload, attributable, and binds `limitFor`/`budgetState` (with `clear` restoring the
+base); a rogue override planted directly in the ledger clamps to `min` and cannot raise a cap;
+live route: a tenant credential is refused 403, a platform operator's `POST`/`DELETE` apply the
+cap and leave audit events, and `GET` reports the effective state. Also new ledger collection +
+v7 migration, `DurableStore.delete`, and `l3-error-contract` registration of
+`OPERATOR_ROLE_REQUIRED`/`OPERATOR_CAP_INVALID`/`OPERATOR_CAP_NOT_TIGHTENING`/
+`TENANT_NOT_FOUND`/`OPERATOR_ACTOR_REQUIRED`. Full suite: **351/351**.

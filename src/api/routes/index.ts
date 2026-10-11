@@ -18,6 +18,7 @@ import operationsRoutes from './operations.routes';
 import loopRoutes from './loop.routes';
 import whoamiRoutes from './whoami.routes';
 import usageRoutes from './usage.routes';
+import operatorRoutes from './operator.routes';
 
 const router = Router();
 
@@ -38,5 +39,7 @@ router.use('/loop', loopRoutes);
 router.use('/whoami', whoamiRoutes);
 // The caller's own metered usage. Also answers only for the authenticated caller.
 router.use('/usage', usageRoutes);
+// Operator controls. Every route is platform-operator only and answered from the durable ledger.
+router.use('/operator', operatorRoutes);
 
 export default router;
