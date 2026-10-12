@@ -4,6 +4,25 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.19 — a replayed webhook is never byte-identical to the delivery it replays
+
+`WebhookService.replay` re-signed the recorded body with `new Date().toISOString()`. The timestamp
+is signed material (`signWebhook` hashes `${timestamp}.${body}`), so a replay issued in the same
+millisecond as the original — routine under load — reproduced the original signature byte-for-byte.
+A receiver that honours the timestamp window would read that as a captured delivery, and the
+sprint's own arm ("a replay sends the identical body with a fresh, valid signature") failed
+intermittently in the full suite while passing in isolation.
+
+- **`replay` now stamps with `freshTimestampAfter(recorded.attemptedAt)`** — a new exported helper
+  that advances one millisecond when the clock has not moved — so the replayed timestamp is
+  strictly newer than the delivery it replays and the signature is always new. The contract the
+  method already documented is now true regardless of clock resolution.
+
+**Evidence:** `test/webhook-service.test.ts` gains a deterministic arm that seeds a delivery
+timestamped at (just ahead of) the clock and asserts the replay is strictly newer with a different
+signature. **Failing-first:** reverting to `new Date().toISOString()` fails that arm. Full suite:
+**360/360**.
+
 ### 4.13.18 — repository verification runs inside the sandbox, and never leaks the environment (WP-7 follow-up)
 
 ADR-010 named one hole it deliberately did not close: `verificationProfileService.executeVerification`
