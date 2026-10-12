@@ -527,3 +527,15 @@ follow-up. Two defects found on that path were fixed at the boundary: the verifi
 longer receives `{ ...process.env }` (which `sandboxArgv` would copy onto a world-readable argv), and
 `runCommand` no longer persists `error.message` — the whole bwrap command line — as failure output.
 See the WP-7 evidence above. Full suite: **359/359**.
+
+## Hardening — webhook replay freshness (4.13.19)
+
+**A replay could reproduce the original signature.** `WebhookService.replay` re-signed the recorded
+body with `new Date().toISOString()`; because the timestamp is signed material, a replay issued in
+the same millisecond as the original produced an identical signature — the receiver sees a captured
+delivery, not a fresh re-send. The sprint's own replay arm failed intermittently under the full
+suite's load and passed in isolation, the signature of a millisecond race. `replay` now stamps with
+`freshTimestampAfter(recorded.attemptedAt)`, which advances one millisecond when the clock has not
+moved, making the "fresh timestamp, new signature" contract true at any clock resolution.
+**Failing-first:** a deterministic arm seeds a delivery timestamped at the clock and fails when the
+fix is reverted. Full suite: **360/360**.

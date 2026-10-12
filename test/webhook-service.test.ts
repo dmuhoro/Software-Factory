@@ -16,6 +16,7 @@ import {
   signWebhook,
   validateWebhookUrl,
   verifyWebhookSignature,
+  type WebhookDelivery,
   type WebhookTransport,
 } from '../src/services/webhookService';
 
@@ -181,6 +182,38 @@ test('a replay sends the identical body with a fresh, valid signature', async ()
   assert.notEqual(sent[1].headers.deliveryId, sent[0].headers.deliveryId, 'a replay is a new delivery, recorded separately');
 
   await assert.rejects(() => WebhookService.replay('whd_missing', transport), /No webhook delivery/);
+});
+
+test('a replay carries a timestamp strictly newer than the delivery it replays', async () => {
+  WebhookService.resetForTests();
+  const sent: Array<{ body: string; headers: Record<string, string> }> = [];
+  const transport: WebhookTransport = async (_url, body, headers) => {
+    sent.push({ body, headers: { ...headers } });
+    return 200;
+  };
+  const subscription = WebhookService.subscribe({ tenantId: TENANT, url: 'https://hooks.example.com/a' });
+  const body = JSON.stringify({ event: 'loop.run.settled', tenantId: TENANT, payload: { runId: 'run_42' } });
+
+  // Seed a delivery whose timestamp is at (or just ahead of) the clock. Without a
+  // strictly-increasing timestamp the replay signs with the same millisecond and reproduces the
+  // original signature exactly — the defect this arm pins, deterministically, under load.
+  const attemptedAt = new Date(Date.now() + 5).toISOString();
+  const recorded: WebhookDelivery = {
+    id: 'whd_seed0000000000',
+    subscriptionId: subscription.id,
+    tenantId: TENANT,
+    event: 'loop.run.settled',
+    body,
+    signature: signWebhook(body, subscription.secret, attemptedAt),
+    attemptedAt,
+  };
+  WebhookService.recordForTests(recorded);
+
+  const replayed = await WebhookService.replay(recorded.id, transport);
+  assert.equal(replayed.ok, true);
+  assert.ok(Date.parse(replayed.delivery.attemptedAt) > Date.parse(attemptedAt), 'a replay must be strictly newer than the delivery it replays');
+  assert.notEqual(replayed.delivery.signature, recorded.signature);
+  assert.equal(sent.length, 1);
 });
 
 test('a failing receiver is recorded, not retried into a backlog', async () => {

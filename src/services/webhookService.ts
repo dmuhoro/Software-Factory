@@ -116,6 +116,23 @@ export function signWebhook(body: string, secret: string, timestamp: string): st
 }
 
 /**
+ * A timestamp strictly newer than `previous`, at millisecond resolution.
+ *
+ * The timestamp is signed material, so a replay must never reuse the timestamp of the
+ * delivery it replays: at millisecond resolution a re-send issued in the same millisecond
+ * as the original would reproduce the original signature byte-for-byte, and a receiver
+ * that trusts the timestamp window would read a captured delivery rather than a fresh
+ * re-send. Advancing the clock by one millisecond when it has not moved keeps the
+ * "fresh timestamp, new signature" contract true regardless of clock resolution.
+ */
+export function freshTimestampAfter(previous: string): string {
+  const now = Date.now();
+  const prior = Date.parse(previous);
+  const at = Number.isFinite(prior) && prior >= now ? prior + 1 : now;
+  return new Date(at).toISOString();
+}
+
+/**
  * Verifies a signature in constant time, after checking the timestamp window.
  *
  * Exported so a receiver implemented elsewhere can use exactly this logic, and so a
@@ -281,7 +298,7 @@ export class WebhookService {
     const recheck = validateWebhookUrl(subscription.url);
     if (!recheck.ok) throw new Error(recheck.reason);
 
-    const timestamp = new Date().toISOString();
+    const timestamp = freshTimestampAfter(recorded.attemptedAt);
     const signature = signWebhook(recorded.body, subscription.secret, timestamp);
     const delivery: WebhookDelivery = { ...recorded, id: `whd_${randomBytes(8).toString('hex')}`, signature, attemptedAt: timestamp };
     this.deliveries.set(delivery.id, delivery);
