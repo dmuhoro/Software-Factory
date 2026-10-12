@@ -35,7 +35,7 @@ joined, and two of them (concurrency, PR flow) do not run end to end.
 | WP | Objective | Proof | Status |
 |---|---|---|---|
 | **WP-1** | Two-axis review: standards and spec as independent, both-blocking reads | one axis refusing refuses the review; both dialled | **done (4.13.22)** |
-| WP-2 | Tracker bridge: issue → spec → tickets with blocking edges | an issue produces a task document whose DAG blocks correctly | planned |
+| **WP-2** | Tracker bridge: issue → spec → tickets with blocking edges | an issue produces a task document whose DAG blocks correctly | **done (4.13.23)** |
 | WP-3 | Concurrent execution driver over worktrees + task graph | two independent units run at once; a dependent unit waits | planned |
 | WP-4 | PR flow adapter: local branch + manifest default, GitHub behind a credential | a completed run yields a reviewable branch/manifest, never a silent commit | planned |
 | WP-5 | Model layer: the frontier provider actually answers | a hosted model key is required; blocked, not worked around | blocked |
@@ -43,6 +43,37 @@ joined, and two of them (concurrency, PR flow) do not run end to end.
 WP-5 depends on an operator input that is not code — a hosted model provider key with spend
 (and, for WP-4's real-PR half, a GitHub App/token). The blocker is named rather than worked
 around; the code halves that do not need the credential are delivered.
+
+## WP-2 — The tracker bridge (4.13.23)
+
+**The gap:** a goal always had a way in (`GoalIntakeService`); a tracker issue had none. The bridge
+reads an issue from one of two sources and drafts the task document through the *same* model
+contract and the loop's own parser as goal intake, so an issue-drafted document is no more trusted
+than a goal-drafted one.
+
+**Fix:**
+- `IssueTrackerService` (new): `local` reads a JSON object with a `title` or markdown with a `# `
+  heading inside the approved workspace; `github` reads the REST API through the guarded egress
+  path (`egressJson`) with the token from `resolveSecretRef` — refused before any socket when there
+  is no allowlisted token. Statuses/shapes map explicitly (`ISSUE_GITHUB_NOT_FOUND`,
+  `ISSUE_GITHUB_AUTH_FAILED`, `ISSUE_GITHUB_IS_PULL_REQUEST`, `ISSUE_GITHUB_FETCH_FAILED`,
+  `ISSUE_GITHUB_RESPONSE_INVALID`).
+- `IssueIntakeService` (new): the thin bridge — fetch, then `draftTaskDocument` (parsed and written
+  by the loop's own parser exactly like a goal draft). `goalIntakeService.ts` exports the shared
+  `draftTaskDocument`/`taskDocumentSystem`.
+- `POST /api/loop/issues` (new): mirrors the goals route, returns `201` with the validated draft.
+
+**Evidence:** `test/issue-intake.test.ts` (new, 12 arms): both local formats; empty/malformed/
+no-title/prose refusals; outside-workspace refusal; no-token refusal before any dial;
+repo/number shape guard; one issue read through the guarded egress path against a loopback stub;
+404/401/403/503/non-issue/pull-request mapping; the bridge drafting a two-milestone document with
+the `depends` edge preserved and the parser accepting it; parser-rejected draft refused
+(`LOOP_ISSUE_DRAFT_INVALID`); the model never dialled when the issue cannot be read.
+**Failing-first:** removing the JSON-title guard makes the refusal arm fail. Full suite:
+**377/377**; `npm run verify` green (Layer 4 42/42); docs gate 6/6; secrets gate pass.
+
+**Honest limit:** the GitHub *real-network* success path stays behind its allowlist — `api.github.com`
+is not allowed here, which is the point: without the operator's allowlist the adapter fails closed.
 
 ## WP-1 — Two-axis review (4.13.22)
 

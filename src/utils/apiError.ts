@@ -277,6 +277,25 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LOOP_GOAL_DRAFT_INVALID: { status: 422, message: 'The drafted task document was not accepted by the loop parser; the goal is too ambiguous to plan.' },
   LOOP_RUN_NOT_CANCELABLE: { status: 409, message: 'Only a running loop run can be cancelled.' },
   LOOP_CONFIRMATION_INVALID: { status: 400, message: 'The confirmation token is missing, expired or already used.' },
+  // Sprint 28 (WP-2): the tracker bridge. An issue from a tracker is the raw material for a task
+  // document. A local issue that cannot be read, and a GitHub issue that cannot be fetched, are
+  // refusals -- never an empty issue the architect would then invent requirements around.
+  ISSUE_SOURCE_REQUIRED: { status: 400, message: 'An issue source is required: a local issue path or a GitHub issue reference.' },
+  ISSUE_SOURCE_KIND_UNKNOWN: { status: 400, message: 'The issue source kind must be local or github.' },
+  ISSUE_LOCAL_PATH_REQUIRED: { status: 400, message: 'A local issue source needs a path to the issue file.' },
+  ISSUE_LOCAL_PATH_OUTSIDE_WORKSPACE: { status: 403, message: 'The local issue file is outside the approved workspace.' },
+  ISSUE_LOCAL_FILE_INVALID: { status: 422, message: 'The local issue file could not be read as an issue with a title and a body.' },
+  ISSUE_GITHUB_REPO_REQUIRED: { status: 400, message: 'A GitHub issue source needs a repository in owner/name form.' },
+  ISSUE_GITHUB_REPO_MALFORMED: { status: 400, message: 'A GitHub repository must be written as owner/name.' },
+  ISSUE_GITHUB_NUMBER_REQUIRED: { status: 400, message: 'A GitHub issue source needs a positive issue number.' },
+  ISSUE_GITHUB_TOKEN_REQUIRED: { status: 403, message: 'Fetching a GitHub issue requires an allowlisted token secret reference.' },
+  ISSUE_GITHUB_NOT_FOUND: { status: 404, message: 'No such issue in that repository.' },
+  ISSUE_GITHUB_AUTH_FAILED: { status: 403, message: 'The GitHub token was refused for that issue.' },
+  ISSUE_GITHUB_IS_PULL_REQUEST: { status: 422, message: 'That GitHub number is a pull request, not an issue.' },
+  ISSUE_GITHUB_FETCH_FAILED: { status: 503, message: 'GitHub could not be reached to read the issue.' },
+  ISSUE_GITHUB_RESPONSE_INVALID: { status: 502, message: 'GitHub returned a response that was not an issue.' },
+  LOOP_ISSUE_DRAFT_INVALID: { status: 422, message: 'The issue-drafted task document was not accepted by the loop parser.' },
+  LOOP_ISSUE_MODEL_REQUIRED: { status: 400, message: 'A registered providerId and model are required to draft an issue.' },
   // Sprint 27: per-tenant queue isolation. A tenant at its concurrent-run limit is a state
   // precondition, not a broken request: it may retry once a run settles. The status is 409
   // for the same reason LOOP_RUN_ALREADY_ACTIVE is -- the request is valid and the resource
