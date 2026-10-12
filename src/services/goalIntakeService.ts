@@ -10,6 +10,10 @@
  * The model is never trusted to name its own provider. The Models section is dictated from the
  * caller's registered assignment and the model is told to copy it verbatim, so a draft can never
  * point the loop at a provider the tenant did not choose.
+ *
+ * Sprint 28 (WP-2) extracted the draft core (`draftTaskDocument`, `taskDocumentSystem`) so the
+ * tracker bridge (`issueIntakeService.ts`) drafts through the exact same model contract and
+ * validation, rather than a second, drifting copy of it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -38,14 +42,31 @@ export interface GoalDraftResult {
   model: string;
 }
 
+/** The shared draft core: any request shape (goal, issue) reduced to one model call. */
+export interface TaskDraftInput {
+  tenantId: string;
+  system: string;
+  task: string;
+  providerId: string;
+  model: string;
+  maxOutputTokens?: number;
+  /** The refusal code thrown when the model's draft fails the loop's parser. */
+  invalidCode?: string;
+}
+
 function fail(code: string, detail?: string): Error {
   return new Error(detail ? `${code}:${detail}` : code);
 }
 
-export function buildGoalPrompt(repo: string, goal: string, providerId: string, model: string): { system: string; task: string } {
+/**
+ * The architect's system prompt: the shared contract for every task-document draft. The model is
+ * told to copy the dictated Models section character for character, so it can never point the loop
+ * at a provider the tenant did not choose.
+ */
+export function taskDocumentSystem(providerId: string, model: string): string {
   const assignment = `models.implementer: ${providerId}/${model}`;
   const review = `models.reviewer: ${providerId}/${model}`;
-  const system = [
+  return [
     'You are the architect for an unattended software delivery loop.',
     'You turn a goal into ONE strict markdown task document that a machine parses and executes.',
     '',
@@ -78,6 +99,9 @@ export function buildGoalPrompt(repo: string, goal: string, providerId: string, 
     '- Add a "depends: Mx" line only when one milestone truly cannot start before another.',
     '- A verify command must be offline: no network access.',
   ].join('\n');
+}
+
+export function buildGoalPrompt(repo: string, goal: string, providerId: string, model: string): { system: string; task: string } {
   const inventory = fileInventory(repo).slice(0, 200);
   const task = [
     `Goal: ${goal}`,
@@ -88,7 +112,47 @@ export function buildGoalPrompt(repo: string, goal: string, providerId: string, 
     '',
     'Write the task document now.',
   ].join('\n');
-  return { system, task };
+  return { system: taskDocumentSystem(providerId, model), task };
+}
+
+/**
+ * Drafts a task document from a built prompt, validates it with the loop's own parser, and writes
+ * it inside the approved workspace. Shared by goal intake and the tracker bridge so both go
+ * through one contract. A draft the parser rejects is a refusal, never a returned file.
+ */
+export async function draftTaskDocument(input: TaskDraftInput): Promise<GoalDraftResult> {
+  const response = await FrontierModelService.request(input.tenantId, {
+    providerId: input.providerId,
+    model: input.model,
+    system: input.system,
+    task: input.task,
+    maxOutputTokens: input.maxOutputTokens ?? 8_000,
+  });
+
+  const raw = stripFences(response.content).trim();
+  let parsed;
+  try {
+    parsed = parseTaskDocument(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const detail = message.startsWith('TASK_DOCUMENT_INVALID:') ? message.slice('TASK_DOCUMENT_INVALID:'.length) : message;
+    throw fail(input.invalidCode ?? 'LOOP_GOAL_DRAFT_INVALID', detail);
+  }
+
+  const dir = path.join(workspaceRoot(), '.factory-goal-drafts');
+  fs.mkdirSync(dir, { recursive: true });
+  const slug = parsed.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'task';
+  const file = path.join(dir, `${slug}-${parsed.sourceHash.slice('sha256:'.length, 'sha256:'.length + 12)}.md`);
+  fs.writeFileSync(file, raw.endsWith('\n') ? raw : `${raw}\n`, 'utf8');
+
+  return {
+    taskDocument: file,
+    draft: raw,
+    title: parsed.title,
+    milestones: parsed.milestones.map((milestone) => ({ id: milestone.id, title: milestone.title })),
+    providerId: response.providerId,
+    model: response.model,
+  };
 }
 
 export class GoalIntakeService {
@@ -101,38 +165,7 @@ export class GoalIntakeService {
     const repo = resolveLoopRepo(input.repo);
 
     const { system, task } = buildGoalPrompt(repo, input.goal.trim(), input.providerId, input.model);
-    const response = await FrontierModelService.request(input.tenantId, {
-      providerId: input.providerId,
-      model: input.model,
-      system,
-      task,
-      maxOutputTokens: input.maxOutputTokens ?? 8_000,
-    });
-
-    const raw = stripFences(response.content).trim();
-    let parsed;
-    try {
-      parsed = parseTaskDocument(raw);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const detail = message.startsWith('TASK_DOCUMENT_INVALID:') ? message.slice('TASK_DOCUMENT_INVALID:'.length) : message;
-      throw fail('LOOP_GOAL_DRAFT_INVALID', detail);
-    }
-
-    const dir = path.join(workspaceRoot(), '.factory-goal-drafts');
-    fs.mkdirSync(dir, { recursive: true });
-    const slug = parsed.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'task';
-    const file = path.join(dir, `${slug}-${parsed.sourceHash.slice('sha256:'.length, 'sha256:'.length + 12)}.md`);
-    fs.writeFileSync(file, raw.endsWith('\n') ? raw : `${raw}\n`, 'utf8');
-
-    return {
-      taskDocument: file,
-      draft: raw,
-      title: parsed.title,
-      milestones: parsed.milestones.map((milestone) => ({ id: milestone.id, title: milestone.title })),
-      providerId: response.providerId,
-      model: response.model,
-    };
+    return draftTaskDocument({ tenantId: input.tenantId, system, task, providerId: input.providerId, model: input.model, maxOutputTokens: input.maxOutputTokens });
   }
 }
 

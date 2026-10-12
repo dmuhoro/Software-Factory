@@ -14,6 +14,7 @@ import { respondWithError } from '../../utils/respondWithError';
 import { validateTenantRequest } from '../middleware/tenantAuth';
 import { LoopControlService } from '../../services/loopControlService';
 import { GoalIntakeService } from '../../services/goalIntakeService';
+import { IssueIntakeService } from '../../services/issueIntakeService';
 
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
@@ -49,6 +50,25 @@ router.post('/goals', async (req: Request, res: Response) => {
     return res.status(201).json({ status: 'success', ...draft });
   } catch (error) {
     return respondWithError(res, error, 'LOOP_GOAL_DRAFT_FAILED');
+  }
+});
+
+/** Draft a task document from a tracker issue (local file or GitHub), validated by the parser. */
+router.post('/issues', async (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  try {
+    const draft = await IssueIntakeService.draft({
+      tenantId: tenant(req),
+      repo: req.body?.repo,
+      source: req.body?.source,
+      providerId: req.body?.providerId,
+      model: req.body?.model,
+      maxOutputTokens: typeof req.body?.maxOutputTokens === 'number' ? req.body.maxOutputTokens : undefined,
+      timeoutMs: typeof req.body?.timeoutMs === 'number' ? req.body.timeoutMs : undefined,
+    });
+    return res.status(201).json({ status: 'success', ...draft });
+  } catch (error) {
+    return respondWithError(res, error, 'LOOP_ISSUE_DRAFT_FAILED');
   }
 });
 

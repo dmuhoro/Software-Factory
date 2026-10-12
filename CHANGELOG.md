@@ -4,6 +4,46 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.23 — the tracker bridge: an issue becomes a validated task document
+
+A goal always had a way in (`GoalIntakeService`). A tracker issue had none: whoever wanted the loop
+to pick up real work had to hand-transcribe the issue into a task document, losing the issue's
+identity and any chance of traceability. WP-2 (Sprint 28) closes that gap with a bridge that reads
+an issue from a tracker and drafts the task document through the *same* model contract and the
+loop's own parser, so the resulting document is no more trusted than a goal-drafted one.
+
+- **`IssueTrackerService` (new) reads one issue from either of two sources.**
+  - `local` — a JSON object with a `title` (id/body/url/labels optional), or markdown with a `# `
+    heading. The path must live inside the approved workspace (`ISSUE_LOCAL_PATH_OUTSIDE_WORKSPACE`
+    otherwise). Something that cannot be an issue — an empty file, unparsable JSON, JSON with no
+    title, prose with no heading — is refused (`ISSUE_LOCAL_FILE_INVALID`), never invented.
+  - `github` — the GitHub REST API through the guarded egress path (`egressJson`) with a base URL
+    that defaults to `https://api.github.com`. The token comes only from `resolveSecretRef`
+    (`ISSUE_GITHUB_TOKEN_REQUIRED`), and the adapter refuses before any socket is opened when there
+    is no allowlisted token. Statuses map explicitly: `404` → `ISSUE_GITHUB_NOT_FOUND`, `401/403` →
+    `ISSUE_GITHUB_AUTH_FAILED`, a pull-request payload → `ISSUE_GITHUB_IS_PULL_REQUEST`, any other
+    non-2xx → `ISSUE_GITHUB_FETCH_FAILED`, a body that is not an issue → `ISSUE_GITHUB_RESPONSE_INVALID`.
+- **`IssueIntakeService` (new) is the bridge, and it is deliberately thin.** It fetches the issue,
+  then drafts through `draftTaskDocument`, the same parser-validated core goal intake uses, so a
+  draft an issue produces is validated-and-written exactly like a goal draft — unequal elsewheres
+  would be two standards for the same trust boundary. `goalIntakeService.ts` now exports
+  `draftTaskDocument` and `taskDocumentSystem`; the goal path is unchanged in behavior.
+- **`POST /api/loop/issues` (new route)** mirrors the goals route: issue source, provider/model,
+  repo, returns `201` with the validated draft plus the issue's identity.
+
+**Evidence:** `test/issue-intake.test.ts` (new, 12 arms): both local formats read; empty/malformed/
+not-a-title/prose refusals; outside-workspace refusal; unknown-source refusal; the GitHub adapter
+refuses without a token *before* any lookup; repo/number shape guard; one issue read through the
+guarded egress path against a loopback stub; status and shape mapping (404/401/403/503/non-issue/
+pull-request); the bridge drafting a two-milestone document with the blocking edge preserved and the
+parser accepting it; a parser-rejected draft refused (`LOOP_ISSUE_DRAFT_INVALID`); and the bridge
+never reaching the model when the issue cannot be read. Failing-first was recorded: with the
+JSON-title guard removed, the refusal arm goes red. Full suite: 377/377. All verify gates green.
+
+**Honest limits:** the GitHub *real-network* success path is not exercised here — `api.github.com`
+is not allowlisted in this environment, which is itself the point: without the operator's
+allowlist the adapter fails closed. The status/parse contract is proven against a loopback stub.
+
 ### 4.13.22 — the review runs two axes, and either one can refuse the commit
 
 `ReviewService.review` asked one model read to judge a change on two unrelated questions at once —
