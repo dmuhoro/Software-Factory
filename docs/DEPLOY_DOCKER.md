@@ -72,6 +72,43 @@ docker compose down            # stop, keep data
 docker compose down -v         # stop and DELETE the sf-data volume (destructive)
 ```
 
+## Sandboxed verification (bwrap) — off by default, and why
+
+The loop verifies repositories by running their own test/lint commands **inside a `bubblewrap`
+(bwrap) sandbox**, and fails closed: a command that cannot be sandboxed is refused, never run
+bare. The shipped image therefore does **not** run sandboxed verification, because a default
+container cannot provide what bwrap needs:
+
+- the runtime image installs no `bubblewrap`, and
+- a default (unprivileged) container cannot create the user and mount namespaces bwrap requires.
+  Verified on a stock host: bwrap succeeds only with `--privileged`.
+
+This is deliberate. The product refuses rather than running a repository's code unguarded, and the
+health/`configuration` surface reports `degraded` when the sandbox is unavailable.
+
+To enable sandboxed execution (an explicit operator choice, with the security trade-off that
+implies):
+
+```sh
+# 1. derive an image that ships bubblewrap
+cat > Dockerfile.sandbox <<'EOF'
+FROM software-factory:local
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends bubblewrap \
+  && rm -rf /var/lib/apt/lists/*
+EOF
+docker build -f Dockerfile.sandbox -t software-factory:sandbox .
+
+# 2. run it with namespace permission (privileged overrides the no-new-privileges default)
+docker run --rm --privileged -p 8080:3000 \
+  --env-file .env.docker \
+  -v sf-data:/data \
+  software-factory:sandbox
+```
+
+A host that permits unprivileged user namespaces may not need `--privileged`; confirm on your host
+before relying on it. Do not enable this on a shared or untrusted host.
+
 ## Secrets
 
 `.env` and `.env.docker` are gitignored. Never put a live credential in

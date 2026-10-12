@@ -4,6 +4,27 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.21 — the API execution boundary runs through the sandbox, and fails closed
+
+ADR-010 recorded one open gap it did not close: `ExecutionBoundaryService.run` — the path behind
+`POST /api/execution/:manifestId/run` — copied a source tree to a throwaway snapshot and ran the
+detected verification profile with `execFileSync` directly. It confined the source path and
+sanitized the environment, but ran no bwrap and did not unshare the network, so the manifest's
+`network: 'disabled'` was a label, not an enforced state. A repository's own verification command
+is arbitrary code, so this was a real execution path outside the boundary the loop enforces.
+
+- **`run` now builds each profile step with `verificationStepCommand` and executes it through
+  `groundTruthService.runCommand` with the doctrine sandbox and `DoctrineIsolationService.childEnv`,
+  exactly as `executeVerification` does.** A command that cannot be sandboxed is refused, never run
+  bare; a toolchain hidden by the sandbox is named (`SANDBOX_TOOLCHAIN_HIDDEN`), not dumped.
+- **The manifest's `network` claim is derived from the doctrine** (`sandbox.enableNetwork`) instead
+  of hardcoded `'disabled'`, so the record matches the state the sandbox actually enforces.
+
+**Evidence:** `test/wp7-execution-boundary.test.ts` gains an arm that runs a manifest whose profile
+step invokes a missing tool and asserts `run.passed === false` with a `SANDBOX_TOOLCHAIN_HIDDEN`
+output. **Failing-first:** dropping the sandbox argument makes the arm fail — a bare `execFileSync`
+never produces the sandbox refusal. Full suite: **361/361**.
+
 ### 4.13.20 — the layer-4 gate reads the ledger version from source
 
 `scripts/verify-layer4.sh` asserted the migrated ledger is rewritten at version `'5'` — a literal

@@ -45,7 +45,7 @@ closing the honesty and provisioning gaps below, not porting Forge's loop.
 | WP-4 | Durable auth/rate-limits + cross-tenant security tests | cross-tenant read/write refused |
 | WP-5 | Operator caps & audit (renumbered by operator directive; the original "model productionisation" stays behind its hosted-model-key input) | operator cap overrides enforced and audited (4.13.15) |
 | WP-6 | Daily AI-token budget guard (renumbered by operator directive; the original "repository tooling / PR flow" stays behind its GitHub input) | a spent tenant is refused with 429 before the model is called |
-| WP-7 | Isolated execution boundary (ADR + doctrine) | ADR accepted; escape test refused; live verify path sandboxed (4.13.18) |
+| WP-7 | Isolated execution boundary (ADR + doctrine) | ADR accepted; escape test refused; live verify path sandboxed (4.13.18); API execution path sandboxed (4.13.21) |
 | WP-8 | Evaluation harness scoring generated products | harness scores a known-bad product low |
 | WP-9 | CI/CD, backups, restore + load tests | restore returns the data; pipeline is the gate |
 | WP-10 | Scale & economics: queue isolation, budgets, metering | metering matches usage; per-tenant queue isolation holds; daily-token budget enforced (WP-6) |
@@ -257,10 +257,12 @@ strengths — but no ADR named the boundary, so the strongest was easily mistake
    duplicated-prefix check as the defect it exists to prevent.
 
 **Honest scope (in ADR-010):** the three mechanisms are documented for what each actually provides.
-`ExecutionBoundaryService` runs no bwrap and does not unshare the network (`network:'disabled'` is
-a label); `SandboxPolicyService` executes nothing (`planRun` → `PLANNED`). The bwrap sandbox — used
-by the loop's verify stage and the `no-op-unit` gate — is the strong boundary, and its escapes were
-already refused by `test/loop-sandbox.test.ts`.
+`SandboxPolicyService` executes nothing (`planRun` → `PLANNED`). The bwrap sandbox — used by the
+loop's verify stage, the `no-op-unit` gate, `verificationProfileService`, and (as of 4.13.21)
+`ExecutionBoundaryService` — is the strong boundary, and its escapes were already refused by
+`test/loop-sandbox.test.ts`. The one honest limit that remains is environmental: the shipped
+container cannot run bwrap without namespace permission (see the 4.13.21 hardening note), so every
+sandboxed path refuses inside it rather than running bare.
 
 **Closed — the named open gap (4.13.18):** `verificationProfileService.executeVerification` called
 `execFileSync` directly, reachable from the live route `POST /api/factory-jobs/:id/verify` via
@@ -275,6 +277,14 @@ defects in the same path were fixed rather than papered over:
   (`Command failed: <bwrap> <argv…>`) when a command exited non-zero with no output, and the loose
   `TYPECHECK` regex (`/type|tsc|compile/`) read a stray `NODE_ENV=test` as a `TEST` failure; the
   fallback is now a bounded, argv-free condition and the classifier requires a real typecheck token.
+
+**Closed — the other named gap (4.13.21):** `ExecutionBoundaryService.run` — the API path behind
+`POST /api/execution/:manifestId/run` — also called `execFileSync` directly: no bwrap, no network
+unshare, `network:'disabled'` a label. It now builds each step with `verificationStepCommand` and
+routes it through `runCommand` with the doctrine sandbox and `DoctrineIsolationService.childEnv`, and
+derives the manifest's `network` from `sandbox.enableNetwork`. Verified by a new arm in
+`test/wp7-execution-boundary.test.ts` (failing-first: dropping the sandbox argument fails it). Full
+suite: **361/361**.
 
 **Evidence:**
 - `test/wp7-execution-boundary.test.ts` — a doctrine with `sandbox.enabled:false` is refused; both
@@ -548,3 +558,22 @@ migrated ledger is rewritten at version `'5'`, a literal left behind when `LEDGE
 pinned a number and silently drifted, letting the "rewritten at the current version" check pass
 against the wrong one. The gate now reads `LEDGER_VERSION` from source and refuses if it cannot, so
 it cannot drift again. `npm run verify:layer4`: 42/42.
+
+## Hardening — the API execution boundary joined the sandbox (4.13.21)
+
+ADR-010 named two bare `execFileSync` holes. The first
+(`verificationProfileService.executeVerification`) closed in 4.13.18. The second was
+`ExecutionBoundaryService.run` — the path behind `POST /api/execution/:manifestId/run`: it
+snapshotted a repository and ran the detected verification profile with `execFileSync`, confining the
+source path and sanitizing the environment but running no bwrap and unsharing no network, with
+`network:'disabled'` only a manifest label. It now executes each step through `runCommand` with the
+doctrine sandbox and `DoctrineIsolationService.childEnv`, refuses a step it cannot sandbox, and
+derives `network` from `sandbox.enableNetwork`. New arm in `test/wp7-execution-boundary.test.ts`
+(failing-first: removing the sandbox argument fails it). Full suite: **361/361**.
+
+**The remaining limit is environmental, not a code gap.** bwrap needs user and mount namespaces a
+default container is not permitted to create — confirmed on this host, where bwrap succeeds inside a
+container only with `--privileged`. Because every sandboxed path now fails closed, the loop,
+repository verification, and the API execution boundary all refuse inside such a container rather
+than running bare. Enabling them is an operator decision, documented in `docs/DEPLOY_DOCKER.md` and
+`docs/DEPLOY_RAILWAY.md`, not silently assumed.
