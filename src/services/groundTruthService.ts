@@ -114,21 +114,23 @@ export function runCommand(repo: string, command: string, timeoutMs: number, env
       if (error?.code === 'ENOENT') {
         return { exitCode: 1, output: `refused: sandbox binary not found (${binary}); verification commands fail closed when the sandbox cannot start`, startedAt, completedAt: now() };
       }
-      const output = `${error?.stdout ?? ''}${error?.stderr ?? ''}`.trim().slice(-400_000) || `sandbox: ${error?.message ?? 'execution failed'}`;
       const exitCode = typeof error?.status === 'number' ? error.status : 1;
-      // `sh: 1: <tool>: not found` inside the sandbox is almost always a hidden toolchain, not a
-      // typo: the sandbox masks /home, /tmp, /run and /root, so a version-manager node or npm
-      // installed under the operator's home is invisible. An opaque exit 127 here once burned a
-      // whole attempt cap (sprint 22, finding 5), so it is named at the boundary that observed it.
+      const tail = `${error?.stdout ?? ''}${error?.stderr ?? ''}`.trim().slice(-400_000);
+      // `error.message` is deliberately never used as the output. It is
+      // `Command failed: <binary> <argv...>`, so a failure with no stdout/stderr would copy the
+      // entire sandbox command line — including every `--setenv` `sandboxArgv` emitted — into the
+      // persisted verification record. That leaked the (already-scrubbed) environment and poisoned
+      // failure classification: a stray `NODE_ENV=test` in the dump was read as a test failure. A
+      // silent failure is named, not dumped.
       if (exitCode === 127) {
         return {
           exitCode,
-          output: `SANDBOX_TOOLCHAIN_HIDDEN: a sandboxed verification command could not find its executable (exit 127). The sandbox masks /home, /tmp, /run and /root, so a toolchain installed under your home directory (a version-manager node or npm, for example) is invisible inside it. Use a system binary (/usr/bin) or a repository-local one (node_modules/.bin/…). Shell said: ${output}`,
+          output: `SANDBOX_TOOLCHAIN_HIDDEN: a sandboxed verification command could not find its executable (exit 127). The sandbox masks /home, /tmp, /run and /root, so a toolchain installed under your home directory (a version-manager node or npm, for example) is invisible inside it. Use a system binary (/usr/bin) or a repository-local one (node_modules/.bin/…). Shell said: ${tail}`,
           startedAt,
           completedAt: now(),
         };
       }
-      return { exitCode, output, startedAt, completedAt: now() };
+      return { exitCode, output: tail || `sandbox: the sandboxed command exited with code ${exitCode} and produced no output`, startedAt, completedAt: now() };
     }
   }
   try {

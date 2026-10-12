@@ -4,6 +4,40 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.18 — repository verification runs inside the sandbox, and never leaks the environment (WP-7 follow-up)
+
+ADR-010 named one hole it deliberately did not close: `verificationProfileService.executeVerification`
+— reached from the live route `POST /api/factory-jobs/:id/verify` via `FactoryJobService.verifyRepository`
+— called `execFileSync` directly, outside bwrap. This closes it.
+
+- **R-14 now covers the last bare execution path.** `executeVerification` builds each profile step
+  as a shell command and runs it through `runCommand` with the doctrine sandbox, so a repository
+  whose profile cannot be sandboxed is **refused**, exactly as the loop's verify stage is. The npm
+  step expands to the script body and pins `PATH` to `/usr/bin:/bin:<repo>/node_modules/.bin`, so a
+  toolchain the boundary would otherwise hide (the sandbox masks `/home`) is still reachable.
+- **The verification process no longer inherits the operator's environment.** The first draft
+  passed `{ ...process.env }`; `sandboxArgv` copies every entry onto the bwrap command line, which
+  put live credentials into a world-readable argv. `executeVerification` now receives
+  `DoctrineIsolationService.childEnv(...)` — the same scrubbed environment every loop-spawned
+  process gets.
+- **A failed sandbox command is named, not dumped.** `runCommand`'s sandbox branch fell back to
+  `error.message` — `Command failed: <bwrap> <argv...>` — whenever a command exited non-zero with
+  no output, persisting the whole command line into the verification record and letting a stray
+  `NODE_ENV=test` be classified as a `TEST` failure. The fallback is now a bounded, argv-free
+  condition; a genuinely silent failure stays `UNKNOWN`.
+- **Failure classification stopped matching on incidental words.** `classifyFailure`'s
+  `TYPECHECK` arm was loose (`/type|tsc|compile/` matched any "type"); it now requires a
+  typecheck/tsc/compile/`error TS` token.
+
+**Evidence:** `test/wp7-verify-profile-sandbox.test.ts` (6 arms) — a missing bwrap binary refuses;
+a real profile runs sandboxed; the service contains no `execFileSync`/`spawn`; the spawned process
+does not see an ambient `SF_LEAK_CANARY`; and a failing step reports a named condition with no
+`--setenv`/`Command failed:` in the output. **Failing-first:** forwarding `process.env` fails the
+no-inherit arm; restoring the `error.message` fallback fails the no-dump arm; reverting the sandbox
+routing fails the source-invariant arm. `harness.test.ts` (bounded repair) is green again now that
+classification reads the command's output instead of its argv. ADR-010's open gap is closed and the
+record updated. Full suite: **359/359**.
+
 ### 4.13.17 — a record id never collapses two records (WP-10 hardening)
 
 `DurableStore.id` hashed `${entropy}:${Date.now()}:${process.pid}`. When a caller's `entropy` is

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { DurableStore } from './durableStore';
 import { ContextIndexService, seedBuiltInContexts } from './contextIndexService';
+import { DoctrineService } from './doctrineService';
 import { detectVerificationProfile, executeVerification, VerificationProfile, FailureClass } from './verificationProfileService';
 import { evaluateProduct } from './productEvaluationService';
 import { ApprovalPolicyService } from './approvalPolicyService';
@@ -91,7 +92,15 @@ export class FactoryJobService {
 
   public static verifyRepository(tenantId: string, id: string): FactoryJob {
     const job = this.get(tenantId, id); if (!job?.repositoryRun) throw new Error(job ? 'REPOSITORY_BRANCH_REQUIRED' : 'FACTORY_JOB_NOT_FOUND');
-    const startedAt = new Date().toISOString(); const profile = detectVerificationProfile(job.repositoryRun.repositoryPath); const execution = executeVerification(job.repositoryRun.repositoryPath, profile, Number(process.env.FACTORY_VERIFY_TIMEOUT_MS || 120000));
+    const startedAt = new Date().toISOString();
+    const profile = detectVerificationProfile(job.repositoryRun.repositoryPath);
+    const sandbox = DoctrineService.load().loop.sandbox;
+    const execution = executeVerification(
+      job.repositoryRun.repositoryPath,
+      profile,
+      Number(process.env.FACTORY_VERIFY_TIMEOUT_MS || 120000),
+      sandbox,
+    );
     const verificationRun: VerificationRun = { command: profile.steps.map((step) => step.label).join(' && '), profile, passed: execution.passed, exitCode: execution.exitCode, output: execution.output, failedStep: execution.failedStep, failureClass: execution.failureClass, startedAt, completedAt: new Date().toISOString() };
     if (!verificationRun.passed) FailureService.record({ tenantId, jobId: id, domain: verificationRun.failureClass ?? 'UNKNOWN', message: `${verificationRun.failedStep ?? 'verification'} failed`, evidence: [verificationRun.output.slice(-2000)] });
     const updated = this.save({ ...job, verificationRun, status: verificationRun.passed ? 'VALIDATING' : 'BLOCKED' }); audit(updated, verificationRun.passed ? 'REPOSITORY_VERIFIED' : 'REPOSITORY_VERIFICATION_FAILED'); return updated;

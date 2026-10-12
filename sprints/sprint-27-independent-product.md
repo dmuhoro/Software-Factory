@@ -45,7 +45,7 @@ closing the honesty and provisioning gaps below, not porting Forge's loop.
 | WP-4 | Durable auth/rate-limits + cross-tenant security tests | cross-tenant read/write refused |
 | WP-5 | Operator caps & audit (renumbered by operator directive; the original "model productionisation" stays behind its hosted-model-key input) | operator cap overrides enforced and audited (4.13.15) |
 | WP-6 | Daily AI-token budget guard (renumbered by operator directive; the original "repository tooling / PR flow" stays behind its GitHub input) | a spent tenant is refused with 429 before the model is called |
-| WP-7 | Isolated execution boundary (ADR + doctrine) | ADR accepted; escape test refused |
+| WP-7 | Isolated execution boundary (ADR + doctrine) | ADR accepted; escape test refused; live verify path sandboxed (4.13.18) |
 | WP-8 | Evaluation harness scoring generated products | harness scores a known-bad product low |
 | WP-9 | CI/CD, backups, restore + load tests | restore returns the data; pipeline is the gate |
 | WP-10 | Scale & economics: queue isolation, budgets, metering | metering matches usage; per-tenant queue isolation holds; daily-token budget enforced (WP-6) |
@@ -262,17 +262,31 @@ a label); `SandboxPolicyService` executes nothing (`planRun` → `PLANNED`). The
 by the loop's verify stage and the `no-op-unit` gate — is the strong boundary, and its escapes were
 already refused by `test/loop-sandbox.test.ts`.
 
-**Named open gap:** `verificationProfileService.executeVerification` (`:31`) runs unsandboxed and is
-reachable from the live route `POST /api/factory-jobs/:id/verify` via `factoryJobService.verifyRepository`
-(`:93`). It runs the target repo's own declared scripts (not caller argv), so the exposure is bounded,
-but it is outside the boundary and not covered by R-14 today. Highest-priority follow-up: route it
-through `runCommand` with the doctrine sandbox, or refuse when the sandbox cannot start.
+**Closed — the named open gap (4.13.18):** `verificationProfileService.executeVerification` called
+`execFileSync` directly, reachable from the live route `POST /api/factory-jobs/:id/verify` via
+`factoryJobService.verifyRepository`. It now builds each profile step as a shell command and routes
+it through `runCommand` with the doctrine sandbox, so a repo whose profile cannot be sandboxed is
+refused. Verified by `test/wp7-verify-profile-sandbox.test.ts` (6 arms). While wiring it, two real
+defects in the same path were fixed rather than papered over:
+- **the verification process inherited `{ ...process.env }`** — `sandboxArgv` copies every entry
+  onto the bwrap argv, putting live credentials in a world-readable command line; it now receives
+  `DoctrineIsolationService.childEnv(...)`;
+- **a failed sandbox command dumped its own argv** — `runCommand` fell back to `error.message`
+  (`Command failed: <bwrap> <argv…>`) when a command exited non-zero with no output, and the loose
+  `TYPECHECK` regex (`/type|tsc|compile/`) read a stray `NODE_ENV=test` as a `TEST` failure; the
+  fallback is now a bounded, argv-free condition and the classifier requires a real typecheck token.
 
 **Evidence:**
 - `test/wp7-execution-boundary.test.ts` — a doctrine with `sandbox.enabled:false` is refused; both
   boundary services refuse traversal and symlink escapes; `pathGuard` refuses absolute, traversal,
   and symlink escapes. **Failing-first:** reverting the doctrine guard fails arm 1; reverting the two
   services fails the symlink arms (2/6). Full suite: **320/320**.
+- `test/wp7-verify-profile-sandbox.test.ts` (6 arms) — the 4.13.18 follow-up: a missing bwrap binary
+  refuses; a real profile runs sandboxed; the service contains no `execFileSync`/`spawn`; the spawned
+  process does not see an ambient `SF_LEAK_CANARY`; a failed step is named with no `--setenv` or
+  `Command failed:` in the output. **Failing-first:** forwarding `process.env` fails the no-inherit
+  arm; restoring the `error.message` fallback fails the no-dump arm; reverting the routing fails the
+  source-invariant arm. Full suite: **359/359**.
 - Docs moved with the code: `docs/adr/ADR-010-isolated-execution-boundary.md`, indexed in
   `docs/OPERATIONS.md`.
 
@@ -496,3 +510,20 @@ pattern, so the fixture could not be reworded without weakening the arm. The gat
 is it; a file containing any other `AKIA…` value is still blocked, proven with a planted-real-key
 negative control. This is a targeted exemption of a value AWS documents as unusable, not an
 exemption of tests or of the pattern. Full suite: **352/352**; the gate passes.
+
+## Hardening — record-id collision & the WP-7 verification path (4.13.17–4.13.18)
+
+**A meter that quietly dropped events.** `DurableStore.id` hashed `${entropy}:${Date.now()}:${pid}`.
+When a caller's `entropy` is itself a millisecond timestamp — `UsageMeteringService.record` passes
+the event's ISO time — two records minted in the same millisecond hashed to one id, and `record`
+read the second as a replay and discarded it: usage was undercounted, and WP-6's daily token budget
+was enforced against that undercount. `id` now folds a monotonic per-process counter into the digest
+(`deterministicId` is untouched). **Failing-first:** removing the counter collapses a 50-event burst
+below fifty. Full suite: **353/353**.
+
+**The last bare execution path is closed, and it no longer leaks.** Routing
+`verificationProfileService.executeVerification` through the doctrine sandbox (above) was the ADR-010
+follow-up. Two defects found on that path were fixed at the boundary: the verification process no
+longer receives `{ ...process.env }` (which `sandboxArgv` would copy onto a world-readable argv), and
+`runCommand` no longer persists `error.message` — the whole bwrap command line — as failure output.
+See the WP-7 evidence above. Full suite: **359/359**.

@@ -20,8 +20,10 @@ strengths. Reading the code alone, it is easy to mistake one for another.
    invocation (`src/services/groundTruthService.ts:152-195`) with `--unshare-net` (when network
    is disabled), `--unshare-pid`, tmpfs mounts over `/tmp`, `/run`, `/home`, `/root`, a fresh
    `/proc`, and a read-only `--ro-bind / /`. It is used by the loop's verify stage
-   (`src/services/executionLoopService.ts:550-559`) and the `no-op-unit` gate
-   (`src/services/loopGates.ts:156`). This is the strongest boundary and the one R-14 is about.
+   (`src/services/executionLoopService.ts:550-559`), the `no-op-unit` gate
+   (`src/services/loopGates.ts:156`), and repository verification profiles
+   (`verificationProfileService.executeVerification`, reached from the live route
+   `POST /api/factory-jobs/:id/verify`). This is the strongest boundary and the one R-14 is about.
 2. **`ExecutionBoundaryService`** — an API-exposed service (`src/api/routes/workspace.routes.ts:24-25`)
    that copies a source tree to a throwaway snapshot and runs the detected verification profile
    there with a minimal environment. It confines the *source path* and sanitizes the environment,
@@ -48,6 +50,14 @@ code could be configured to break. `parseLoopConfig` now **refuses** a doctrine 
 sandbox (`src/services/doctrineService.ts`), so the only doctrine the loop will load has the
 sandbox on. A command that cannot be sandboxed is refused, never run bare.
 
+`verificationProfileService.executeVerification` was the last bare path: it called `execFileSync`
+directly. It now builds each profile step as a shell command and runs it through `runCommand` with
+the doctrine sandbox, and it receives `DoctrineIsolationService.childEnv(...)` rather than
+`{ ...process.env }` — the ambient environment is never forwarded, because `sandboxArgv` copies
+every entry it is given onto the bwrap command line and would expose the operator's credentials in
+a world-readable argv. A failed sandboxed command is named by a bounded condition, never by
+`error.message` (the bwrap argv); a silent failure stays `UNKNOWN`.
+
 **2. Path containment is decided by `pathGuard`, on real paths.**
 
 `ExecutionBoundaryService.createManifest` and `SandboxPolicyService.createPolicy` re-implemented
@@ -63,25 +73,23 @@ isolation, or that `SandboxPolicyService` executes anything; it does not, and it
 
 ## Consequences
 
-The escape proof is `npm test` — in particular `test/loop-sandbox.test.ts` (bwrap escapes) and
+The escape proof is `npm test` — in particular `test/loop-sandbox.test.ts` (bwrap escapes),
 `test/wp7-execution-boundary.test.ts` (the doctrine cannot be disabled; the two boundary services
 refuse traversal and symlink escapes; `pathGuard` refuses absolute, traversal, and symlink
-escapes). Every arm is a negative control: reverting the fix makes the arm fail.
+escapes), and `test/wp7-verify-profile-sandbox.test.ts` (a missing sandbox refuses; a real profile
+runs sandboxed; the service contains no `execFileSync`/`spawn`; the spawned process does not see an
+ambient `SF_LEAK_CANARY`; a failed step is named without dumping the command line). Every arm is a
+negative control: reverting the fix makes the arm fail.
 
 **Named, open gaps — recorded here rather than papered over:**
 
-- **`verificationProfileService.executeVerification` runs unsandboxed.** It calls `execFileSync`
-  directly (`src/services/verificationProfileService.ts:31`) and is reachable from the live route
-  `POST /api/factory-jobs/:id/verify` via `factoryJobService.verifyRepository`
-  (`src/services/factoryJobService.ts:93`). This path does **not** go through bwrap. It runs the
-  target repository's own declared scripts, not caller-supplied argv, so the exposure is bounded —
-  but it is a real execution path outside the boundary and is not covered by R-14 today. Closing
-  it means routing `executeVerification` through `runCommand` with the doctrine sandbox, or
-  refusing when the sandbox cannot start. **This is the highest-priority follow-up.**
 - **`ExecutionBoundaryService` does not unshare the network.** Its `network: 'disabled'` is a
   label. Until its steps run through `sandboxArgv`, treat it as a snapshot/environment boundary,
   not a network boundary.
 - **Rate-limit and RBAC boundaries are out of scope for this ADR** (see sprint-27, WP-4).
+
+**Closed:** the `verificationProfileService.executeVerification` gap was the ADR's "highest-priority
+follow-up" and is closed as of 4.13.18 (see CHANGELOG); the section above records what now holds.
 
 ## Alternatives rejected
 
