@@ -4,6 +4,22 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.17 — a record id never collapses two records (WP-10 hardening)
+
+`DurableStore.id` hashed `${entropy}:${Date.now()}:${process.pid}`. When a caller's `entropy` is
+itself a millisecond timestamp — `UsageMeteringService.record` passes the event's ISO time — two
+records minted in the same millisecond hashed to the same id. `record` treats an existing id as a
+replay, so the second event was **silently dropped**: usage was undercounted, and the daily token
+budget (WP-6) is enforced against that count. A meter that quietly loses events is not a meter.
+
+- **`DurableStore.id` folds a monotonic per-process counter into the digest**, so an id can never
+  repeat within a process regardless of clock resolution. `deterministicId` — the deliberate
+  content-addressed id used for replay protection — is unchanged.
+
+**Evidence:** `test/wp10-usage-metering.test.ts` gains a 50-event burst arm that records fifty
+events in a tight loop and asserts all fifty are kept. **Failing-first:** removing the counter
+collapses the burst below fifty. Full suite: **353/353**.
+
 ### 4.13.14 — the daily AI-token budget is enforced at the spend boundary (WP-6, as renumbered)
 
 WP-10 part 1 built the meter and deliberately deferred capping until a budget could be exercised

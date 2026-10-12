@@ -64,6 +64,15 @@ test('WP-10: the day total equals the sum of recorded events for that tenant', (
   assert.equal(UsageMeteringService.daily(OTHER).tokens, 900, 'another tenant\'s usage must not leak into this total');
 });
 
+test('WP-10: many distinct events in the same millisecond are all kept, never collapsed', () => {
+  const burst = 'tenant_wp10_burst';
+  register(burst, IndustryNiche.REAL_ESTATE);
+  for (let i = 0; i < 50; i += 1) UsageMeteringService.record({ tenantId: burst, source: 'ai-transform', tokens: 1 });
+  const summary = UsageMeteringService.daily(burst);
+  assert.equal(summary.events, 50, 'a record id must never collide: two same-millisecond events are two events');
+  assert.equal(summary.tokens, 50);
+});
+
 test('WP-10: a retried call with the same correlation id is metered once', () => {
   const before = UsageMeteringService.daily(TENANT).tokens;
   UsageMeteringService.record({ tenantId: TENANT, source: 'ai-transform', tokens: 40, correlationId: 'corr_wp10_1' });
