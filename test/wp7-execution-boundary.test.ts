@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const WORKSPACE = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-wp7-ws-'));
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-wp7-data-'));
@@ -108,4 +109,22 @@ test('WP-7: pathGuard refuses absolute escapes, traversal, and symlink escapes',
   fs.rmSync(link, { recursive: true, force: true });
   fs.symlinkSync(outside, link, 'dir');
   assert.throws(() => resolveWithin(link, { mustExist: false }), /PATH_OUTSIDE_APPROVED_WORKSPACE/, 'the guard must compare real paths');
+});
+
+test('WP-7: ExecutionBoundaryService.run executes only through the sandbox and fails closed', () => {
+  const dir = path.join(WORKSPACE, 'sandbox-run');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'wp7', scripts: { verify: 'definitely-not-a-real-tool-wp7' } }));
+  execFileSync('git', ['init', '-q', dir]);
+  execFileSync('git', ['-C', dir, 'config', 'user.email', 'wp7@test.local']);
+  execFileSync('git', ['-C', dir, 'config', 'user.name', 'WP7']);
+  execFileSync('git', ['-C', dir, 'add', '.']);
+  execFileSync('git', ['-C', dir, 'commit', '-qm', 'init']);
+
+  const manifest = ExecutionBoundaryService.createManifest('tenant_wp7', dir, { timeoutMs: 30000 });
+  assert.equal(manifest.network, 'disabled');
+  const run = ExecutionBoundaryService.run('tenant_wp7', manifest.id);
+  assert.equal(run.passed, false);
+  assert.match(run.output, /SANDBOX_TOOLCHAIN_HIDDEN/, 'a bare execFileSync never produces the sandbox refusal');
+  assert.equal(run.failedStep, 'verify');
 });

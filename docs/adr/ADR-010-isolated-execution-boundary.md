@@ -26,9 +26,10 @@ strengths. Reading the code alone, it is easy to mistake one for another.
    `POST /api/factory-jobs/:id/verify`). This is the strongest boundary and the one R-14 is about.
 2. **`ExecutionBoundaryService`** — an API-exposed service (`src/api/routes/workspace.routes.ts:24-25`)
    that copies a source tree to a throwaway snapshot and runs the detected verification profile
-   there with a minimal environment. It confines the *source path* and sanitizes the environment,
-   but runs no bwrap and does not unshare the network. `network: 'disabled'` is a manifest label,
-   not an enforced state.
+   there. It confines the *source path* (`pathGuard`) and sanitizes the environment, and — as of
+   4.13.21 — executes each step through the same bwrap sandbox as the loop (`runCommand` +
+   `DoctrineIsolationService.childEnv`), refusing a step it cannot sandbox. Its manifest `network`
+   field is derived from the doctrine rather than hardcoded. See the closure note below.
 3. **`SandboxPolicyService`** — a policy *registry*. `createPolicy` validates and stores a policy;
    `planRun` creates a run with status `'PLANNED'` and executes nothing
    (`src/services/sandboxPolicyService.ts:16`). It is declarative, not an executor.
@@ -76,20 +77,28 @@ isolation, or that `SandboxPolicyService` executes anything; it does not, and it
 The escape proof is `npm test` — in particular `test/loop-sandbox.test.ts` (bwrap escapes),
 `test/wp7-execution-boundary.test.ts` (the doctrine cannot be disabled; the two boundary services
 refuse traversal and symlink escapes; `pathGuard` refuses absolute, traversal, and symlink
-escapes), and `test/wp7-verify-profile-sandbox.test.ts` (a missing sandbox refuses; a real profile
+escapes; `ExecutionBoundaryService.run` executes only through the sandbox and fails closed), and
+`test/wp7-verify-profile-sandbox.test.ts` (a missing sandbox refuses; a real profile
 runs sandboxed; the service contains no `execFileSync`/`spawn`; the spawned process does not see an
 ambient `SF_LEAK_CANARY`; a failed step is named without dumping the command line). Every arm is a
 negative control: reverting the fix makes the arm fail.
 
 **Named, open gaps — recorded here rather than papered over:**
 
-- **`ExecutionBoundaryService` does not unshare the network.** Its `network: 'disabled'` is a
-  label. Until its steps run through `sandboxArgv`, treat it as a snapshot/environment boundary,
-  not a network boundary.
+- **Container execution: bwrap is not available in the shipped runtime image.** The Docker/Railway
+  image installs no `bubblewrap`, and a default (unprivileged) container cannot create the user and
+  mount namespaces bwrap needs — verified on this host, where bwrap succeeds only with
+  `--privileged`. Because every sandboxed path now fails closed, repository verification and the API
+  execution boundary refuse inside such a container rather than running bare. Enabling them is an
+  operator decision (a privileged container, or a host that permits unprivileged user namespaces);
+  it is not silently assumed. See `docs/DEPLOY_DOCKER.md` and `docs/DEPLOY_RAILWAY.md`.
 - **Rate-limit and RBAC boundaries are out of scope for this ADR** (see sprint-27, WP-4).
 
 **Closed:** the `verificationProfileService.executeVerification` gap was the ADR's "highest-priority
-follow-up" and is closed as of 4.13.18 (see CHANGELOG); the section above records what now holds.
+follow-up" and is closed as of 4.13.18. The `ExecutionBoundaryService` bare-`execFileSync` gap — the
+other named hole — is closed as of 4.13.21 (see CHANGELOG); both the loop's verify path and the API
+execution path now run through the same bwrap sandbox and fail closed. The section above records
+what now holds.
 
 ## Alternatives rejected
 
@@ -103,6 +112,8 @@ non-sandboxed proof logic (`test/loop-ground-truth.test.ts`). The real execution
 always supplies an enabled sandbox, and that is now guaranteed by refusing a doctrine that
 disables it. Forcing every `runCommand` caller to opt in is a larger change tracked separately.
 
-**Treat `ExecutionBoundaryService` and the bwrap sandbox as one boundary.** Rejected: they are
-not. Merging them in the record would claim an isolation the former does not provide, which is
-the failure mode this ADR exists to prevent.
+**Treat `ExecutionBoundaryService` and the bwrap sandbox as one boundary** — *originally rejected,
+now adopted.* At the time, `ExecutionBoundaryService` ran bare, so recording them as one boundary
+would have claimed an isolation the former did not provide. The follow-up (4.13.21) closed that
+gap: the service now executes through `runCommand` with the doctrine sandbox, so they are one
+boundary in fact, not merely in the record.

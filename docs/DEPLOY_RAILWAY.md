@@ -65,6 +65,12 @@ never stored in the ledger. The host must also be listed in `FACTORY_ALLOWED_MOD
 - **Supported:** submitting, listing and streaming task-run records over the authenticated HTTP
   API; running the loop against a git repository that exists on the volume under
   `FACTORY_WORKSPACE_ROOT`.
-- **Not supported yet:** running verification commands that require `bwrap` inside the container.
-  The loop refuses to run a command it cannot sandbox rather than running it bare; container-level
-  execution isolation is tracked as its own change and is not silently assumed here.
+- **Not enabled by default: running verification commands that require `bwrap` inside the
+  container.** The image ships no `bubblewrap`, and a default (unprivileged) container cannot create
+  the namespaces bwrap needs. Every sandboxed path therefore fails closed — the loop, repository
+  verification, and the API execution boundary refuse a command they cannot sandbox rather than
+  running it bare. Enabling them is an operator decision: run the container with permission to
+  create namespaces (a privileged container, or a host that permits unprivileged user namespaces)
+  and install `bubblewrap` in the image. See `docs/DEPLOY_DOCKER.md`.
+- **Supported, fail-closed:** every other endpoint. A missing sandbox degrades to an explicit
+  refusal, never to an unguarded execution.

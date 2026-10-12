@@ -4,10 +4,13 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { DurableStore } from './durableStore';
-import { detectVerificationProfile, FailureClass, VerificationProfile } from './verificationProfileService';
+import { detectVerificationProfile, FailureClass, VerificationProfile, verificationStepCommand } from './verificationProfileService';
+import { runCommand } from './groundTruthService';
+import { DoctrineService } from './doctrineService';
+import { DoctrineIsolationService } from './doctrineIsolationService';
 import { resolveWithin, isGitRepository } from '../utils/pathGuard';
 
-export interface ExecutionManifest { id: string; tenantId: string; sourcePath: string; snapshotPath: string; sourceCommit: string; profile: VerificationProfile; network: 'disabled'; environment: 'sanitized'; timeoutMs: number; maxOutputBytes: number; createdAt: string; }
+export interface ExecutionManifest { id: string; tenantId: string; sourcePath: string; snapshotPath: string; sourceCommit: string; profile: VerificationProfile; network: 'disabled' | 'enabled'; environment: 'sanitized'; timeoutMs: number; maxOutputBytes: number; createdAt: string; }
 export interface IsolatedRun { manifest: ExecutionManifest; passed: boolean; exitCode: number; output: string; failedStep?: string; failureClass?: FailureClass; completedAt: string; }
 
 function commit(repo: string): string { return execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 30000 }).trim(); }
@@ -20,14 +23,16 @@ export class ExecutionBoundaryService {
     // a prefix check is defeated by a symlink inside the workspace that points outside it.
     const root = resolveWithin(sourcePath, { code: 'EXECUTION_SOURCE_OUTSIDE_APPROVED_WORKSPACE', mustExist: false });
     if (!isGitRepository(root)) throw new Error('EXECUTION_SOURCE_NOT_GIT');
-    const snapshotPath = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-execution-')); copyTree(root, snapshotPath); const profile = detectVerificationProfile(snapshotPath); const manifest: ExecutionManifest = { id: DurableStore.id('execution', `${tenantId}:${root}`), tenantId, sourcePath: root, snapshotPath, sourceCommit: commit(root), profile, network: 'disabled', environment: 'sanitized', timeoutMs: Math.min(options.timeoutMs ?? 120000, 300000), maxOutputBytes: Math.min(options.maxOutputBytes ?? 2_000_000, 5_000_000), createdAt: new Date().toISOString() };
+    const snapshotPath = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-execution-')); copyTree(root, snapshotPath); const profile = detectVerificationProfile(snapshotPath); const manifest: ExecutionManifest = { id: DurableStore.id('execution', `${tenantId}:${root}`), tenantId, sourcePath: root, snapshotPath, sourceCommit: commit(root), profile, network: DoctrineService.load().loop.sandbox.enableNetwork ? 'enabled' : 'disabled', environment: 'sanitized', timeoutMs: Math.min(options.timeoutMs ?? 120000, 300000), maxOutputBytes: Math.min(options.maxOutputBytes ?? 2_000_000, 5_000_000), createdAt: new Date().toISOString() };
     DurableStore.upsert('backups', manifest.id, manifest as unknown as Record<string, unknown>); return manifest;
   }
   public static run(tenantId: string, manifestId: string): IsolatedRun {
     const manifest = DurableStore.get('backups', manifestId) as unknown as ExecutionManifest | undefined; if (!manifest || manifest.tenantId !== tenantId || !manifest.snapshotPath) throw new Error('EXECUTION_MANIFEST_NOT_FOUND');
-    const env = { PATH: process.env.PATH || '', HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'factory-home-')), NODE_ENV: 'test', CI: 'true' }; const output: string[] = [];
+    const doctrine = DoctrineService.load(); const sandbox = doctrine.loop.sandbox; const env = DoctrineIsolationService.childEnv(doctrine.root, doctrine.digest); const output: string[] = [];
     for (const step of manifest.profile.steps) {
-      try { const value = execFileSync(step.executable, step.args, { cwd: manifest.snapshotPath, env, encoding: 'utf8', timeout: manifest.timeoutMs, maxBuffer: manifest.maxOutputBytes, stdio: ['ignore', 'pipe', 'pipe'] }); output.push(`$ ${step.label}\n${value}`); } catch (error: any) { const value = `${error.stdout || ''}${error.stderr || ''}`.slice(-manifest.maxOutputBytes); output.push(`$ ${step.label}\n${value}`); const result: IsolatedRun = { manifest, passed: false, exitCode: typeof error.status === 'number' ? error.status : 1, output: output.join('\n'), failedStep: step.id, failureClass: classify(step.id, value), completedAt: new Date().toISOString() }; this.cleanup(manifest); return result; }
+      const run = runCommand(manifest.snapshotPath, verificationStepCommand(step, manifest.snapshotPath), manifest.timeoutMs, env, sandbox);
+      output.push(`$ ${step.label}\n${run.output}`);
+      if (run.exitCode !== 0) { const result: IsolatedRun = { manifest, passed: false, exitCode: run.exitCode, output: output.join('\n'), failedStep: step.id, failureClass: classify(step.id, run.output), completedAt: new Date().toISOString() }; this.cleanup(manifest); return result; }
     }
     const result: IsolatedRun = { manifest, passed: true, exitCode: 0, output: output.join('\n'), completedAt: new Date().toISOString() }; this.cleanup(manifest); return result;
   }
