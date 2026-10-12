@@ -579,7 +579,12 @@ export class ExecutionLoopService {
           timeoutMs: loop.verification.timeoutMs,
           feedback,
         });
-        attempt.review = { approved: review.approved, findings: review.findings, reviewer: `${review.providerId}/${review.model}` };
+        attempt.review = {
+          approved: review.approved,
+          findings: review.findings,
+          reviewer: `${review.providerId}/${review.model}`,
+          axes: review.axes.map((verdict) => ({ axis: verdict.axis, approved: verdict.approved, findings: verdict.findings })),
+        };
         enter('review', 'after', { proof, review });
 
         // ── COMMIT ────────────────────────────────────────────────────────
