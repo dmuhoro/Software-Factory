@@ -539,3 +539,12 @@ suite's load and passed in isolation, the signature of a millisecond race. `repl
 moved, making the "fresh timestamp, new signature" contract true at any clock resolution.
 **Failing-first:** a deterministic arm seeds a delivery timestamped at the clock and fails when the
 fix is reverted. Full suite: **360/360**.
+
+## Hardening — the layer-4 gate tracked a stale ledger version (4.13.20)
+
+`npm run verify` (not just `npm test`) was red at HEAD: `scripts/verify-layer4.sh` asserted the
+migrated ledger is rewritten at version `'5'`, a literal left behind when `LEDGER_VERSION` moved to
+6 and then 7. The unit migration arms import the constant and so stayed correct; the shell gate
+pinned a number and silently drifted, letting the "rewritten at the current version" check pass
+against the wrong one. The gate now reads `LEDGER_VERSION` from source and refuses if it cannot, so
+it cannot drift again. `npm run verify:layer4`: 42/42.

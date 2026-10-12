@@ -4,6 +4,18 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.20 — the layer-4 gate reads the ledger version from source
+
+`scripts/verify-layer4.sh` asserted the migrated ledger is rewritten at version `'5'` — a literal
+left behind when `LEDGER_VERSION` moved to 6 and then 7. `npm run verify` was therefore red at HEAD
+even though `npm test` was green: the unit migration arms tracked the constant, the shell gate did
+not, so the "rewritten at the current version" check kept passing against a stale number.
+
+- **The gate now reads `LEDGER_VERSION` from `src/services/durableStore.ts`** and refuses if it
+  cannot, so the check tracks the code instead of a pinned literal that drifts on every bump.
+
+**Evidence:** `npm run verify:layer4` — 42/42 (was 41/1). Full suite: **360/360**.
+
 ### 4.13.19 — a replayed webhook is never byte-identical to the delivery it replays
 
 `WebhookService.replay` re-signed the recorded body with `new Date().toISOString()`. The timestamp

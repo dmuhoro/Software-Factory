@@ -19,6 +19,11 @@ set -uo pipefail
 APP="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${SF_BIN:-$APP/dist/server.cjs}"
 if [ ! -f "$BIN" ]; then echo "build artifact missing: $BIN (run: npm run build)" >&2; exit 2; fi
+# The current ledger version is read from the source, never hardcoded: a literal drifts silently
+# the moment LEDGER_VERSION moves, and the "rewritten at the current version" check would keep
+# passing against a stale number. Refuse rather than check against an unknown version.
+LEDGER_NOW="$(grep -aoE 'LEDGER_VERSION = [0-9]+' "$APP/src/services/durableStore.ts" | grep -aoE '[0-9]+' | head -1)"
+if [ -z "$LEDGER_NOW" ]; then echo "could not read LEDGER_VERSION from $APP/src/services/durableStore.ts" >&2; exit 2; fi
 ROOT="${SF_WORKDIR:-$(mktemp -d "${TMPDIR:-/tmp}/sf-layer4-XXXXXX")}"
 mkdir -p "$ROOT" || exit 2
 cleanup() { for p in "$ROOT"/srv-*.pid; do [ -f "$p" ] && kill -9 "$(cat "$p")" 2>/dev/null; rm -f "$p"; done; }
@@ -197,7 +202,7 @@ start_server $PORT "$D/.data" "$D/ws" "$D/boot.log" || { echo "  FAIL  server di
 check "a v4 ledger starts" "$(code GET /api/tenants "$PLATFORM_KEY" "$ALICE")" "200"
 check "  and the pre-migration telemetry record survived" "$(ledger "$D/.data/software-factory.json" "d.telemetry['doc_from_v4'].payload.kept")" "true"
 check "  and the pre-migration audit entry survived" "$(ledger "$D/.data/software-factory.json" "d.audits.length")" "1"
-check "  and the file is rewritten at the current version" "$(ledger "$D/.data/software-factory.json" "d.version")" "5"
+check "  and the file is rewritten at the current version" "$(ledger "$D/.data/software-factory.json" "d.version")" "$LEDGER_NOW"
 check "  and it was not quarantined as corrupt" "$(ls "$D/.data" | grep -c corrupt)" "0"
 check "  and the demo tenants seeded cleanly into the migrated file" "$(ledger "$D/.data/software-factory.json" "Object.keys(d.tenants).length")" "3"
 stop_server $PORT
