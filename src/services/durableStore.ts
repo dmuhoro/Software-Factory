@@ -371,8 +371,19 @@ export class DurableStore {
     }
   }
 
+  /**
+   * Monotonic per-process counter folded into `id`. `Date.now()` alone collides when two records
+   * are minted inside the same millisecond and the caller's `entropy` is itself a millisecond
+   * timestamp — usage metering was the first caller to hit it: the second event hashed to the
+   * first event's id and, because `UsageMeteringService.record` treats an existing id as a replay,
+   * the distinct event was silently dropped. An id must never collapse two records; the counter
+   * makes that structural.
+   */
+  private static idSequence = 0;
+
   public static id(prefix: string, entropy: string): string {
-    return `${prefix}_${crypto.createHash('sha256').update(`${entropy}:${Date.now()}:${process.pid}`).digest('hex').slice(0, 20)}`;
+    this.idSequence += 1;
+    return `${prefix}_${crypto.createHash('sha256').update(`${entropy}:${Date.now()}:${process.pid}:${this.idSequence}`).digest('hex').slice(0, 20)}`;
   }
 
   /**
