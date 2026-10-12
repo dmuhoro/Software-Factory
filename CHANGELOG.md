@@ -4,6 +4,35 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.22 — the review runs two axes, and either one can refuse the commit
+
+`ReviewService.review` asked one model read to judge a change on two unrelated questions at once —
+"does this fit the repository's stated architecture?" and "does this unit's acceptance criteria
+actually hold?" — and approve on a single boolean. The prompt listed both sets of rejection grounds,
+but a single read weighs them against each other: a change that fits the repo beautifully and misses
+a criterion, or satisfies every criterion by bending the design, could still come back `approved`.
+
+- **The review now runs two independent model reads — `standards` and `spec` — each with its own
+  system prompt, and the change is approved only when *both* approve.** `ReviewResult` gains `axes`
+  (each axis's own verdict) and `approved` becomes the conjunction; findings are the union, each
+  prefixed with the axis that raised it (`[standards] …`, `[spec] …`) so a refusal names who refused.
+- **The axes are deliberately disjoint.** `standards` owns repository fit (architecture,
+  duplication, stubs, unrelated files, secrets); `spec` owns criterion truth (criteria met only by the
+  test, unrequested scope, gamed verification). Each prompt is told the other axis is a separate
+  read that does not soften its verdict.
+- **A malformed or refusing axis fails the whole review closed** — `Promise.all` rejects and the loop
+  refuses the attempt, so a change is never approved because the axis that would have refused stayed
+  silent. `AttemptRecord.review` records the per-axis verdicts so the report is traceable to the axis.
+- The `review-approve` gate and commit service read the combined `approved`/`findings` unchanged; the
+  loop reports both axes' verdicts in its run record.
+
+**Evidence:** `test/review-two-axis.test.ts` (new, 4 arms): the two system prompts ask different
+questions and each names its axis; a change that passes standards but fails spec is refused with a
+`[spec]`-prefixed finding; a change refused by standards is refused even when spec approves; a change
+both axes approve is approved with no findings — and each axis is dialled exactly once. **Failing-first:**
+replacing `axes.every(...)` with `axes[0].approved` makes the spec-refusal arm fail (the spec axis is
+ignored), then passes when restored. Full suite: **365/365**; `npm run verify` green (Layer 4 42/42).
+
 ### 4.13.21 — the API execution boundary runs through the sandbox, and fails closed
 
 ADR-010 recorded one open gap it did not close: `ExecutionBoundaryService.run` — the path behind

@@ -40,8 +40,15 @@ export interface AttemptRecord {
   proofDigest?: string;
   /** Bounded tail of the failing command's output, for the operator reading the report. */
   outputTail?: string;
-  /** The review verdict this attempt earned, if it reached the review stage. */
-  review?: { approved: boolean; findings: string[]; reviewer: string };
+  /** The review verdict this attempt earned, if it reached the review stage. `approved` is the
+   * combined verdict; `axes` records each independent axis's own verdict so a refusal is traceable
+   * to the axis that made it. */
+  review?: {
+    approved: boolean;
+    findings: string[];
+    reviewer: string;
+    axes?: Array<{ axis: string; approved: boolean; findings: string[] }>;
+  };
 }
 
 export interface UnitRecord {

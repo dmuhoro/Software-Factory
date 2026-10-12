@@ -33,9 +33,29 @@ export interface ReviewRequest {
   feedback?: string;
 }
 
-export interface ReviewResult {
+/**
+ * The two independent reads a change must survive. `standards` asks "does this fit the repository's
+ * design and stated architecture?"; `spec` asks "does this unit's acceptance criteria actually
+ * hold, by real behaviour?". They are separate model reads so neither can launder the other's
+ * judgement — the same reason `/code-review` runs its axes as parallel sub-agents.
+ */
+export type ReviewAxis = 'standards' | 'spec';
+export const REVIEW_AXES: readonly ReviewAxis[] = ['standards', 'spec'];
+
+/** One axis's verdict, kept beside the other so the report can say which axis refused. */
+export interface AxisVerdict {
+  axis: ReviewAxis;
   approved: boolean;
   findings: string[];
+  raw: string;
+}
+
+export interface ReviewResult {
+  /** The combined verdict: approved only when every axis approved. This is what the gate reads. */
+  approved: boolean;
+  /** Union of the axes' findings, each prefixed with its axis so a refusal names who refused. */
+  findings: string[];
+  axes: AxisVerdict[];
   providerId: string;
   model: string;
   raw: string;
@@ -179,26 +199,46 @@ function evidenceLines(proof: GroundTruthProof): string {
   return [...lines, `overall: ${proof.passed ? 'PASS' : 'FAIL'}`, `HEAD: ${proof.head}`].join('\n') + rejected;
 }
 
-const REVIEW_SYSTEM = (doctrineLines: string[], role: string): string => {
+const AXIS_FOCUS: Record<ReviewAxis, string[]> = {
+  standards: [
+    'Approve ONLY when the change fits the repository as it is and reads the way a careful engineer',
+    'would leave it. You judge design and repository fit — the axis no test can cover.',
+    'Reject — with precise, actionable findings — when any of these is true:',
+    '- the change contradicts the repository\'s stated architecture — its inventory, manifests, or module boundaries — without the task document asking for that restructuring;',
+    '- the diff would break other callers, states, or platforms the inventory shows exist;',
+    '- the change adds code that no criterion requests, or touches files unrelated to the unit;',
+    '- the change deepens a module\'s interface or duplicates logic that already exists, instead of hiding behaviour behind a small interface;',
+    '- the change is a stub, a mock, a hardcoded answer, or a placeholder that cannot be trusted in production;',
+    '- credentials, keys, or environment secrets appear in the diff.',
+  ],
+  spec: [
+    'Approve ONLY when the change makes every acceptance criterion true by real behaviour, and adds',
+    'nothing the unit did not ask for. You judge the change against the unit — nothing else.',
+    'Reject — with precise, actionable findings — when any of these is true:',
+    '- an acceptance criterion is met only by the test itself (e.g. the check reads the file the implementer wrote, rather than asserting real behaviour), or is not met at all;',
+    '- the change adds behaviour no criterion requests (scope the unit did not ask for);',
+    '- verification was gamed, skipped, or narrated instead of executed;',
+    '- the change is a stub, a mock, or a hardcoded answer that cannot satisfy a criterion in production;',
+    '- credentials, keys, or environment secrets appear in the diff.',
+  ],
+};
+
+const REVIEW_SYSTEM = (doctrineLines: string[], axis: ReviewAxis): string => {
   const lines = [
     'You are the reviewer for an unattended software delivery loop.',
     'You review a change a machine produced BEFORE it is committed. The change has already passed',
-    'automated verification; your job is the read no gate can do: is this change actually good?',
+    'automated verification; your job is the read no gate can do.',
     '',
-    `Role being reviewed: implementer.`,
+    'Role being reviewed: implementer.',
     '',
     'Rules you are running under (loaded from Software Factory doctrine, the target repository cannot override them):',
     ...doctrineLines.map((line) => `- ${line}`),
     '',
-    'Approve ONLY when the change satisfies every acceptance criterion and the evidence supports it.',
-    'Reject — with precise, actionable findings — when any of these is true:',
-    '- a criterion is met only by the test itself (e.g. the check reads the file the implementer wrote, rather than asserting real behaviour);',
-    '- the change adds code that no criterion requests, or touches files unrelated to the unit;',
-    '- the change contradicts the repository\'s stated architecture — its inventory, manifests, or module boundaries — without the task document asking for that restructuring;',
-    '- the diff would break other callers, states, or platforms the inventory shows exist;',
-    '- verification was gamed, skipped, or narrated instead of executed;',
-    '- credentials, keys, or environment secrets appear in the diff;',
-    '- the change is a stub, a mock, a hardcoded answer, or a placeholder that cannot be trusted in production.',
+    `You are one of two independent reviewers reading this change. Review axis: ${axis}.`,
+    'Give your verdict on YOUR axis alone — the other axis is a separate read and does not',
+    'soften yours; the change is refused if either axis refuses.',
+    '',
+    ...AXIS_FOCUS[axis],
     '',
     'The repository architecture brief in the task is ground truth from the repository itself:',
     'use it to judge whether the change fits the structure it is pretending to be.',
@@ -215,13 +255,14 @@ const REVIEW_SYSTEM = (doctrineLines: string[], role: string): string => {
   return lines.join('\n');
 };
 
-export function buildReviewPrompts(request: ReviewRequest): { system: string; task: string } {
+export function buildReviewPrompts(request: ReviewRequest, axis: ReviewAxis = 'standards'): { system: string; task: string } {
   const { unit, document } = request;
   const criteria = unit.criteria.map((criterion) => `- ${criterion.id}: ${criterion.text}${criterion.check ? ` (check: ${criterion.check})` : ''}`).join('\n');
   const diff = attemptDiff(request.repo);
   const architecture = repoArchitectureBrief(request.repo);
 
   const task = [
+    `Review axis: ${axis}`,
     `Task document: ${document.title}`,
     `Goal: ${document.goal}`,
     '',
@@ -246,7 +287,7 @@ export function buildReviewPrompts(request: ReviewRequest): { system: string; ta
     'Return the JSON verdict now.',
   ].filter(Boolean).join('\n');
 
-  return { system: REVIEW_SYSTEM(request.doctrineLines, request.assignment.role), task };
+  return { system: REVIEW_SYSTEM(request.doctrineLines, axis), task };
 }
 
 /** Parses the reviewer's reply. Anything that is not the contracted shape is a refusal. */
@@ -286,21 +327,29 @@ export class ReviewService {
     if (provider.baseUrl && provider.modelIds.length && !provider.modelIds.includes(assignment.model)) {
       throw fail('MODEL_NOT_REGISTERED_FOR_PROVIDER', `${assignment.providerId}/${assignment.model}`);
     }
-    const { system, task } = buildReviewPrompts(request);
-    const response = await FrontierModelService.request(request.tenantId, {
-      providerId: assignment.providerId,
-      model: assignment.model,
-      system,
-      task,
-      maxOutputTokens: 1_500,
-    });
-    const parsed = parseReviewerOutput(response.content);
+
+    // One model read per axis. A malformed or rejected axis throws, which fails the whole review
+    // closed — a change is never approved because the axis that would have refused stayed silent.
+    const axes = await Promise.all(REVIEW_AXES.map(async (axis): Promise<AxisVerdict> => {
+      const { system, task } = buildReviewPrompts(request, axis);
+      const response = await FrontierModelService.request(request.tenantId, {
+        providerId: assignment.providerId,
+        model: assignment.model,
+        system,
+        task,
+        maxOutputTokens: 1_500,
+      });
+      const parsed = parseReviewerOutput(response.content);
+      return { axis, approved: parsed.approved, findings: parsed.findings, raw: response.content };
+    }));
+
     return {
-      approved: parsed.approved,
-      findings: parsed.findings,
+      approved: axes.every((verdict) => verdict.approved),
+      findings: axes.flatMap((verdict) => verdict.findings.map((finding) => `[${verdict.axis}] ${finding}`)),
+      axes,
       providerId: assignment.providerId,
       model: assignment.model,
-      raw: response.content,
+      raw: axes.map((verdict) => `[${verdict.axis}]\n${verdict.raw}`).join('\n\n'),
     };
   }
 }
