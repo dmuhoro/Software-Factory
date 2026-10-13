@@ -347,7 +347,7 @@ test('doctrine edited after pinning stops the run before any work happens', asyn
   });
 });
 
-test('an execution mode the driver does not implement is refused rather than run sequentially under its label', async () => {
+test('a worktree-parallel doctrine runs the same pipeline in worktrees and merges every unit', async () => {
   const repo = makeTarget('parallel');
   const task = writeTask('parallel', MILESTONES_TWO);
   const parallel = doctrineCopy('parallel', (root) => {
@@ -358,11 +358,25 @@ test('an execution mode the driver does not implement is refused rather than run
   }, true);
 
   await withDoctrine(parallel, async () => {
-    await assert.rejects(
-      () => ExecutionLoopService.run({ repo, taskDocument: task, tenantId: TENANT }),
-      /EXECUTION_MODE_UNSUPPORTED/,
-    );
-    assert.equal(gitLines(repo, ['rev-list', '--count', 'HEAD'])[0], '1');
+    await withStub((prompt) => (prompt.includes('Unit: M1')
+      ? { files: [{ path: 'feature-a.txt', content: 'alpha\n' }] }
+      : { files: [{ path: 'feature-b.txt', content: 'beta\n' }] }), async () => {
+      const outcome = await ExecutionLoopService.run({ repo, taskDocument: task, tenantId: TENANT });
+      const { record } = outcome;
+      assert.equal(outcome.exitCode, 0, `expected a clean run, got ${outcome.exitCode}: ${record.hardStop ?? record.refusal ?? ''}`);
+      assert.equal(record.execution, 'worktree-parallel', 'the run did not claim the mode it actually used');
+      assert.deepEqual(record.units.map((unit) => unit.status), ['done', 'done']);
+      assert.equal(record.commits.length, 2, 'one feature commit per unit, on its own worktree');
+      assert.equal(record.merges?.length, 2, 'every committed worktree was folded onto the target branch');
+      assert.ok(record.merges?.every((merge) => merge.sha), 'a merge without a sha was recorded');
+      // The merged line carries each unit's evidence, exactly like a sequential commit.
+      const log = gitLines(repo, ['log', '--pretty=%s']);
+      assert.ok(log.some((subject) => /feat\(m1\):/i.test(subject)), 'the M1 feature commit is on the merged line');
+      assert.ok(log.some((subject) => /feat\(m2\):/i.test(subject)), 'the M2 feature commit is on the merged line');
+      assert.equal(fs.readFileSync(path.join(repo, 'feature-a.txt'), 'utf8'), 'alpha\n');
+      assert.equal(fs.readFileSync(path.join(repo, 'feature-b.txt'), 'utf8'), 'beta\n');
+      assert.equal(porcelain(repo), '', 'worktrees left residue behind');
+    });
   });
 });
 
