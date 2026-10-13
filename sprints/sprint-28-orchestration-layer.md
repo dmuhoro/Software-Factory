@@ -36,7 +36,7 @@ joined, and two of them (concurrency, PR flow) do not run end to end.
 |---|---|---|---|
 | **WP-1** | Two-axis review: standards and spec as independent, both-blocking reads | one axis refusing refuses the review; both dialled | **done (4.13.22)** |
 | **WP-2** | Tracker bridge: issue → spec → tickets with blocking edges | an issue produces a task document whose DAG blocks correctly | **done (4.13.23)** |
-| WP-3 | Concurrent execution driver over worktrees + task graph | two independent units run at once; a dependent unit waits | planned |
+| WP-3 | Concurrent execution driver over worktrees + task graph | two independent units run at once; a dependent unit waits | **done (4.13.24)** |
 | WP-4 | PR flow adapter: local branch + manifest default, GitHub behind a credential | a completed run yields a reviewable branch/manifest, never a silent commit | planned |
 | WP-5 | Model layer: the frontier provider actually answers | a hosted model key is required; blocked, not worked around | blocked |
 
@@ -74,6 +74,52 @@ the `depends` edge preserved and the parser accepting it; parser-rejected draft 
 
 **Honest limit:** the GitHub *real-network* success path stays behind its allowlist — `api.github.com`
 is not allowed here, which is the point: without the operator's allowlist the adapter fails closed.
+
+## WP-3 — The concurrent execution driver (4.13.24)
+
+**The gap:** the doctrine advertised a `worktree-parallel` execution mode with concurrency ceilings,
+but the driver only ever ran the sequential for-loop — a mode the doctrine permitted was one the
+driver refused. The sequential loop also serialized even errands with nothing between them, so a
+plan of independent units took their sum of wall clock, not their max.
+
+**Fix:**
+- `ExecutionLoopService.run` branches on `concurrency.execution`. `worktree-parallel` schedules the
+  unit DAG over real per-unit git worktrees (`workspaceRoot()/.factory-worktrees/<runId>/`,
+  branches `factory/<runId12>/<milestone>-<unit>`), bounded by
+  `max(1, ResourceGovernorService.cap(maxParallelDefault))`. Independent units run concurrently; a
+  unit is launched only after every dependency has been **merged** onto the target branch — gating
+  on the merged line, not merely on a proposed branch.
+- Each worktree runs the full pipeline unchanged: implement → verify (sandboxed) → two-axis review
+  → feature commit carrying Proof/Verified/AI-Assisted → `--no-ff` merge. The run record gains
+  `merges` and per-unit `mergeSha`; the report gains a Merges section; `LoopEvent.stage` grows
+  `merge`.
+- A unit whose verification never passes burns its attempt cap, is reported **stuck**, and its
+  worktree branch is kept for the operator — nothing merges, nothing half-ships, no silent drop.
+- A merge git cannot resolve is never auto-resolved: `mergeUnitBranch` runs `git merge --abort` and
+  the run hard-stops `merge-conflict:<unit>`, leaving the target branch at the last good merge.
+- Worktree-parallel runs are refused on resume (`LOOP_RUN_INCOMPATIBLE`: "worktree-parallel runs
+  cannot be resumed") — honest, since resuming mid-worktree is not implemented.
+- Codes added: `LOOP_TARGET_NOT_BRANCH`, `WORKTREE_CREATION_FAILED` (contract-mapped in
+  `apiError.ts`, registered in `l3-error-contract`).
+
+**Evidence:** `test/parallel-execution.test.ts` (new, 4 arms, same real `ExecutionLoopService.run`
+against real repositories): two independent units provably in flight at once — a barrier stub holds
+the implementer responses until two are airborne (`maxConcurrentImplementer >= 2`) and the
+dependent unit's first event is ordered after its dependency's merge event; a unit whose verify
+always fails goes 3 attempts → stuck, zero commits, zero merges, branch kept, target branch
+untouched; both units editing `README.md` differently → `merge-conflict` halt (exit 3), only the
+winner's files reachable on the line; resume refusal. `test/loop-execution.test.ts` replaces the
+obsolete `EXECUTION_MODE_UNSUPPORTED` arm with a worktree-parallel completion + merge-evidence arm.
+**Failing-first:** the very first parallel run deadlocked — a finished job never removed itself from
+the running pool, so the scheduler believed the pool was full forever; the barrier test timed the
+suite out (no completion signal existed), the fix (`finally { running.delete(unit) }`) made the
+proof pass on the next run. Full suite: **381/381**; `npm run verify` green (Layer 4 42/42); docs
+gate 6/6; secrets gate pass.
+
+**Honest limits:** the concurrency budget respects the machine, but bwrap sampling still runs in
+`/approved` — in the shipped containers without bubblewrap, sandboxed verification fails closed
+exactly as documented (ADR-010, DEPLOY_DOCKER/DEPLOY_RAILWAY). Worktree-parallel runs are
+intentionally not resumable; the sequential path keeps its resume behavior.
 
 ## WP-1 — Two-axis review (4.13.22)
 

@@ -4,6 +4,37 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.24 — the concurrent execution driver: one plan, several workers, dep-gated
+
+The doctrine has always advertised a `worktree-parallel` execution mode, but the driver only ever
+ran the sequential loop — and even that loop serialized units that had nothing to do with each
+other. WP-3 (Sprint 28) makes the advertised mode real and, for the first time, honest about what
+"concurrent" means: independent units genuinely execute at once, and a dependent unit starts only
+after its dependency is *merged onto the target branch*, not after some branch merely exists.
+
+- **`ExecutionLoopService.run` now honors `concurrency.execution == 'worktree-parallel'`.** The unit
+  DAG is scheduled over real per-unit git worktrees (`workspaceRoot()/.factory-worktrees/<runId>/`,
+  branches `factory/<runId12>/<milestone>-<unit>`) with an operator-bounded budget
+  (`max(1, ResourceGovernorService.cap(maxParallelDefault))`). Each worktree runs the full pipeline
+  unchanged — implement → sandboxed verify → two-axis review → evidence-carrying feature commit →
+  `--no-ff` merge — so a merged line has the same provenance a sequential line does.
+- **Dependency gating is on the merged line.** The scheduler launches a unit only once every
+  dependency's worktree has been folded in, verified and reviewed first.
+- **Nothing unverified ships, and nothing ships silently.** A unit whose verification never passes
+  burns its attempt cap, is reported **stuck**, and its worktree branch stays behind for the
+  operator. A merge git cannot resolve is never auto-resolved: `git merge --abort`, the run
+  hard-stops with `merge-conflict:<unit>`, and the target branch stays at the last good merge.
+- **The record and report now account for merges**: `LoopRunRecord.merges`, per-unit `mergeSha`, a
+  Merges report section, and a `merge` event stage. Codes `LOOP_TARGET_NOT_BRANCH` and
+  `WORKTREE_CREATION_FAILED` join the contract (`apiError.ts` + `l3-error-contract`).
+- **Worktree-parallel runs refuse resumption** (`LOOP_RUN_INCOMPATIBLE`) — resuming mid-worktree is
+  not implemented, and the refusal is explicit rather than a silent half-restore.
+- **Tests (381 total):** `test/parallel-execution.test.ts` (new) uses a barrier stub to prove two
+  implementer calls are airborne together before either answers, orders a dependent unit's first
+  event after its dependency's merge event, and pins the stuck-keeps-branch and conflict-halts-the-
+  line behaviors against real repositories. `test/loop-execution.test.ts` drops the obsolete
+  `EXECUTION_MODE_UNSUPPORTED` arm for a real worktree-parallel completion.
+
 ### 4.13.23 — the tracker bridge: an issue becomes a validated task document
 
 A goal always had a way in (`GoalIntakeService`). A tracker issue had none: whoever wanted the loop
