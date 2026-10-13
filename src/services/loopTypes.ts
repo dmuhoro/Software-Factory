@@ -63,6 +63,8 @@ export interface UnitRecord {
   attempts: AttemptRecord[];
   commitSha?: string;
   commitSubject?: string;
+  /** In `worktree-parallel` runs, the merge commit on the target branch that folded in `commitSha`. */
+  mergeSha?: string;
   proofDigest?: string;
   /** The proof this unit was committed under, kept so a resumed run can still be audited. */
   proof?: SlimProof;
@@ -85,8 +87,8 @@ export type LoopStatus = 'running' | 'completed' | 'halted' | 'refused';
 
 export interface LoopEvent {
   at: string;
-  stage: LoopStage | 'run';
   level: 'info' | 'warn' | 'error';
+  stage: LoopStage | 'run' | 'merge';
   message: string;
 }
 
@@ -108,8 +110,11 @@ export interface LoopRunRecord {
   tenantId: string;
   quarantineCount: number;
   units: UnitRecord[];
-  /** HEADs created by this run, in order. */
+  /** HEADs created by this run, in order. In `worktree-parallel` these are the per-worktree
+   * feature commits; the merge that folded each one onto the target branch is in `merges`. */
   commits: Array<{ unitId: string; sha: string; subject: string }>;
+  /** In `worktree-parallel` runs, the merge commits this run created on the target branch. */
+  merges?: Array<{ unitId: string; sha: string; subject: string }>;
   gates: GateResult[];
   events: LoopEvent[];
   models: ModelAssignment[];

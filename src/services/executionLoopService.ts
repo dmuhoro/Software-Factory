@@ -15,7 +15,7 @@ import { collectGroundTruth, proofDigest, type GroundTruthProof } from './ground
 import { detectVerificationProfile } from './verificationProfileService';
 import { decompose, loadTaskDocument, type WorkUnit } from './taskDocumentService';
 import { assertRegistryComplete, runStageGates, type GateContext } from './loopGates';
-import { resolveFileWithin } from '../utils/pathGuard';
+import { resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
 import { slimProof, widenProof, type AttemptRecord, type GateResult, type LoopEvent, type LoopRunRecord, type LoopStage, type UnitRecord } from './loopTypes';
 
 /**
@@ -80,6 +80,11 @@ const NON_RETRYABLE = /^(MODEL_|TASK_DOCUMENT_|GATE_NOT_IMPLEMENTED)/;
 
 function iso(): string {
   return new Date().toISOString();
+}
+
+/** A branch/path fragment git is happy with: lowercase, slug, bounded. */
+function safeSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'unit';
 }
 
 /**
@@ -257,7 +262,6 @@ export class ExecutionLoopService {
     const doctrine = DoctrineService.load();
     const loop = doctrine.loop;
 
-    if (loop.concurrency.execution !== 'sequential') throw new Error(`EXECUTION_MODE_UNSUPPORTED:${loop.concurrency.execution}`);
     assertRegistryComplete();
 
     const repo = path.resolve(options.repo);
@@ -364,40 +368,63 @@ export class ExecutionLoopService {
     }
     persist();
 
-    // ── IMPLEMENT / VERIFY / COMMIT, one unit at a time ─────────────────────
+    // ── IMPLEMENT / VERIFY / COMMIT ─────────────────────────────────────────
+    // `sequential` runs one unit at a time on the target branch. `worktree-parallel` runs
+    // independent units at once, each in its own worktree through the very same per-unit pipeline
+    // (implement → verify → review → commit), then folds each committed worktree onto the target
+    // branch in dependency order. Worktrees give independent units isolated trees; the merge gives
+    // the main line a deterministic, evidence-carrying history. A merge that cannot be resolved by
+    // git is never auto-resolved: it halts the run with the conflict named.
     if (!refusal && !hardStop) {
       try {
-        for (const unit of orderedUnits(units)) {
-          const unitRecord = record.units.find((item) => item.unitId === unit.id)!;
-          if (unitRecord.status === 'done' || unitRecord.status === 'stuck') continue;
-
-          const unmet = unit.dependsOn.filter((dep) => record.units.find((item) => item.unitId === dep)?.status !== 'done');
-          if (unmet.length) {
-            unitRecord.status = 'blocked';
-            unitRecord.blockedBy = unmet.join(', ');
-            event('warn', 'plan', `unit ${unit.id} is blocked by ${unitRecord.blockedBy}`);
-            persist();
-            continue;
-          }
-
-          checkHardStop();
-          const proof = await this.runUnit({
+        if (loop.concurrency.execution === 'worktree-parallel') {
+          lastProof = await this.runWorktreeParallel({
             repo,
             tenantId,
             document,
-            unit,
-            unitRecord,
+            units,
             record,
             isolation,
             attemptCap,
             loop,
             tenantProviders,
-            onGateResults: (results) => record.gates.push(...results),
             persist,
             event,
             checkHardStop,
           });
-          if (proof) lastProof = proof;
+        } else {
+          for (const unit of orderedUnits(units)) {
+            const unitRecord = record.units.find((item) => item.unitId === unit.id)!;
+            if (unitRecord.status === 'done' || unitRecord.status === 'stuck') continue;
+
+            const unmet = unit.dependsOn.filter((dep) => record.units.find((item) => item.unitId === dep)?.status !== 'done');
+            if (unmet.length) {
+              unitRecord.status = 'blocked';
+              unitRecord.blockedBy = unmet.join(', ');
+              event('warn', 'plan', `unit ${unit.id} is blocked by ${unitRecord.blockedBy}`);
+              persist();
+              continue;
+            }
+
+            checkHardStop();
+            const proof = await this.runUnit({
+              repo,
+              tenantId,
+              document,
+              unit,
+              unitRecord,
+              record,
+              isolation,
+              attemptCap,
+              loop,
+              tenantProviders,
+              onGateResults: (results) => record.gates.push(...results),
+              persist,
+              event,
+              checkHardStop,
+            });
+            if (proof) lastProof = proof;
+          }
         }
 
         // ── REPORT ─────────────────────────────────────────────────────────
@@ -689,6 +716,181 @@ export class ExecutionLoopService {
     return succeeded ? proof : undefined;
   }
 
+  // ── worktree-parallel: many units at once, folded in dependency order ────
+
+  /**
+   * The concurrent driver. Independent units run at once, each inside its own git worktree through
+   * the exact same per-unit pipeline as sequential execution; a dependent unit waits until the
+   * dependency's work is *merged* onto the target branch, and the merge only ever happens for a
+   * unit whose pipeline committed (implement → verify → review → commit all passed). A merge git
+   * cannot resolve is never auto-resolved: the run halts with the conflict named, the target
+   * branch stays at the last good merge, and the conflicted branch is left for the operator.
+   */
+  private static async runWorktreeParallel(input: {
+    repo: string;
+    tenantId: string;
+    document: ReturnType<typeof loadTaskDocument>;
+    units: WorkUnit[];
+    record: LoopRunRecord;
+    isolation: IsolationManifest;
+    attemptCap: number;
+    loop: ReturnType<typeof DoctrineService.load>['loop'];
+    tenantProviders: Set<string>;
+    persist: () => void;
+    event: (level: LoopEvent['level'], stage: LoopEvent['stage'], message: string) => void;
+    checkHardStop: () => void;
+  }): Promise<GroundTruthProof | undefined> {
+    const { repo, tenantId, document, units, record, isolation, attemptCap, loop, tenantProviders, persist, event, checkHardStop } = input;
+
+    const targetBranch = git(repo, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    if (targetBranch.code !== 0 || !targetBranch.out || targetBranch.out === 'HEAD') {
+      throw new Error('LOOP_TARGET_NOT_BRANCH:worktree-parallel needs a branch to merge onto');
+    }
+
+    const byId = new Map(units.map((unit) => [unit.id, unit]));
+    const slots = record.units.map((unitRecord) => {
+      const unit = byId.get(unitRecord.unitId)!;
+      const base = path.join(workspaceRoot(), `.factory-worktrees/${record.runId}`);
+      const branch = `factory/${record.runId.slice(0, 12)}/${safeSlug(unit.milestoneId)}-${safeSlug(unit.id)}`;
+      return { unitRecord, unit, branch, worktreePath: path.join(base, safeSlug(unit.id)) };
+    });
+
+    // One worktree per unit, from the current tip. Units a resumed run already finished or stuck
+    // on get no worktree: their branches are either merged already or kept for the operator.
+    const created: typeof slots = [];
+    for (const slot of slots) {
+      if (slot.unitRecord.status === 'done' || slot.unitRecord.status === 'stuck') continue;
+      fs.mkdirSync(path.dirname(slot.worktreePath), { recursive: true, mode: 0o700 });
+      if (fs.existsSync(slot.worktreePath)) git(repo, ['worktree', 'remove', '--force', slot.worktreePath]);
+      const branchExists = git(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${slot.branch}`]).code === 0;
+      const made = branchExists
+        ? git(repo, ['worktree', 'add', slot.worktreePath, slot.branch])
+        : git(repo, ['worktree', 'add', '-b', slot.branch, slot.worktreePath, 'HEAD']);
+      if (made.code !== 0) throw new Error(`WORKTREE_CREATION_FAILED:${slot.unit.id}:${tail(made.out, 300)}`);
+      created.push(slot);
+      event('info', 'plan', `worktree ${slot.unit.id} ready on ${slot.branch}`);
+    }
+
+    try {
+      const budget = Math.max(1, ResourceGovernorService.cap(loop.concurrency.maxParallelDefault));
+      const merged = new Set<string>((record.merges ?? []).map((merge) => merge.unitId));
+      const pending = [...created];
+      const running = new Map<string, Promise<GroundTruthProof | undefined>>();
+      const failures: Error[] = [];
+      let lastProof: GroundTruthProof | undefined;
+
+      while (pending.length || running.size) {
+        checkHardStop();
+        // Launch every unit whose dependencies have already been merged, up to the budget.
+        for (const slot of pending) {
+          if (running.size >= budget || failures.length) break;
+          const unit = byId.get(slot.unit.id)!;
+          const depsOk = unit.dependsOn.every((dep) => merged.has(dep) || !byId.has(dep));
+          if (!depsOk) continue;
+          pending.splice(pending.indexOf(slot), 1);
+          const job = (async (): Promise<GroundTruthProof | undefined> => {
+            try {
+              const proof = await this.runUnit({
+                repo: slot.worktreePath,
+                tenantId,
+                document,
+                unit,
+                unitRecord: slot.unitRecord,
+                record,
+                isolation,
+                attemptCap,
+                loop,
+                tenantProviders,
+                onGateResults: (results) => record.gates.push(...results),
+                persist,
+                event,
+                checkHardStop,
+              });
+              if (proof) lastProof = proof;
+              if (slot.unitRecord.status === 'done') {
+                const merge = this.mergeUnitBranch(repo, slot.unit.id, slot.branch, targetBranch.out, event);
+                if ('conflicted' in merge) throw new Error(`merge-conflict:${slot.unit.id}:${merge.detail}`);
+                merged.add(slot.unit.id);
+                record.merges = [...(record.merges ?? []), { unitId: slot.unit.id, sha: merge.sha, subject: merge.subject }];
+                slot.unitRecord.mergeSha = merge.sha;
+                persist();
+              }
+              return proof;
+            } catch (error) {
+              failures.push(error as Error);
+              return undefined;
+            } finally {
+              running.delete(slot.unit.id);
+            }
+          })();
+          running.set(slot.unit.id, job);
+        }
+
+        if (running.size) {
+          await Promise.race(running.values());
+        } else if (pending.length) {
+          // Nothing is running and pending units remain: their dependencies never merged (their
+          // dependencies are stuck or were never going to merge), so they can never start.
+          for (const slot of pending) {
+            const unit = byId.get(slot.unit.id)!;
+            const unmet = unit.dependsOn.filter((dep) => byId.has(dep) && !merged.has(dep));
+            if (unmet.length) {
+              slot.unitRecord.status = 'blocked';
+              slot.unitRecord.blockedBy = unmet.join(', ');
+              event('warn', 'plan', `unit ${slot.unit.id} is blocked by ${slot.unitRecord.blockedBy}`);
+            }
+          }
+          event('warn', 'run', `${pending.length} unit(s) could not start; their dependencies did not merge`);
+          break;
+        }
+
+        // A failed job is never silently absorbed: drain whatever is still in flight, then let the
+        // first failure end the run the way a sequential hard stop would.
+        if (failures.length) {
+          await Promise.allSettled(running.values());
+          break;
+        }
+      }
+
+      if (failures.length) throw failures[0] instanceof LoopHardStop ? failures[0] : new LoopHardStop(failures[0].message);
+      if (merged.size < created.length) {
+        event('warn', 'run', `${created.length - merged.size} of ${created.length} worktrees did not merge; their branches are kept for the operator`);
+      }
+      return lastProof;
+    } finally {
+      // Worktrees are scratch: remove them even when the run halts, so nothing half-written leaks.
+      // The branches stay in the repository as evidence and for the operator to inspect.
+      for (const slot of created) {
+        try {
+          git(repo, ['worktree', 'remove', '--force', slot.worktreePath]);
+        } catch {
+          event('warn', 'run', `worktree ${slot.unit.id} could not be removed; leaving it for the operator`);
+        }
+      }
+      git(repo, ['worktree', 'prune']);
+    }
+  }
+
+  /** Folds one committed worktree branch onto the target branch, or names the conflict and aborts. */
+  private static mergeUnitBranch(
+    repo: string,
+    unitId: string,
+    branch: string,
+    targetBranch: string,
+    event: (level: LoopEvent['level'], stage: LoopEvent['stage'], message: string) => void,
+  ): { sha: string; subject: string } | { conflicted: true; detail: string } {
+    const result = git(repo, ['merge', '--no-ff', '--no-edit', branch]);
+    if (result.code !== 0) {
+      // Never auto-resolve. Put the target branch back exactly where it was and say why.
+      git(repo, ['merge', '--abort']);
+      return { conflicted: true, detail: tail(result.out, 600) };
+    }
+    const sha = git(repo, ['rev-parse', 'HEAD']).out;
+    const subject = git(repo, ['log', '-1', '--format=%s']).out;
+    event('info', 'merge', `unit ${unitId} merged onto ${targetBranch} as ${sha.slice(0, 12)}`);
+    return { sha, subject };
+  }
+
   // ── run record lifecycle ────────────────────────────────────────────────
 
   /**
@@ -753,6 +955,12 @@ export class ExecutionLoopService {
     if (existing.doctrineDigest !== doctrineDigest) throw new Error(`LOOP_RUN_INCOMPATIBLE:${runId}: the doctrine changed since this run started`);
     if (existing.repo !== repo) throw new Error(`LOOP_RUN_INCOMPATIBLE:${runId}: the run belongs to another repository`);
     if (existing.status !== 'halted' && existing.status !== 'running') throw new Error(`LOOP_RUN_INCOMPATIBLE:${runId}: run is already ${existing.status}`);
+    // A worktree-parallel run cannot be resumed honestly: its un-merged work sits on branches, not
+    // on the target line, and re-driving it would either re-commit residue or depend on git state
+    // this process cannot vouch for. It fails closed rather than pretending to continue.
+    if (existing.execution === 'worktree-parallel') {
+      throw new Error(`LOOP_RUN_INCOMPATIBLE:${runId}: worktree-parallel runs cannot be resumed; start a fresh run`);
+    }
     // If the run was killed mid-work, it left residue: half-written files, staged changes. The
     // run is the only writer of this tree, so that residue is not evidence — restore the tree to
     // the last committed state, loudly, so no interrupted attempt leaks into the next one.
@@ -886,6 +1094,12 @@ function renderReport(record: LoopRunRecord): string {
     '## Commits',
     '',
     ...(record.commits.length ? record.commits.map((commit) => `- \`${commit.sha.slice(0, 12)}\` ${commit.subject} _(${commit.unitId})_`) : ['- none']),
+    '',
+    '## Merges',
+    '',
+    ...(record.merges?.length
+      ? record.merges.map((merge) => `- \`${merge.sha.slice(0, 12)}\` on the target branch _(${merge.unitId}_ ${merge.subject})_`)
+      : record.execution === 'worktree-parallel' ? ['- none'] : ['- sequential: every commit above lands directly on the branch']),
     '',
     '## Attempt log',
     '',

@@ -88,6 +88,8 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   TASK_DOCUMENT_NOT_FOUND: { status: 404, message: 'No such task document.' },
   LOOP_RUN_NOT_FOUND: { status: 404, message: 'No such loop run.' },
   WORKTREE_NOT_FOUND: { status: 404, message: 'No such worktree.' },
+  LOOP_TARGET_NOT_BRANCH: { status: 409, message: 'The worktree-parallel driver can only merge onto a checked-out branch.' },
+  WORKTREE_CREATION_FAILED: { status: 409, message: 'A worktree could not be created for a unit.' },
 
   // ── Policy and state preconditions raised by the orchestration services ────
   APPROVAL_REQUIRED: { status: 403, message: 'This action requires an approval decision first.' },
