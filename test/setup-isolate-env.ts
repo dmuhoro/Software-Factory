@@ -52,3 +52,33 @@ for (const root of ROOTS) {
   }
   process.env[root] = join(base, root.replace(/^FACTORY_/, '').toLowerCase());
 }
+
+/**
+ * Variables that decide *whether a request is authenticated*, not where a file is written.
+ *
+ * These were the second half of the same defect the roots above fixed, and they were missed. A
+ * developer `.env` exports `ALLOW_INSECURE_LOCAL=true`; `verify:full` sources `.env` before running
+ * the suite; so under `verify:full` the loopback bypass is live and every "401 without a
+ * credential" harness case answered 403 (`TENANT_NOT_FOUND` for the synthetic `local-development`
+ * principal) instead of 401. The same suite passed when run directly, because that shell had no
+ * `.env`. A suite whose verdict depends on which command launched it is not evidence -- the exact
+ * failure `scripts/verify-env.sh` forbids for the shell harnesses, and this mirrors its list for
+ * the Node suite. Individual tests still set what they need; this only removes what leaked in.
+ */
+const AUTH_AND_BACKEND = [
+  'FACTORY_DATA_DIR',
+  'FACTORY_API_KEY',
+  'FACTORY_TENANT_CREDENTIALS',
+  'FACTORY_TENANT_SEED_DEMO',
+  'FACTORY_ALLOWED_SECRET_REFS',
+  'FACTORY_ALLOWED_MODEL_HOSTS',
+  'ALLOW_INSECURE_LOCAL',
+  'STORAGE_BACKEND',
+  'GEMINI_API_KEY',
+  'GOOGLE_API_KEY',
+] as const;
+
+for (const variable of AUTH_AND_BACKEND) {
+  delete process.env[variable];
+}
+
