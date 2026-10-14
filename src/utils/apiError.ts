@@ -350,6 +350,24 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   RBAC_ROLE_UNKNOWN: { status: 403, message: 'The requested role is not one this system recognises.' },
   RBAC_PERMISSION_DENIED: { status: 403, message: 'The principal\'s role does not hold this permission.' },
   RBAC_RESOURCE_OUT_OF_SCOPE: { status: 403, message: 'The resource is outside this binding\'s scope.' },
+  // Sprint 30 (WP-1): the capability manifest. A live capability must name a proof and a blocked
+  // one must name an owner; a duplicate id or an unknown status is a defect in the shipped
+  // manifest, which is ours, so these are server faults rather than refusals of a caller.
+  CAPABILITY_WITHOUT_PROOF: { status: 500, message: 'A live capability in the manifest names no proof; the shipped manifest is invalid.' },
+  CAPABILITY_WITHOUT_OWNER: { status: 500, message: 'A blocked capability in the manifest names no owner; the shipped manifest is invalid.' },
+  CAPABILITY_DUPLICATE_ID: { status: 500, message: 'The manifest declares the same capability id twice; the shipped manifest is invalid.' },
+  CAPABILITY_INVALID: { status: 500, message: 'A capability entry in the manifest is malformed; the shipped manifest is invalid.' },
+  CAPABILITY_UNKNOWN_STATUS: { status: 500, message: 'A capability declares a status other than live or blocked; the shipped manifest is invalid.' },
+  // Sprint 30 (WP-2): the declarative skills registry. A skill is operator content, so a file the
+  // registry cannot fully understand is a refusal of that file, reported with its code.
+  SKILL_MISSING_FRONTMATTER: { status: 422, message: 'A skill file must begin with a frontmatter block.' },
+  SKILL_UNKNOWN_FIELD: { status: 422, message: 'A skill file declares a field the registry does not recognise.' },
+  SKILL_DUPLICATE_FIELD: { status: 422, message: 'A skill file declares the same field more than once.' },
+  SKILL_INVALID_FIELD: { status: 422, message: 'A skill file has a field line the registry cannot parse.' },
+  SKILL_MISSING_FIELD: { status: 422, message: 'A skill file is missing a field the registry requires.' },
+  SKILL_INVALID_NAME: { status: 422, message: 'A skill name must be lowercase letters, digits and hyphens.' },
+  SKILL_INVALID_VERSION: { status: 422, message: 'A skill version must be semver, x.y.z.' },
+  SKILL_EMPTY_BODY: { status: 422, message: 'A skill file must have a non-empty body.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */

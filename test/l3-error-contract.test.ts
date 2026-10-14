@@ -78,6 +78,12 @@ const THROWN_CODES = [
   // Sprint 25 phase 7: resource-scoped RBAC.
   'RBAC_NO_ROLE_BINDING', 'RBAC_ROLE_UNKNOWN', 'RBAC_PERMISSION_DENIED', 'RBAC_RESOURCE_OUT_OF_SCOPE',
   'INVALID_EVIDENCE', 'INVALID_FACTORY_JOB', 'INVALID_PRODUCT_BRIEF', 'INVALID_REPAIR_LOOP',
+  // Sprint 30 (WP-2): the declarative skills registry refuses a skill file it cannot understand.
+  'SKILL_MISSING_FRONTMATTER', 'SKILL_UNKNOWN_FIELD', 'SKILL_DUPLICATE_FIELD', 'SKILL_INVALID_FIELD',
+  'SKILL_MISSING_FIELD', 'SKILL_INVALID_NAME', 'SKILL_INVALID_VERSION', 'SKILL_EMPTY_BODY',
+  // Sprint 30 (WP-1): the CAPABILITY_* codes are registered in the contract but deliberately not
+  // listed here: a malformed shipped manifest is our defect, not a domain condition, so it is the
+  // one family that is honestly a 500 rather than a refusal of the caller.
 ];
 
 test('L3: every code the service throws has an explicit status and a written message', () => {
