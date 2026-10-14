@@ -7,6 +7,7 @@ import { classifyReadiness } from '../../services/healthService';
 import { NICHE_REGISTRY } from '../../configurations/factory.config';
 import { APP_NAME, APP_VERSION } from '../../configurations/buildInfo';
 import { buildCapabilityManifest } from '../../services/capabilityManifest';
+import { SkillRegistryService } from '../../services/skillRegistryService';
 
 const router = Router();
 const startedAt = Date.now();
@@ -70,6 +71,15 @@ router.get('/capabilities', (_req: Request, res: Response) => {
   } catch (error) {
     return respondWithError(res, error, 'CAPABILITIES_UNAVAILABLE');
   }
+});
+
+/**
+ * The declarative skills registry: the SKILL.md-style capability definitions installed on this
+ * deployment, and any file that was refused. Read-only; a refused file is reported, never hidden.
+ */
+router.get('/skills', (_req: Request, res: Response) => {
+  const { skills, refusals } = SkillRegistryService.list();
+  return res.json({ status: 'success', count: skills.length, skills, refusals });
 });
 
 router.get('/metrics', async (_req: Request, res: Response) => {
