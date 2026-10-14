@@ -50,6 +50,12 @@ export interface PullRequestConfig { enabled: boolean; mode: 'local' | 'github';
  * runs in shadow mode until an operator has seen what it would refuse in their repository.
  */
 export interface UnrelatedWritesConfig { enforce: boolean; allow: string[] }
+/**
+ * The learning digest wiring. `inject` decides whether a run-outcome digest (ADR-012) may be
+ * appended to a drafted task document. It defaults to `false`, and OFF is provably a no-op: the
+ * prompt is byte-identical, asserted in tests. Enabling it is a later sprint, gated on real data.
+ */
+export interface LearningConfig { inject: boolean }
 export interface LoopConfig {
   version: number;
   stages: string[];
@@ -61,6 +67,7 @@ export interface LoopConfig {
   verification: VerificationConfig;
   sandbox: LoopSandboxConfig;
   unrelatedWrites: UnrelatedWritesConfig;
+  learning: LearningConfig;
   /** Optional. When enabled, a finished run drafts a reviewable PR (local by default). */
   pullRequest?: PullRequestConfig;
 }
@@ -211,9 +218,21 @@ function parseUnrelatedWritesBlock(raw: unknown): UnrelatedWritesConfig {
   };
 }
 
+/**
+ * The optional learning block. Absent, it resolves to `{ inject: false }` — a prompt is never
+ * changed by learning until an operator turns it on (ADR-012 §6).
+ */
+function parseLearningBlock(raw: unknown): LearningConfig {
+  if (raw === undefined || raw === null) return { inject: false };
+  if (!isPlainObject(raw)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:learning must be an object');
+  const file = 'loop.json:learning';
+  requireKeys(file, raw, ['inject'], ['inject']);
+  return { inject: reqBoolean(file, raw, 'inject') };
+}
+
 export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   const file = 'loop.json';
-  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox', 'pullRequest', 'unrelatedWrites'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox']);
+  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox', 'pullRequest', 'unrelatedWrites', 'learning'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox']);
   const version = reqNumber(file, raw, 'version', 1, 1_000_000);
   const stages = reqStringArray(file, raw, 'stages', 2, 10);
   if (stages.join(',') !== 'plan,implement,verify,review,commit,report') {
@@ -266,6 +285,7 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   // When present it must be fully coherent: a github flow names the fields a github flow needs.
   const pullRequest = parsePullRequestBlock(raw.pullRequest);
   const unrelatedWrites = parseUnrelatedWritesBlock(raw.unrelatedWrites);
+  const learning = parseLearningBlock(raw.learning);
 
   const config: LoopConfig = {
     version,
@@ -307,6 +327,7 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
       bwrapBinary,
     },
     unrelatedWrites,
+    learning,
     ...(pullRequest ? { pullRequest } : {}),
   };
   if (config.concurrency.maxParallelCeiling < config.concurrency.maxParallelDefault) {

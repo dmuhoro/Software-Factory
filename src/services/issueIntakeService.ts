@@ -9,10 +9,11 @@
  */
 import { IssueTrackerService } from './issueTrackerService';
 import type { TrackerIssue } from './issueTrackerService';
-import { draftTaskDocument, taskDocumentSystem } from './goalIntakeService';
+import { draftTaskDocument, taskDocumentSystem, resolveLearning } from './goalIntakeService';
 import type { GoalDraftResult } from './goalIntakeService';
 import { fileInventory } from './implementerService';
 import { resolveLoopRepo } from './loopControlService';
+import { injectLearningDigest, type LearningDigest } from './learningDigestService';
 
 export interface IssueIntakeInput {
   tenantId: string;
@@ -33,7 +34,7 @@ function fail(code: string, detail?: string): Error {
 }
 
 /** The prompt is the same architect contract as a goal, with the issue as the request. */
-export function buildIssuePrompt(repo: string, issue: TrackerIssue, providerId: string, model: string): { system: string; task: string } {
+export function buildIssuePrompt(repo: string, issue: TrackerIssue, providerId: string, model: string, learning: { digest?: LearningDigest; enabled: boolean } = { enabled: false }): { system: string; task: string } {
   const inventory = fileInventory(repo).slice(0, 200);
   const task = [
     `Issue source: ${issue.source}`,
@@ -51,7 +52,7 @@ export function buildIssuePrompt(repo: string, issue: TrackerIssue, providerId: 
     '',
     'Write the task document now.',
   ].filter(Boolean).join('\n');
-  return { system: taskDocumentSystem(providerId, model), task };
+  return { system: taskDocumentSystem(providerId, model), task: injectLearningDigest(task, learning.digest, learning.enabled) };
 }
 
 export class IssueIntakeService {
@@ -63,7 +64,7 @@ export class IssueIntakeService {
     const repo = resolveLoopRepo(input.repo);
     const issue = await IssueTrackerService.fetch({ spec: input.source, timeoutMs: input.timeoutMs });
 
-    const { system, task } = buildIssuePrompt(repo, issue, input.providerId, input.model);
+    const { system, task } = buildIssuePrompt(repo, issue, input.providerId, input.model, resolveLearning(input.tenantId));
     const draft = await draftTaskDocument({
       tenantId: input.tenantId,
       system,

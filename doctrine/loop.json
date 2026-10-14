@@ -87,5 +87,8 @@
   "unrelatedWrites": {
     "enforce": false,
     "allow": []
+  },
+  "learning": {
+    "inject": false
   }
 }
