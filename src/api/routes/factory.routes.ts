@@ -1,10 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { AppwriteService } from '../../services/appwriteService';
+import { respondWithError } from '../../utils/respondWithError';
 import { DurableStore, LEDGER_VERSION } from '../../services/durableStore';
 import { resolveRuntimeConfig } from '../../configurations/runtimeConfig';
 import { classifyReadiness } from '../../services/healthService';
 import { NICHE_REGISTRY } from '../../configurations/factory.config';
 import { APP_NAME, APP_VERSION } from '../../configurations/buildInfo';
+import { buildCapabilityManifest } from '../../services/capabilityManifest';
 
 const router = Router();
 const startedAt = Date.now();
@@ -49,6 +51,25 @@ router.get('/health', (_req: Request, res: Response) => {
 router.get('/ready', (_req: Request, res: Response) => {
   const readiness = classifyReadiness();
   res.status(readiness.status === 'unhealthy' ? 503 : 200).json({ status: readiness.status, checks: readiness.checks });
+});
+
+/**
+ * The capability manifest: what this factory can actually do, each live entry naming the command
+ * that proves it. Read-only and derived, never hand-maintained in two places. Tenant-authenticated
+ * like every other route; the manifest carries no tenant data.
+ */
+router.get('/capabilities', (_req: Request, res: Response) => {
+  try {
+    const capabilities = buildCapabilityManifest();
+    return res.json({
+      status: 'success',
+      count: capabilities.length,
+      live: capabilities.filter((entry) => entry.status === 'live').length,
+      capabilities,
+    });
+  } catch (error) {
+    return respondWithError(res, error, 'CAPABILITIES_UNAVAILABLE');
+  }
 });
 
 router.get('/metrics', async (_req: Request, res: Response) => {
