@@ -4,6 +4,41 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.27 — model egress has one door
+
+`egressGuard.ts` calls itself the single authority for outbound model egress, and the provider
+abstraction goes through it — but `geminiService.ts` was a second door: it imported the
+`@google/genai` client directly, read `GEMINI_API_KEY` from the environment, and called Google on
+the live telemetry path, never consulting `FACTORY_ALLOWED_SECRET_REFS` or
+`FACTORY_MODEL_ALLOWED_HOSTS`. ADR-011 (now Accepted) makes the door single, and WP-2 (Sprint 29)
+implements it.
+
+- **`src/utils/modelEgress.ts` (new) is the one door.** It is the sole importer of a vendor SDK
+  client constructor and the sole place a model secret becomes a client: it resolves the key via
+  the guard and validates the endpoint before the SDK is constructed. `geminiService.ts` no longer
+  imports `@google/genai` or reads the key — it awaits `createGeminiClient()`.
+- **Two guard primitives.** `resolveOptionalSecretRef` returns `undefined` when nothing is mounted
+  under a reference (the offline path) and **throws** when the variable is mounted but its reference
+  is not allowlisted — a mounted credential without an allowlist is a configuration error, never a
+  silent downgrade to an unauthenticated live call. `authorizeProviderEndpoint` applies the guard's
+  name-and-address checks to an endpoint a module owns itself (the SDK's socket).
+- **Fail closed, proven.** A mounted key that is not allowlisted refuses with
+  `MODEL_PROVIDER_SECRET_REF_NOT_ALLOWED`; an allowlisted key whose host is not permitted refuses
+  with `MODEL_PROVIDER_HOST_NOT_ALLOWED` — both before the client is built. No key means the
+  deterministic fallback, unchanged.
+- **The architectural assertion ADR-011 requires.** `test/egress-confinement.test.ts` scans the
+  server source and fails if a vendor SDK client constructor is imported outside the one door, a
+  provider secret is read outside the guard, or a raw network client is imported outside the guard
+  or the HTTP listener. It is written to fail on the pre-fix tree (it did: `geminiService.ts`
+  violated rules A and B), and it asserts the one door actually routes through the guard so a
+  confinement test cannot pass while the door is unguarded. Schema-builder imports (`Type`) remain
+  allowed everywhere, preserving ADR-002.
+- **Docs move with the code.** `README.md` and `.env.example` now state that enabling live Gemini
+  requires adding `GEMINI_API_KEY` to `FACTORY_ALLOWED_SECRET_REFS` and
+  `generativelanguage.googleapis.com` to `FACTORY_MODEL_ALLOWED_HOSTS`.
+- **Tests (396 total):** the 10 new confinement assertions include the negative scan (5) and the
+  fail-closed behavior of the one door (5).
+
 ### 4.13.26 — the loop refuses a quarantined instruction before a model sees it
 
 The isolation guard existed and its error code was registered, but nothing on the live path called

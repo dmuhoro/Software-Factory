@@ -1,6 +1,6 @@
 # Sprint 29 — The Sensor Layer
 
-**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26) · **Opened:** 2026-10-14
+**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26, WP-2 egress door · 4.13.27) · **Opened:** 2026-10-14
 
 **Thesis:** Sprint 28 joined the orchestration layer — planning, concurrency, and a reviewable
 change set — onto the unattended loop. What the loop cannot yet do is *feel*: it does not check
@@ -48,7 +48,7 @@ protection it does not provide, and a control that is not asserted (ADR-008).
 |---|---|---|---|
 | **WP-0** | Governance: this sprint file + ADR-011 (one egress door) + ADR-012 (bounded learning) | `npm run verify:docs` green; ADRs presented for sign-off | **done** |
 | WP-1 | Wire the dead leak guard + persist isolation evidence | planted target-instruction content refuses the run; manifest survives `--resume` | **done — 4.13.26** |
-| WP-2 | One egress door (implements ADR-011) | architectural assertion test fails pre-fix, passes post-fix | pending |
+| WP-2 | One egress door (implements ADR-011) | architectural assertion test fails pre-fix, passes post-fix | **done — 4.13.27** |
 | WP-3 | Durable failure classification for the loop | classes persist, survive resume, appear in the report; exhaustive classifier tests | pending |
 | WP-4 | Foundation readiness check (disk space + write/fsync) | full/read-only `FACTORY_DATA_DIR` reports fail; server refuses (exit 75) | pending |
 | WP-5 | Unrelated-writes guard, **shadow mode only** | shadow log names an unrelated edit; allowlisted lockfile not flagged; flag flips enforcement | pending |
@@ -182,3 +182,44 @@ evidence of what it isolated.
 The hosted-model and live-GitHub paths remain operator-blocked.
 
 **Next.** WP-2 — one egress door, with an architectural assertion that fails on the pre-fix tree.
+
+## WP-2 — One egress door (4.13.27)
+
+**Executive summary.** The guard declared itself the single authority for model egress, but
+`geminiService.ts` was a second door on the live telemetry path: it imported the `@google/genai`
+client, read `GEMINI_API_KEY`, and called Google without ever consulting the allowlists. ADR-011 is
+now Accepted and implemented: every vendor SDK client is built in one module that resolves the key
+and validates the endpoint through the guard first, and an architectural assertion makes the
+invariant live.
+
+**What was built.**
+
+- `src/utils/modelEgress.ts` (new): the sole importer of a vendor SDK client constructor. It calls
+  `resolveOptionalSecretRef('GEMINI_API_KEY')` and `authorizeProviderEndpoint(GeminiConfig.baseUrl,
+  'gemini-native')` before constructing the client; no key mounted → `null` (deterministic path).
+- `egressGuard.ts`: `resolveOptionalSecretRef` (absence → `undefined`; mounted-but-unpermitted →
+  throw) and `authorizeProviderEndpoint` (the guard's name-and-address checks applied to a socket the
+  guard does not own).
+- `geminiService.ts`: no longer imports `@google/genai` or reads the key; awaits `createGeminiClient()`.
+- `gemini.config.ts`: `baseUrl` names the endpoint the operator must allowlist.
+- `test/egress-confinement.test.ts` (new): the assertion ADR-011 requires.
+- Docs: `.env.example` and `README.md` state the two allowlist entries live Gemini needs; ADR-011
+  flipped Proposed → Accepted with its implementation referenced.
+
+**Verification evidence (ground truth).**
+
+- Failing-first: against the pre-fix tree the assertion reported `src/services/geminiService.ts
+  imports GoogleGenAI from @google/genai` (rule A) and `src/services/geminiService.ts reads
+  GEMINI_API_KEY` (rule B), plus the two positive assertions — 4 of 5 failed. Post-fix: 10/10 pass.
+- Rule C (raw network client confinement) passed pre- and post-fix, as it should: the only
+  `node:http` import is the process's own listener in `server.ts`.
+- Behavioral fail-closed: a mounted key without an allowlist refuses `MODEL_PROVIDER_SECRET_REF_NOT_ALLOWED`;
+  an allowlisted key whose host is not permitted refuses `MODEL_PROVIDER_HOST_NOT_ALLOWED`; both
+  before the SDK client is constructed. The fallback path is unchanged.
+- Full suite green: **396 tests, 396 pass** (up from 386). `tsc --noEmit` clean; docs gate 6/6.
+
+**Remaining gaps.** The Appwrite serverless function and the Rust runtime (`software_factory/`) are
+separate deployables with their own trust boundaries; ADR-011 names them out of scope. Tenant webhook
+egress (`webhookService.ts`) is a different egress class and is unchanged.
+
+**Next.** WP-3 — durable failure classification, so an attempt's reason persists as a machine-readable class.
