@@ -106,6 +106,13 @@
       "enforcement": "no-op-unit",
       "stages": ["implement"],
       "blocking": true
+    },
+    {
+      "id": "R-16-UNRELATED-WRITES-GUARD",
+      "statement": "Any working-tree change not listed in the implementer's claimed files and not on the allowlist is a cross-cutting write: in shadow mode it is recorded; when enforced it refuses the attempt at the commit boundary so the change cannot be shipped under a message that does not describe it.",
+      "enforcement": "unrelated-writes",
+      "stages": ["commit"],
+      "blocking": true
     }
   ]
 }

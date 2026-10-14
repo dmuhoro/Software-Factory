@@ -83,5 +83,9 @@
       "tokenSecret": "",
       "baseUrl": "https://api.github.com"
     }
+  },
+  "unrelatedWrites": {
+    "enforce": false,
+    "allow": []
   }
 }

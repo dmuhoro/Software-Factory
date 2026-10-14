@@ -69,6 +69,7 @@ test('each gate maps to the class its semantics imply', () => {
     'model-assignment': 'policy',
     'attempt-cap': 'policy',
     'plan-is-executable': 'policy',
+    'unrelated-writes': 'policy',
   };
   assert.deepEqual(GATE_FAILURE_CLASSES, expected);
 });

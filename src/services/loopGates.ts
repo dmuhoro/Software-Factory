@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { GATE_IDS, type GateId } from './gateIds';
 import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsolationService';
 import { ResourceGovernorService } from './resourceGovernorService';
 import type { GroundTruthProof } from './groundTruthService';
 import { extractLocators, runCommand } from './groundTruthService';
-import { stageAndScanSecrets } from './commitService';
+import { stageAndScanSecrets, pathMatchesPattern } from './commitService';
 import { detectVerificationProfile } from './verificationProfileService';
 import { isGitRepository } from '../utils/pathGuard';
 import type { GateResult, LoopRunRecord, LoopSandboxConfig, LoopStage, UnitRecord } from './loopTypes';
@@ -52,6 +53,12 @@ export interface GateContext {
   sandbox?: LoopSandboxConfig;
   /** The command timeout for gates that run a command, required by `no-op-unit`. */
   timeoutMs?: number;
+  /**
+   * The unrelated-writes policy, required by `unrelated-writes`. Optional so a caller that does not
+   * thread it still gets the doctrine default (`enforce: false`, empty allowlist) rather than an
+   * unguarded gate.
+   */
+  unrelatedWrites?: { enforce: boolean; allow: string[] };
 }
 
 export interface GateOutcome {
@@ -176,6 +183,34 @@ const REGISTRY: Record<GateId, GateFn> = {
     if (failed.length) return { passed: false, detail: failed.map((check) => `${check.id}: ${check.outputTail ?? ''}`).join('; ') };
     if (!proof.observedFiles.length) return { passed: false, detail: 'the working tree is identical to HEAD: no change was made' };
     return { passed: true, detail: `${proof.claimedFiles.length} claimed file(s), all observed to differ from HEAD` };
+  },
+
+  'unrelated-writes': (ctx) => {
+    // The diff that reaches git is the implementer's claim plus whatever else landed in the tree.
+    // `claimed-files-exist` refuses a claimed file that did not change; it says nothing about a file
+    // that changed and was never claimed — a formatter's rewrite, a codegen side effect, residue
+    // from a tool the unit ran. That unclaimed change would be committed under a message that
+    // describes only the claimed work. This gate is the sensor for it.
+    //
+    // It ships in shadow mode: the destructive default is `enforce: false`, so an unrelated write is
+    // recorded with the file named and nothing is refused, until an operator has seen what it would
+    // refuse in their repository. `enforce: true` turns the recording into a refusal.
+    const proof = ctx.proof;
+    if (!proof) return { passed: true, detail: 'no proof was produced for this stage; there is no observed tree to compare against the claim' };
+    const policy = ctx.unrelatedWrites ?? DoctrineService.load().loop.unrelatedWrites;
+    const claimed = new Set(proof.claimedFiles);
+    const allowed = (file: string): boolean =>
+      policy.allow.some((pattern) => pathMatchesPattern(file, pattern) || pathMatchesPattern(path.basename(file), pattern));
+    const unrelated = proof.observedFiles.filter((file) => !claimed.has(file) && !allowed(file));
+    if (!unrelated.length) {
+      return { passed: true, detail: `${proof.observedFiles.length} observed file(s): every one was claimed or allowlisted` };
+    }
+    const named = unrelated.slice(0, 10).join(', ');
+    const more = unrelated.length > 10 ? ` (+${unrelated.length - 10} more)` : '';
+    if (policy.enforce) {
+      return { passed: false, detail: `${unrelated.length} file(s) changed that the implementer did not claim: ${named}${more}` };
+    }
+    return { passed: true, detail: `SHADOW: would refuse ${unrelated.length} unrelated write(s): ${named}${more}` };
   },
 
   'ground-truth': (ctx) => {

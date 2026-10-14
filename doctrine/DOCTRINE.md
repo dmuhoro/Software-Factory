@@ -39,7 +39,7 @@ The loop repeats until every unit is `DONE` or `STUCK`, or a hard stop fires.
 | PLAN | The unit's acceptance criteria, verification commands, and touched surface are written to a human-readable plan artifact. | `doctrine-integrity`, `doctrine-isolation`, `resource-admission`, `plan-is-executable` |
 | IMPLEMENT | The assigned model returns a file manifest. Files are written only through the traversal-guarded writer. | `resource-admission`, `model-assignment`, `no-op-unit`, `claimed-files-exist` |
 | VERIFY | Commands are executed against the working tree. Exit codes and output digests are recorded. Narration is discarded. | `resource-admission`, `ground-truth`, `attempt-cap` |
-| COMMIT | The diff is scanned for credentials, committed, and the tree is re-checked clean. | `ground-truth`, `secret-scan`, `clean-tree`, `verified-commit-message`, `one-commit-per-unit` |
+| COMMIT | The diff is scanned for credentials, checked for undeclared writes, committed, and the tree is re-checked clean. | `ground-truth`, `secret-scan`, `unrelated-writes`, `clean-tree`, `verified-commit-message`, `one-commit-per-unit` |
 | REPORT | A markdown report records every check, digest, and commit for the unit. | `doctrine-integrity`, `evidence-is-machine-derived` |
 
 ### Budgets, admission, and how many units run at once
@@ -116,6 +116,7 @@ cat .data/factory-runs/<runId>/checkpoint.json
 | R-13 | Every change is read by a judgement-tier reviewer; a refusal steers the next attempt. | `review-approve` | the reviewer's findings in `checkpoint.json` |
 | R-14 | Verification commands run sandboxed and fail closed; a command that cannot be sandboxed is refused, never run bare. | `ground-truth` | `jq '.checks[] | select(.command)' checkpoint.json` under a restricted sandbox |
 | R-15 | A unit whose own verification already passes on the starting tree is refused before any model is dialled, and not retried. | `no-op-unit` | `jq '.gates[] | select(.id=="no-op-unit")' checkpoint.json` |
+| R-16 | A working-tree change not claimed by the implementer and not allowlisted is recorded (shadow), and refused when `unrelatedWrites.enforce` is on. | `unrelated-writes` | `jq '.gates[] | select(.id=="unrelated-writes")' checkpoint.json` |
 
 ---
 
