@@ -19,7 +19,7 @@
       "after": ["review-approve"]
     },
     "commit": {
-      "before": ["ground-truth", "secret-scan"],
+      "before": ["ground-truth", "secret-scan", "unrelated-writes"],
       "after": ["clean-tree", "verified-commit-message", "one-commit-per-unit"]
     },
     "report": {

@@ -314,6 +314,12 @@ What makes it safe to leave alone:
 - **A comment must not claim a value its code does not use.** `diff:comment-claim` compares each
   added comment against the line it annotates; a comment naming a value the code does not use
   refuses the unit.
+- **A change nobody declared is observed.** The commit stages every change in the tree, so a
+  formatter's rewrite or a tool's side effect would land under a message describing only the claimed
+  work. `unrelated-writes` compares the working tree against the implementer's claimed files (and an
+  allowlist) and names any file that changed without being claimed. It ships in **shadow mode** —
+  `loop.json:unrelatedWrites.enforce` defaults to `false`, so the write is recorded and nothing is
+  refused until an operator turns enforcement on.
 - **A failed command reaches the next attempt with its file:line**, not just an exit code, so the
   model is told where to look.
 

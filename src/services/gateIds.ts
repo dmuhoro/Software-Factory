@@ -22,6 +22,7 @@ export const GATE_IDS = [
   'verified-commit-message',
   'one-commit-per-unit',
   'evidence-is-machine-derived',
+  'unrelated-writes',
 ] as const;
 
 export type GateId = (typeof GATE_IDS)[number];

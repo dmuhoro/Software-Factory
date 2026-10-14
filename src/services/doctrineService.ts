@@ -43,6 +43,13 @@ export interface TierDefinition { purpose: string; default: string }
 export interface RoleDefinition { tier: ModelTier }
 export interface GithubPrConfig { tokenSecret: string; baseUrl: string }
 export interface PullRequestConfig { enabled: boolean; mode: 'local' | 'github'; targetBranch: string; baseBranch: string; github: GithubPrConfig }
+/**
+ * The unrelated-writes policy. `allow` names paths (or basenames) the implementer may change without
+ * claiming them — lockfiles are the canonical case. `enforce` decides whether a write that is
+ * neither claimed nor allowlisted is refused, or only recorded. It defaults to `false`: the guard
+ * runs in shadow mode until an operator has seen what it would refuse in their repository.
+ */
+export interface UnrelatedWritesConfig { enforce: boolean; allow: string[] }
 export interface LoopConfig {
   version: number;
   stages: string[];
@@ -53,6 +60,7 @@ export interface LoopConfig {
   concurrency: ConcurrencyConfig;
   verification: VerificationConfig;
   sandbox: LoopSandboxConfig;
+  unrelatedWrites: UnrelatedWritesConfig;
   /** Optional. When enabled, a finished run drafts a reviewable PR (local by default). */
   pullRequest?: PullRequestConfig;
 }
@@ -187,9 +195,25 @@ function parsePullRequestBlock(raw: unknown): PullRequestConfig | undefined {
   return { enabled: true, mode, targetBranch, baseBranch, github };
 }
 
+/**
+ * The optional unrelated-writes guard. Absent, it resolves to shadow mode with an empty allowlist:
+ * the guard records every file changed but not claimed, and refuses nothing. Present, both keys are
+ * required — `enforce` decides refuse-vs-record and `allow` is the claimed-without-listing set.
+ */
+function parseUnrelatedWritesBlock(raw: unknown): UnrelatedWritesConfig {
+  if (raw === undefined || raw === null) return { enforce: false, allow: [] };
+  if (!isPlainObject(raw)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:unrelatedWrites must be an object');
+  const file = 'loop.json:unrelatedWrites';
+  requireKeys(file, raw, ['enforce', 'allow'], ['enforce', 'allow']);
+  return {
+    enforce: reqBoolean(file, raw, 'enforce'),
+    allow: reqStringArray(file, raw, 'allow', 0, 200),
+  };
+}
+
 export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   const file = 'loop.json';
-  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox', 'pullRequest'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox']);
+  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox', 'pullRequest', 'unrelatedWrites'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox']);
   const version = reqNumber(file, raw, 'version', 1, 1_000_000);
   const stages = reqStringArray(file, raw, 'stages', 2, 10);
   if (stages.join(',') !== 'plan,implement,verify,review,commit,report') {
@@ -241,6 +265,7 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   // Optional PR flow. Absent, it means `enabled: false` (a run never drafts a PR by itself).
   // When present it must be fully coherent: a github flow names the fields a github flow needs.
   const pullRequest = parsePullRequestBlock(raw.pullRequest);
+  const unrelatedWrites = parseUnrelatedWritesBlock(raw.unrelatedWrites);
 
   const config: LoopConfig = {
     version,
@@ -281,6 +306,7 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
       writableDirs,
       bwrapBinary,
     },
+    unrelatedWrites,
     ...(pullRequest ? { pullRequest } : {}),
   };
   if (config.concurrency.maxParallelCeiling < config.concurrency.maxParallelDefault) {

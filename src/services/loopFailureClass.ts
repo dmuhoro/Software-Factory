@@ -65,6 +65,7 @@ export const GATE_FAILURE_CLASSES: Record<string, LoopFailureClass> = {
   'model-assignment': 'policy',
   'attempt-cap': 'policy',
   'plan-is-executable': 'policy',
+  'unrelated-writes': 'policy',
 };
 
 /** Non-gate refusal codes (the first token of a thrown message) and the class each denotes. */
