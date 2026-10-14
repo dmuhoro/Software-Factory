@@ -37,7 +37,7 @@ joined, and two of them (concurrency, PR flow) do not run end to end.
 | **WP-1** | Two-axis review: standards and spec as independent, both-blocking reads | one axis refusing refuses the review; both dialled | **done (4.13.22)** |
 | **WP-2** | Tracker bridge: issue → spec → tickets with blocking edges | an issue produces a task document whose DAG blocks correctly | **done (4.13.23)** |
 | WP-3 | Concurrent execution driver over worktrees + task graph | two independent units run at once; a dependent unit waits | **done (4.13.24)** |
-| WP-4 | PR flow adapter: local branch + manifest default, GitHub behind a credential | a completed run yields a reviewable branch/manifest, never a silent commit | planned |
+| WP-4 | PR flow adapter: local branch + manifest default, GitHub behind a credential | a completed run yields a reviewable branch/manifest, never a silent commit | **done (4.13.25)** |
 | WP-5 | Model layer: the frontier provider actually answers | a hosted model key is required; blocked, not worked around | blocked |
 
 WP-5 depends on an operator input that is not code — a hosted model provider key with spend
@@ -121,6 +121,42 @@ gate 6/6; secrets gate pass.
 exactly as documented (ADR-010, DEPLOY_DOCKER/DEPLOY_RAILWAY). Worktree-parallel runs are
 intentionally not resumable; the sequential path keeps its resume behavior.
 
+## WP-4 — The pull request flow (4.13.25)
+
+**The gap:** a run that finished left its work inline on whatever branch it happened to be on —
+no reviewable artifact, no manifest of the commits and merges it had made, and no path to a pull
+request. The "workforce" vision needs a change to reach a human as something reviewable, not as a
+silent commit on a shared branch.
+
+**Fix:**
+- `prFlowService` (new) drafts three things, each derived from the run: a durable `pullRequests`
+  record, a rendered manifest (title, per-commit proof digest, merge list, open-unit list), and a
+  branch ref `factory/pr/<runId12>` at the run head. `mergeable` reports the run's own verdict: a
+  `halted` run or any unit not `done` is not mergeable.
+- The GitHub half fails closed **before the network**: `resolveSecretRef` first
+  (`PR_GITHUB_TOKEN_REQUIRED` on empty/malformed/non-allowlisted), then owner/name, head, and a
+  base-URL re-validation at the `egressJson` socket. It maps 401/403, 422, and other non-2xx
+  explicitly, and never merges.
+- A new optional `loop.json:pullRequest` block (absent ⇒ off) gates a post-report auto-draft; a
+  draft failure is a `warn` event and never changes the run's exit code. `github` mode must name an
+  allowlisted `github:tokenSecret`, validated at parse time.
+- Endpoints `POST`/`GET /api/operations/runs/:runId/pr`; `pullRequests` collection and
+  `LEDGER_VERSION` 8; the ten `PR_*` codes join `apiError.ts` and `l3-error-contract`.
+- A real defect was found and fixed by the test: the record id was minted with a
+  time/process-varying id, so `getRecord` could never resolve the record a `draft` had written; the
+  id is now content-derived (`DurableStore.deterministicId`), so a re-draft overwrites in place.
+
+**Evidence:** `test/pr-flow.test.ts` (new, 3 arms) drives the real service against real git
+repositories — the local draft writes a record that `getRecord` resolves, a real branch ref at HEAD,
+and a truthful manifest; a halted run is not mergeable; the GitHub path refuses with
+`PR_GITHUB_TOKEN_REQUIRED` with no socket. Full suite: **384/384**; docs gate 6/6; secrets gate
+pass. **Failing-first:** the `getRecord` mismatch above failed the local-draft arm before the id
+was made deterministic.
+
+**Honest limits:** the local half is fully proven here; the GitHub half proves only the refusal
+before the socket and the loopback path — a live GitHub pull request needs an operator-appointed
+allowlisted token and an egress permit, neither of which is in this environment.
+
 ## WP-1 — Two-axis review (4.13.22)
 
 **The defect:** `ReviewService.review` asked a single model read to judge a change on two
@@ -149,7 +185,9 @@ the spec-refusal arm fail. Full suite: **365/365**; `npm run verify` green (Laye
 
 ## Named blockers (not worked around)
 
-- **WP-5 / WP-4-real-PR:** a hosted model key and a GitHub App/token are required; absent here,
-  so those halves stay behind their input.
+- **WP-5 / WP-4-real-PR:** WP-4's local flow is done (4.13.25); the *real* GitHub pull request needs
+  an operator-appointed allowlisted token and an egress permit. WP-5 needs a hosted model key with
+  spend. Both halves stay behind their input, delivered as fail-closed code, and are named here
+  rather than worked around.
 - **WP-3 sandbox:** the shipped container runs no bubblewrap, so sandboxed execution in-container
   requires `--privileged` (documented in ADR-010) — an operator decision, not a code change.
