@@ -6,6 +6,7 @@
  */
 import { proofDigest, type GroundTruthProof } from './groundTruthService';
 import type { ModelAssignment } from './doctrineService';
+import type { IsolationEvidence } from './doctrineIsolationService';
 
 export type LoopStage = 'plan' | 'implement' | 'verify' | 'review' | 'commit' | 'report';
 
@@ -109,6 +110,10 @@ export interface LoopRunRecord {
   attemptCap: number;
   tenantId: string;
   quarantineCount: number;
+  /** The isolation contract this run was staged under: every quarantined target instruction file
+   * with its hash, persisted so a resume can prove the target's rules did not change mid-flight.
+   * Since v4.13.26 (Sprint 29, WP-1). */
+  isolation?: IsolationEvidence;
   units: UnitRecord[];
   /** HEADs created by this run, in order. In `worktree-parallel` these are the per-worktree
    * feature commits; the merge that folded each one onto the target branch is in `merges`. */

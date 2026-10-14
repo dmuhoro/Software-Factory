@@ -41,6 +41,20 @@ export interface IsolationManifest {
   stagedAt: string;
 }
 
+/**
+ * The durable evidence for a staged manifest: which instruction files the target carried, and their
+ * hashes. Persisted on the run record so a resume can prove the target's rules did not change
+ * between sessions. The scrubbed child environment is deliberately excluded: the evidence is what
+ * was quarantined, not the environment it was quarantined in.
+ */
+export interface IsolationEvidence {
+  doctrineRoot: string;
+  doctrineDigest: string;
+  targetRepo: string;
+  stagedAt: string;
+  quarantine: QuarantineEntry[];
+}
+
 export const TARGET_INSTRUCTION_FILES = [
   'AGENTS.md',
   'CLAUDE.md',
@@ -178,12 +192,24 @@ export class DoctrineIsolationService {
     };
   }
 
+  /** The durable evidence for a staged manifest, persisted on the run record and re-verifyable.
+   * A returned copy, not a view: a run's evidence must not change if the manifest object does. */
+  public static evidence(manifest: IsolationManifest): IsolationEvidence {
+    return {
+      doctrineRoot: manifest.doctrineRoot,
+      doctrineDigest: manifest.doctrineDigest,
+      targetRepo: manifest.targetRepo,
+      stagedAt: manifest.stagedAt,
+      quarantine: manifest.quarantine.map((entry) => ({ ...entry })),
+    };
+  }
+
   /**
    * Re-checks the doctrine manifest and the target's instruction files. Called again at `report`
    * so that a run whose rulebook changed underneath it halts instead of reporting under rules it
    * did not actually follow.
    */
-  public static verify(manifest: IsolationManifest): { ok: boolean; reasons: string[] } {
+  public static verify(manifest: IsolationEvidence): { ok: boolean; reasons: string[] } {
     const reasons: string[] = [];
     try {
       const verification = DoctrineService.verifyManifest();
