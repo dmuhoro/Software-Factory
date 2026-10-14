@@ -1,6 +1,6 @@
 # Sprint 30 — The Cloud Surface
 
-**Status:** in progress — WP-1 (v4.14.0), WP-2 (v4.14.1), WP-3 (v4.14.2) and WP-4 (v4.14.3) shipped; WP-5 open · **Opened:** 2026-10-14 · **Updated:** 2026-10-14
+**Status:** complete — WP-1 (v4.14.0), WP-2 (v4.14.1), WP-3 (v4.14.2), WP-4 (v4.14.3) and WP-5 (v4.14.4) shipped · **Opened:** 2026-10-14 · **Closed:** 2026-10-14
 
 **Thesis.** Sprint 29 gave the factory senses: it checks the ground it stands on, names why an
 attempt failed, records a write it would have refused, and reads its own ledger back as a bounded
@@ -45,7 +45,7 @@ the truth about it.
 | WP-2 | Skills adoption: load declarative `SKILL.md`-style definitions from a governed directory, validate them, expose the installed set; refuse unknown fields | a malformed skill refuses with a code; an installed one is surfaced; no dependency on the external repo | **done — v4.14.1** |
 | WP-3 | Fleet read surface: tenant-scoped summaries across runs plus the learning digest, for a thin web/mobile client; **no new writes** | a foreign tenant sees nothing; the surface adds no mutating route | **done — v4.14.2** |
 | WP-4 | Cloud deployment readiness: a preflight that the runtime can serve (config, single-writer ledger, persistence path, required env), fail closed; the documented Docker/Railway path verified | a misconfigured container refuses at startup; the documented path boots | **done — v4.14.3** |
-| WP-5 | Public evidence page: `site/` states what is **live**, **planned**, or **blocked**, each live item linked to its proving command | the page names no capability the manifest does not declare | pending |
+| WP-5 | Public evidence page: `site/` states what is **live**, **planned**, or **blocked**, each live item linked to its proving command | the page names no capability the manifest does not declare | **done — v4.14.4** |
 
 ### Scope limits (hard — do not implement in this sprint)
 
@@ -180,3 +180,31 @@ other's records.
 `numReplicas` to 2 fails the single-writer assertion. Failing-first for the gate: disabling the
 `fatal` startup check in `server.ts` (so a misconfigured deploy binds instead of refusing) fails 5 of
 the gate's 8 checks. Gate: **8/8**. Full suite: **454/454**.
+
+## WP-5 — The public evidence page (v4.14.4)
+
+**What was built.** The `site/` page's capability section is now generated from the manifest, not
+typed by hand. `scripts/render-evidence.ts` renders the section (an embedded, machine-readable
+manifest block above a human table) from `CAPABILITIES`, and `npm run render:evidence` rewrites it
+while `--check` fails if the committed page and the manifest disagree. The page states each
+capability's status — **live** with the command that demonstrates it, **blocked** with its owner —
+and the stale figures (a frozen `219 / 219` test count and a `v4.11.0` version) are gone in favour of
+the command that reproduces them. The "Known limits" list is trimmed to the blocked capabilities, so
+the page and the manifest agree.
+
+**Why.** A page nobody regenerates is a page that lies. The failure mode is drift: the page claiming
+a capability, or a status, the manifest does not declare. Generating from the one source the API also
+serves makes them impossible to disagree without the gate going red.
+
+**Evidence.** `test/evidence-page.test.ts` (3 tests): the committed section equals
+`renderCapabilitySection(CAPABILITIES)`; the embedded JSON deep-equals `buildCapabilityManifest()`;
+each live entry's `proves` and each blocked entry's `owner` appear. Failing-first: flipping a status
+in the page fails the equality test. `npm run verify:evidence` is green.
+
+**Also in this release (corrective).** `test/setup-isolate-env.ts` now neutralises the
+auth-affecting variables (`ALLOW_INSECURE_LOCAL`, `FACTORY_API_KEY`, `FACTORY_TENANT_CREDENTIALS`,
+`STORAGE_BACKEND`, …), not only the workspace roots. `verify:full` sources `.env`, which exports
+`ALLOW_INSECURE_LOCAL=true`; without this, the loopback bypass went live under `verify:full` and every
+"401 without a credential" harness case answered 403, while the same suite passed when run directly.
+The suite is now hermetic regardless of the launching shell. Full verification: `verify:full`
+**10/10**, `verify:loop` **7/7**, `verify:deploy` **8/8**, suite **457/457**.

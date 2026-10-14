@@ -4,6 +4,29 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.14.4 — the public evidence page, generated from the manifest
+
+The evidence page stated capabilities and figures by hand, so it drifted release over release. WP-5
+(Sprint 30) makes it a view of the same capability manifest the API serves.
+
+- **`scripts/render-evidence.ts` (new).** Renders the page's capability section — an embedded,
+  machine-readable manifest block above a human table — from `CAPABILITIES`. `npm run render:evidence`
+  rewrites it; `--check` fails if the committed page and the manifest disagree.
+- **The page states status, proof and owner.** Each **live** capability names the command that
+  demonstrates it; each **blocked** one names its owner. Stale figures (a frozen `219 / 219` and a
+  `v4.11.0` version) are replaced with the command that reproduces them, and "Known limits" is
+  trimmed to the blocked capabilities so the page and the manifest agree.
+- **Tests (457 total):** `test/evidence-page.test.ts` (new, 3 tests) — the committed section equals
+  `renderCapabilitySection(CAPABILITIES)`, the embedded JSON deep-equals `buildCapabilityManifest()`,
+  and every live `proves` / blocked `owner` appears. Failing-first: flipping a status in the page
+  fails the equality test. `npm run verify:evidence` is green.
+- **Corrective — the suite is now hermetic.** `test/setup-isolate-env.ts` neutralises the
+  auth-affecting variables (`ALLOW_INSECURE_LOCAL`, `FACTORY_API_KEY`, `FACTORY_TENANT_CREDENTIALS`,
+  `STORAGE_BACKEND`, …), not only the workspace roots. `verify:full` sources `.env`, which exports
+  `ALLOW_INSECURE_LOCAL=true`; without this the loopback bypass went live under `verify:full` and
+  every "401 without a credential" harness case answered 403, while the suite passed when run
+  directly. Full verification: `verify:full` 10/10, `verify:loop` 7/7, `verify:deploy` 8/8.
+
 ### 4.14.3 — the deployment contract, and the documented path that boots
 
 The runtime already refused to start on an unusable configuration. What was never checked is that the
