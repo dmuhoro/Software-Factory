@@ -4,6 +4,35 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.28 — durable failure classification for the loop
+
+A run recorded *why* an attempt failed as a free-text reason (the first token of the thrown refusal)
+plus a truncated detail. That is enough for a human and useless for a count: nothing could answer
+"how often does this repository fail verification versus review versus a policy gate" in a
+machine-readable way. ADR-012 turns recorded outcomes into a bounded digest, and a class must exist
+before it can be counted. WP-3 (Sprint 29) adds it.
+
+- **`src/services/loopFailureClass.ts` (new) is a pure classifier.** `classifyLoopFailure` reads the
+  refusal code, the stage, the gate ids a `GATE_REFUSED` carries, and the message, and returns one
+  of `security | verification | review | model | environment | policy | unknown`. No LLM, no clock,
+  no randomness, no I/O.
+- **Total over the registry, fail closed.** Every gate id maps to exactly one class; a new gate with
+  no class fails the completeness test. An unrecognized refusal is `unknown`, never a plausible
+  guess. The real refusal codes of every module that throws one are covered, including
+  `SECRET_CONTENT_REFUSED` (security), `GROUND_TRUTH_REQUIRED` (verification), `REVIEW_*` (review),
+  `IMPLEMENTER_*`/`MODEL_*` (model), and `SANDBOX_*`/`GIT_*` (environment).
+- **Assigned at the moment of failure and persisted.** `failureClass` joins `AttemptRecord`,
+  `UnitRecord` (the last failed attempt while stuck; cleared once done), and `LoopRunRecord` (the
+  dominant class, or the class of a run-level hard stop when no attempt failed). A resumed run
+  re-reads the stored class; it never re-derives it from a truncated detail.
+- **Visible in the report.** `renderReport` gains a **Failure classes** section (counts ordered by
+  count then severity) and names the class beside each failed attempt.
+- **Tests (407 total):** `test/loop-failure-class.test.ts` asserts registry completeness, the real
+  refusal codes, gate-id parsing, determinism, and summary ordering; the loop-execution suite
+  asserts the class end-to-end for a failed verification (`verification`), a reviewer refusal
+  (`review`), and a credential in the diff (`security`). Failing-first: with the wiring removed
+  those three integration assertions fail.
+
 ### 4.13.27 — model egress has one door
 
 `egressGuard.ts` calls itself the single authority for outbound model egress, and the provider
