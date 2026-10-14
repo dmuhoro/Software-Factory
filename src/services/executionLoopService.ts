@@ -17,6 +17,7 @@ import { decompose, loadTaskDocument, type WorkUnit } from './taskDocumentServic
 import { assertRegistryComplete, runStageGates, type GateContext } from './loopGates';
 import { resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
 import { slimProof, widenProof, type AttemptRecord, type GateResult, type LoopEvent, type LoopRunRecord, type LoopStage, type UnitRecord } from './loopTypes';
+import { prFlowService } from './prFlowService';
 
 /**
  * The driver: PLAN → IMPLEMENT → VERIFY → COMMIT → REPORT, one unit at a time, unattended.
@@ -450,6 +451,20 @@ export class ExecutionLoopService {
     else if (refusal) record.status = 'refused';
     else record.status = 'completed';
     persist();
+
+    try {
+      const doctrine = DoctrineService.load();
+      if (doctrine.loop.pullRequest?.enabled) {
+        try {
+          prFlowService.draft({ tenantId: record.tenantId, run: record, repo: record.repo, mode: doctrine.loop.pullRequest.mode });
+          event('info', 'report', `pr drafted for run ${record.runId} (mode=${doctrine.loop.pullRequest.mode ?? 'local'})`);
+        } catch (error) {
+          event('warn', 'report', `pr draft failed for run ${record.runId}: ${(error as Error).message}`);
+        }
+      }
+    } catch (error) {
+      event('warn', 'report', `pr draft skipped (doctrine parse error): ${(error as Error).message}`);
+    }
 
     const reportFiles = this.writeReport(record, options.reportDir);
     const exitCode: 0 | 2 | 3 = hardStop ? 3 : record.units.some((unit) => unit.status !== 'done') ? 2 : 0;

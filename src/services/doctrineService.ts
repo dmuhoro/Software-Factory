@@ -38,6 +38,11 @@ export interface CommitConfig { requireGroundTruth: boolean; requireVerifiedStat
 export type ExecutionMode = 'sequential' | 'worktree-parallel';
 export interface ConcurrencyConfig { maxParallelDefault: number; maxParallelCeiling: number; minFreeMemMb: number; maxLoadAvgPerCpu: number; execution: ExecutionMode }
 export interface VerificationConfig { requireCleanTreeAfterCommit: boolean; requireNonEmptyDiff: boolean; acceptNarratedEvidence: boolean; timeoutMs: number }
+export type ModelTier = 'cheap' | 'frontier';
+export interface TierDefinition { purpose: string; default: string }
+export interface RoleDefinition { tier: ModelTier }
+export interface GithubPrConfig { tokenSecret: string; baseUrl: string }
+export interface PullRequestConfig { enabled: boolean; mode: 'local' | 'github'; targetBranch: string; baseBranch: string; github: GithubPrConfig }
 export interface LoopConfig {
   version: number;
   stages: string[];
@@ -48,11 +53,9 @@ export interface LoopConfig {
   concurrency: ConcurrencyConfig;
   verification: VerificationConfig;
   sandbox: LoopSandboxConfig;
+  /** Optional. When enabled, a finished run drafts a reviewable PR (local by default). */
+  pullRequest?: PullRequestConfig;
 }
-
-export type ModelTier = 'cheap' | 'frontier';
-export interface TierDefinition { purpose: string; default: string }
-export interface RoleDefinition { tier: ModelTier }
 export interface ModelsConfig {
   version: number;
   tiers: Record<ModelTier, TierDefinition>;
@@ -155,9 +158,38 @@ function reqStringArray(file: string, obj: Record<string, unknown>, key: string,
   return value as string[];
 }
 
+/**
+ * The optional pull-request block. Absent, or `enabled: false`, means the loop never drafts a PR
+ * on its own. When enabled it must be coherent: a `github` mode names the token secret reference
+ * the github half may resolve (checked again at egress), and targets a non-empty branch. A
+ * `local` default needs nothing but the branches to target.
+ */
+function parsePullRequestBlock(raw: unknown): PullRequestConfig | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isPlainObject(raw)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:pullRequest must be an object');
+  const file = 'loop.json:pullRequest';
+  if (!reqBoolean(file, raw, 'enabled')) return undefined;
+  const mode = reqString(file, raw, 'mode', 20) as 'local' | 'github';
+  if (mode !== 'local' && mode !== 'github') throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:pullRequest:mode must be local or github');
+  const targetBranch = reqString(file, raw, 'targetBranch', 200);
+  const baseBranch = reqString(file, raw, 'baseBranch', 200);
+  let github: GithubPrConfig = { tokenSecret: '', baseUrl: '' };
+  if (raw.github !== undefined) {
+    if (!isPlainObject(raw.github)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:pullRequest:github must be an object');
+    github = {
+      tokenSecret: reqString('loop.json:pullRequest:github', raw.github, 'tokenSecret', 200),
+      baseUrl: reqString('loop.json:pullRequest:github', raw.github, 'baseUrl', 400),
+    };
+  }
+  if (mode === 'github' && !github.tokenSecret) {
+    throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:pullRequest:github:tokenSecret is required for github mode');
+  }
+  return { enabled: true, mode, targetBranch, baseBranch, github };
+}
+
 export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   const file = 'loop.json';
-  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox']);
+  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox', 'pullRequest'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox']);
   const version = reqNumber(file, raw, 'version', 1, 1_000_000);
   const stages = reqStringArray(file, raw, 'stages', 2, 10);
   if (stages.join(',') !== 'plan,implement,verify,review,commit,report') {
@@ -206,6 +238,10 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
     throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:sandbox:enabled must be true; verification commands are never run bare (R-14)');
   }
 
+  // Optional PR flow. Absent, it means `enabled: false` (a run never drafts a PR by itself).
+  // When present it must be fully coherent: a github flow names the fields a github flow needs.
+  const pullRequest = parsePullRequestBlock(raw.pullRequest);
+
   const config: LoopConfig = {
     version,
     stages,
@@ -245,6 +281,7 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
       writableDirs,
       bwrapBinary,
     },
+    ...(pullRequest ? { pullRequest } : {}),
   };
   if (config.concurrency.maxParallelCeiling < config.concurrency.maxParallelDefault) {
     throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json: ceiling must be >= default');

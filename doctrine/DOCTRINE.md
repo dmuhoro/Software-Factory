@@ -55,11 +55,21 @@ take it. Environment may only tighten these numbers; `FACTORY_MIN_FREE_MEM_MB`,
 
 | Value | Meaning |
 |---|---|
-| `sequential` | One unit at a time in the target's working tree, in dependency order. **This is what the loop does today.** |
-| `worktree-parallel` | Independent units prepared in separate git worktrees. **Not implemented.** The loop refuses to start in this mode rather than running sequential work under a parallel label. |
+| `sequential` | One unit at a time in the target's working tree, in dependency order. **This is the conservative default.** |
+| `worktree-parallel` | Independent units prepared in separate git worktrees, each gated end to end and folded onto the target branch in dependency order. A unit is launched only once its dependencies are **merged**; an unresolvable merge halts the run at the last good merge. |
 
-The ceiling is therefore a real bound on a mode nobody has built yet, and an honest one today:
-the effective parallelism of a run is 1, which is inside it.
+The ceiling is a hard bound on how many units a run may have airborne at once; the driver asks
+`resource-admission` for the effective budget each run and refuses the run when the host cannot
+take that many.
+
+### Pull request flow (optional; `loop.json:pullRequest`)
+
+Off by default. When `enabled: true`, a finished run drafts a reviewable change set instead of
+leaving work inline: a durable record, a written manifest of what was committed and merged, and a
+branch ref (`factory/pr/<runId>`) at the run's head. `mode` is `local` (default, no network, no
+credential) or `github` (a real API pull request, still never an auto-merge). The GitHub half
+requires an allowlisted secret reference (`github:tokenSecret`) that is resolved and re-validated
+at the socket boundary; the loop itself never pushes, so opening on GitHub is an explicit step.
 
 ### Manual execution of the same loop
 

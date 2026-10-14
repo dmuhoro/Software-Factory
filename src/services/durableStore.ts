@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const LEDGER_VERSION = 7 as const;
+export const LEDGER_VERSION = 8 as const;
 
 /**
  * Oldest document this build can still read and migrate forward.
@@ -38,7 +38,7 @@ export const LEDGER_COLLECTIONS = [
   'clientWorkspaces', 'handovers', 'clientAcceptances', 'hostedDeployments', 'modelProviders',
   'agentRuns', 'worktrees', 'proofRecords', 'queueJobs', 'executionRuns',
   'deploymentObservations', 'mergeRecords', 'securityScans', 'projectAdapters',
-  'tenants', 'factoryLoopRuns', 'usageEvents', 'operatorCaps',
+  'tenants', 'factoryLoopRuns', 'usageEvents', 'operatorCaps', 'pullRequests',
 ] as const;
 
 export type LedgerCollection = (typeof LEDGER_COLLECTIONS)[number];
@@ -84,6 +84,7 @@ export interface DurableState {
   factoryLoopRuns: Record<string, Record<string, unknown>>;
   usageEvents: Record<string, Record<string, unknown>>;
   operatorCaps: Record<string, Record<string, unknown>>;
+  pullRequests: Record<string, Record<string, unknown>>;
 }
 
 /** Audit log is append-only but bounded; an unbounded array is a disk-exhaustion risk. */
