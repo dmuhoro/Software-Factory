@@ -17,6 +17,7 @@ import { decompose, loadTaskDocument, type WorkUnit } from './taskDocumentServic
 import { assertRegistryComplete, runStageGates, type GateContext } from './loopGates';
 import { resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
 import { slimProof, widenProof, type AttemptRecord, type GateResult, type LoopEvent, type LoopRunRecord, type LoopStage, type UnitRecord } from './loopTypes';
+import { classifyLoopFailure, runFailureClass, summariseFailureClasses } from './loopFailureClass';
 import { prFlowService } from './prFlowService';
 
 /**
@@ -447,6 +448,7 @@ export class ExecutionLoopService {
     record.finishedAt = iso();
     record.hardStop = hardStop;
     record.refusal = refusal;
+    record.failureClass = runFailureClass(record.units.flatMap((unit) => unit.attempts), hardStop);
     if (hardStop) record.status = 'halted';
     else if (refusal) record.status = 'refused';
     else record.status = 'completed';
@@ -687,6 +689,8 @@ export class ExecutionLoopService {
         attempt.reason = 'verified';
         attempt.detail = `${commands.length} verification command(s) exited 0`;
         attempt.proofDigest = proofDigest(proof);
+        attempt.failureClass = undefined;
+        unitRecord.failureClass = undefined;
         unitRecord.status = 'done';
         unitRecord.commitSha = commit.sha;
         unitRecord.commitSubject = commit.subject;
@@ -710,6 +714,12 @@ export class ExecutionLoopService {
         // re-send it. (Sprint 29, WP-1.)
         const leaked = /^TARGET_DOCTRINE_LEAKED_INTO_RUN/.test(message);
         const nonRetryable = NON_RETRYABLE.test(message);
+
+        // Durable failure classification: assigned here, at the moment of failure, and persisted so
+        // a later digest can count it. A resumed run re-reads the stored class; it never re-derives
+        // it from the truncated detail. (Sprint 29, WP-3.)
+        attempt.failureClass = classifyLoopFailure({ stage: attempt.stage, reason: attempt.reason, gateIds: ids, message });
+        unitRecord.failureClass = attempt.failureClass;
 
         // A commit that already landed is evidence, not something to erase. Keep it and stop.
         if (committed) {
@@ -1113,10 +1123,11 @@ function lastStoredProof(record: LoopRunRecord): ReturnType<typeof widenProof> |
 function renderReport(record: LoopRunRecord): string {
   const attempts = record.units.reduce((total, unit) => total + unit.attempts.length, 0);
   const refused = record.gates.filter((gate) => !gate.passed);
+  const failureSummary = summariseFailureClasses(record.units.flatMap((unit) => unit.attempts));
   const lines: string[] = [
     `# Loop run ${record.runId}`,
     '',
-    `**Status:** ${record.status.toUpperCase()}${record.hardStop ? ` — hard stop: ${record.hardStop}` : ''}${record.refusal ? ` — refused to start: ${record.refusal}` : ''}`,
+    `**Status:** ${record.status.toUpperCase()}${record.failureClass ? ` — ${record.failureClass}` : ''}${record.hardStop ? ` — hard stop: ${record.hardStop}` : ''}${record.refusal ? ` — refused to start: ${record.refusal}` : ''}`,
     '',
     `| | |`,
     `|---|---|`,
@@ -1166,8 +1177,14 @@ function renderReport(record: LoopRunRecord): string {
     '## Attempt log',
     '',
     ...(attempts
-      ? record.units.flatMap((unit) => unit.attempts.map((attempt) => `- **${unit.unitId}** attempt ${attempt.attempt} @ ${attempt.stage}: ${attempt.passed ? 'passed' : `failed (${attempt.reason})`} — ${attempt.detail.slice(0, 300)}`))
+      ? record.units.flatMap((unit) => unit.attempts.map((attempt) => `- **${unit.unitId}** attempt ${attempt.attempt} @ ${attempt.stage}: ${attempt.passed ? 'passed' : `failed (${attempt.reason}${attempt.failureClass ? ` → ${attempt.failureClass}` : ''})`} — ${attempt.detail.slice(0, 300)}`))
       : ['- no attempt was made']),
+    '',
+    '## Failure classes',
+    '',
+    ...(failureSummary.counts.length
+      ? failureSummary.counts.map((entry) => `- ${entry.failureClass}: ${entry.count}`)
+      : ['- none: no attempt failed']),
     '',
     '## Gates',
     '',

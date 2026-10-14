@@ -292,9 +292,12 @@ What makes it safe to leave alone:
 - **Evidence is executed, never narrated.** A unit is complete when its verification command ran
   and exited 0. The commit body records those commands and their exit codes, plus a
   `Proof: sha256:` digest; a model's own account is recorded and discarded.
-- **Failure is bounded and visible.** Three attempts per unit, each quoting the previous refusal
+- **Failure is bounded, classified, and visible.** Three attempts per unit, each quoting the previous refusal
   back to the model and rolling the tree back first; then STUCK, and the run continues with the
-  next independent unit.
+  next independent unit. Every failed attempt carries a machine-readable class — `security`,
+  `verification`, `review`, `model`, `environment`, `policy`, or `unknown` — derived purely from
+  its refusal code and stage (no model), persisted on the record so it survives `--resume`, and
+  summarised in the report's **Failure classes** section.
 - **A unit that cannot fail its own check, or cannot run it, is refused before the model is
   dialled.** A unit whose verification command already exits 0 on the starting tree is a no-op —
   nothing it does can satisfy the proof — so `no-op-unit` refuses it once instead of burning the

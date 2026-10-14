@@ -7,6 +7,7 @@
 import { proofDigest, type GroundTruthProof } from './groundTruthService';
 import type { ModelAssignment } from './doctrineService';
 import type { IsolationEvidence } from './doctrineIsolationService';
+import type { LoopFailureClass } from './loopFailureClass';
 
 export type LoopStage = 'plan' | 'implement' | 'verify' | 'review' | 'commit' | 'report';
 
@@ -41,6 +42,9 @@ export interface AttemptRecord {
   proofDigest?: string;
   /** Bounded tail of the failing command's output, for the operator reading the report. */
   outputTail?: string;
+  /** Machine-readable class of a failed attempt, assigned at the moment of failure and persisted so
+   * a count survives resume. Absent on a passed attempt. Since v4.13.28 (Sprint 29, WP-3). */
+  failureClass?: LoopFailureClass;
   /** The review verdict this attempt earned, if it reached the review stage. `approved` is the
    * combined verdict; `axes` records each independent axis's own verdict so a refusal is traceable
    * to the axis that made it. */
@@ -72,6 +76,9 @@ export interface UnitRecord {
   blockedBy?: string;
   startedAt?: string;
   finishedAt?: string;
+  /** Class of the last failed attempt while the unit is stuck; cleared once the unit is done.
+   * Since v4.13.28 (Sprint 29, WP-3). */
+  failureClass?: LoopFailureClass;
 }
 
 export interface GateResult {
@@ -125,6 +132,9 @@ export interface LoopRunRecord {
   models: ModelAssignment[];
   hardStop?: string;
   refusal?: string;
+  /** Dominant failure class across this run's failed attempts (or the class of a run-level hard
+   * stop when no attempt failed). Absent on a clean run. Since v4.13.28 (Sprint 29, WP-3). */
+  failureClass?: LoopFailureClass;
   /** Number of narration claims recorded and discarded across the run. */
   narrationRejected: number;
 }
