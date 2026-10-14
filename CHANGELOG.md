@@ -4,6 +4,25 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.14.3 — the deployment contract, and the documented path that boots
+
+The runtime already refused to start on an unusable configuration. What was never checked is that the
+*documented* deployment path invokes that runtime correctly. WP-4 (Sprint 30) ties the manifests to
+the code and exercises the real entrypoint.
+
+- **`test/deploy-contract.test.ts` (new).** Static assertions that the deployment artifacts agree
+  with the code: the platform health path is a real, public route; `railway.json` starts
+  `node dist/server.cjs`, polls `/api/factory/health`, and declares `numReplicas: 1` (the
+  single-writer ledger, NC-2, cannot honour a second writer); the image `HEALTHCHECK` probes the same
+  path; the compose file is fail-closed with the ledger on a volume.
+- **`scripts/verify-deploy.sh` (`verify:deploy`, new).** Boots the real entrypoint three ways: a
+  placeholder credential and an enabled loopback bypass must each refuse to start (exit 78, with a
+  named refusal), and a correctly-configured production deploy must bind and answer
+  `/api/factory/health` with a serveable status.
+- **Tests (454 total):** the four deploy-contract assertions. Failing-first: `numReplicas: 2` fails
+  the single-writer assertion; disabling the startup `fatal` check fails 5 of the gate's 8 checks.
+  Gate: 8/8.
+
 ### 4.14.2 — the fleet read surface, and the boundary codes the guard could not see
 
 A thin client had no single read that answered "how are my runs doing, and what has the loop
