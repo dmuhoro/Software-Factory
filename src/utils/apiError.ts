@@ -90,6 +90,16 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   WORKTREE_NOT_FOUND: { status: 404, message: 'No such worktree.' },
   LOOP_TARGET_NOT_BRANCH: { status: 409, message: 'The worktree-parallel driver can only merge onto a checked-out branch.' },
   WORKTREE_CREATION_FAILED: { status: 409, message: 'A worktree could not be created for a unit.' },
+  PR_NOT_FOUND: { status: 404, message: 'No pull request record for this run.' },
+  PR_HEAD_REF_CREATION_FAILED: { status: 409, message: 'The reviewable branch could not be created or refreshed.' },
+  PR_GITHUB_TOKEN_REQUIRED: { status: 403, message: 'Opening a GitHub pull request requires an allowlisted token secret reference.' },
+  PR_GITHUB_AUTH_FAILED: { status: 403, message: 'The GitHub API refused the pull request credential.' },
+  PR_GITHUB_HEAD_REQUIRED: { status: 422, message: 'A pushed head branch must be named before a GitHub pull request can be opened.' },
+  PR_GITHUB_REPO_REQUIRED: { status: 422, message: 'A repository in owner/name form must be named for a GitHub pull request.' },
+  PR_GITHUB_REPO_MALFORMED: { status: 422, message: 'The repository must look like owner/name.' },
+  PR_GITHUB_UNPROCESSABLE: { status: 422, message: 'GitHub refused the pull request payload.' },
+  PR_GITHUB_OPEN_FAILED: { status: 502, message: 'GitHub did not open the pull request.' },
+  PR_MODE_UNSUPPORTED: { status: 422, message: 'The pull request mode must be local or github.' },
 
   // ── Policy and state preconditions raised by the orchestration services ────
   APPROVAL_REQUIRED: { status: 403, message: 'This action requires an approval decision first.' },

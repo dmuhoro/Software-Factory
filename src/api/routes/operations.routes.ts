@@ -8,6 +8,9 @@ import { ObservationService } from '../../services/observationService';
 import { MergeService } from '../../services/mergeService';
 import { QualityGateService } from '../../services/qualityGateService';
 import { AgentExecutionService } from '../../services/agentExecutionService';
+import { DoctrineService } from '../../services/doctrineService';
+import { ExecutionLoopService } from '../../services/executionLoopService';
+import { prFlowService } from '../../services/prFlowService';
 
 const router = Router();
 const tenant = (req: any): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
@@ -28,4 +31,44 @@ router.get('/runs/:runId/merges', (req, res) => { if (!validateTenantRequest(req
 router.post('/quality/adapters', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', adapter: QualityGateService.detect(tenant(req), req.body.projectId, req.body.repositoryPath) }); } catch (error) { return fail(res, error); } });
 router.post('/quality/scans', (req, res) => { if (!validateTenantRequest(req, res)) return; try { return res.status(201).json({ status: 'success', scan: QualityGateService.scan(tenant(req), req.body.repositoryPath, req.body.projectId) }); } catch (error) { return fail(res, error); } });
 router.get('/quality/scans', (req, res) => { if (!validateTenantRequest(req, res)) return; return res.json({ status: 'success', scans: QualityGateService.list(tenant(req)) }); });
+
+router.post('/runs/:runId/pr', async (req, res) => {
+  if (!validateTenantRequest(req, res)) return;
+  try {
+    const pullRequest = DoctrineService.load().loop.pullRequest;
+    if (!pullRequest?.enabled) throw new Error('PR_MODE_UNSUPPORTED');
+    const record = ExecutionLoopService.getRun(req.params.runId);
+    if (!record) throw new Error('LOOP_RUN_NOT_FOUND');
+    const pr = prFlowService.draft({ tenantId: tenant(req), run: record, repo: record.repo, mode: pullRequest.mode });
+    if (pullRequest.mode === 'github') {
+      const remote = prFlowService.githubTarget(record.repo);
+      const opened = await prFlowService.openGithub({
+        tenantId: tenant(req),
+        run: record,
+        repo: record.repo,
+        mode: 'github',
+        owner: remote?.owner ?? '',
+        repoName: remote?.repoName ?? '',
+        head: pr.branch,
+        tokenSecretRef: pullRequest.github.tokenSecret,
+        baseUrl: pullRequest.github.baseUrl || undefined,
+      });
+      return res.status(201).json({ status: 'success', pr: opened });
+    }
+    return res.status(201).json({ status: 'success', pr });
+  } catch (error) {
+    return fail(res, error);
+  }
+});
+
+router.get('/runs/:runId/pr', (req, res) => {
+  if (!validateTenantRequest(req, res)) return;
+  try {
+    const pr = prFlowService.getRecord(tenant(req), req.params.runId);
+    if (!pr) throw new Error('PR_NOT_FOUND');
+    return res.json({ status: 'success', pr });
+  } catch (error) {
+    return fail(res, error);
+  }
+});
 export default router;

@@ -1,7 +1,14 @@
 {
   "$comment": "Loop parameters for unattended execution. Data, not prose: doctrineService.ts validates every key and the loop refuses to start when one is missing or out of range.",
   "version": 1,
-  "stages": ["plan", "implement", "verify", "review", "commit", "report"],
+  "stages": [
+    "plan",
+    "implement",
+    "verify",
+    "review",
+    "commit",
+    "report"
+  ],
   "attempt": {
     "maxPerUnit": 3
   },
@@ -62,7 +69,19 @@
     "enabled": true,
     "backend": "bwrap",
     "enableNetwork": false,
-    "writableDirs": ["."],
+    "writableDirs": [
+      "."
+    ],
     "bwrapBinary": "bwrap"
+  },
+  "pullRequest": {
+    "enabled": false,
+    "mode": "local",
+    "targetBranch": "main",
+    "baseBranch": "main",
+    "github": {
+      "tokenSecret": "",
+      "baseUrl": "https://api.github.com"
+    }
   }
 }
