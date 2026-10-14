@@ -4,6 +4,39 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.30 — the unrelated-writes guard, shipped in shadow mode
+
+The commit stages every change in the working tree. `claimed-files-exist` refuses a *claimed* file
+that did not change, but nothing looked the other way: a file that changed and was never claimed.
+That is the cross-cutting write — a formatter's rewrite, a codegen side effect, residue from a tool
+the unit ran — all of which would be committed under a message that describes only the claimed
+work. WP-5 (Sprint 29) adds the sensor, and ships it in shadow mode so it can be observed before it
+has the power to refuse.
+
+- **A new gate, `unrelated-writes`, at the commit boundary.** It reads `Proof.claimedFiles` and
+  `Proof.observedFiles`, subtracts the claimed set and an allowlist, and names any file that
+  changed without being claimed. Registered in `gateIds.ts`, implemented in `loopGates.ts`, declared
+  in `doctrine/hooks/hooks.json:commit.before`, and enforceable as **R-16** in
+  `doctrine/rules/rules.json`; a gate with no file, a rule with no gate, or a gate no stage runs is
+  a test failure.
+- **Shadow is the default, and the destructive default is empty.** `loop.json:unrelatedWrites`
+  (`{ enforce: false, allow: [] }`) is validated by `doctrineService.ts` and optional — an absent
+  block resolves to shadow mode. With `enforce: false`, a write is recorded as
+  `SHADOW: would refuse …` with the file named and `passed: true`; nothing is refused. Setting
+  `enforce: true` turns the recording into a refusal. The allowlist matches a full path or a
+  basename via the commit boundary's own glob (`*.lock`, `pnpm-lock.yaml`, …).
+- **Fail closed on the unknown.** A stage with no proof is inert (`passed: true`, "no proof"), not a
+  refusal — the guard judges only what it can observe, and never fabricates a pass or a failure. A
+  new gate id with no failure class fails the completeness test (the new gate maps to `policy`).
+- **Docs.** `README.md` (loop safety model) and `doctrine/DOCTRINE.md` (the stage table and rule
+  list) state the guard, its shadow default, and its allowlist.
+- **Tests (420 total):** `test/unrelated-writes.test.ts` (new) covers the shadow record, the
+  enforced refusal, allowlist-by-basename and by-pattern, a fully claimed tree, a missing proof, the
+  registry/classification wiring, and the doctrine boundary (shipped default, absent block, and the
+  two malformed shapes). Failing-first: removing the gate implementation fails **7** assertions;
+  removing the hook fails the real end-to-end run with `gates never executed during a real run:
+  ['unrelated-writes']`.
+
 ### 4.13.29 — foundation readiness: the data directory is a readiness check
 
 The ledger probe proved the store's own write path; it did not prove the ground the store stands
