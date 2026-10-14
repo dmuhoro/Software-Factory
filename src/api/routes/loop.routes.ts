@@ -158,6 +158,20 @@ router.get('/learning-digest', (req: Request, res: Response) => {
   return res.json({ status: 'success', digest });
 });
 
+/**
+ * A read-only fleet overview for a thin client: the tenant's runs by status, and the learning digest
+ * beside them. Composed entirely from the durable ledger; it starts no run and writes nothing.
+ */
+router.get('/overview', (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  const tenantId = tenant(req);
+  return res.json({
+    status: 'success',
+    overview: LoopControlService.overview(tenantId),
+    digest: LearningDigestService.build(tenantId),
+  });
+});
+
 /** One run's full record. */
 router.get('/runs/:id', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;

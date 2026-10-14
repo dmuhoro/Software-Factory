@@ -33,6 +33,16 @@ import { resolveWithin, isGitRepository } from '../utils/pathGuard';
 /** The operation a confirmation token is bound to. Kept out of the token's visible shape. */
 const CANCEL_OPERATION = 'loop.run.cancel';
 
+/**
+ * Counts runs by settlement status. Pure and total: every status is present (zero when absent), so a
+ * client never has to distinguish "no runs" from "a missing key".
+ */
+export function countRunsByStatus(runs: readonly LoopRunRecord[]): Record<LoopStatus, number> {
+  const counts: Record<LoopStatus, number> = { running: 0, completed: 0, halted: 0, refused: 0 };
+  for (const run of runs) counts[run.status] += 1;
+  return counts;
+}
+
 export interface SubmitLoopRunInput {
   tenantId: string;
   /** Path to the target git repository. Must resolve inside the approved workspace. */
@@ -147,6 +157,20 @@ export class LoopControlService {
 
   public static summaries(tenantId: string): Array<Record<string, unknown>> {
     return this.list(tenantId).map((run) => this.summary(run));
+  }
+
+  /**
+   * A read-only fleet view for a thin client: how many runs, and how they settled. Derived from the
+   * same ledger the rest of the control plane reads; it starts nothing and writes nothing.
+   */
+  public static overview(tenantId: string): Record<string, unknown> {
+    const runs = this.list(tenantId);
+    return {
+      totalRuns: runs.length,
+      byStatus: countRunsByStatus(runs),
+      latestRunId: runs[0]?.runId ?? null,
+      runs: runs.map((run) => this.summary(run)),
+    };
   }
 
   public static summary(run: LoopRunRecord): Record<string, unknown> {
