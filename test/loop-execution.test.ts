@@ -313,8 +313,13 @@ test('a unit that fails verification is attempted exactly cap times, marked STUC
     for (const attempt of failed.attempts) {
       assert.equal(attempt.stage, 'verify');
       assert.equal(attempt.passed, false);
+      assert.equal(attempt.failureClass, 'verification', 'a failed ground-truth check must classify as verification');
       assert.match(attempt.detail, /cmd:unit-M1|check-a|exit 1/);
     }
+    assert.equal(failed.failureClass, 'verification', 'the stuck unit carries the class of its last failure');
+    assert.equal(record.failureClass, 'verification', 'the run carries its dominant failure class');
+    // The class is durable: it is in the persisted report, not only in memory.
+    assert.match(fs.readFileSync(outcome.reportFiles.markdown, 'utf8'), /## Failure classes[\s\S]*- verification: 3/);
     // The failing attempt's work was rolled back rather than left behind as a half-change.
     assert.equal(fs.existsSync(path.join(repo, 'feature-a.txt')), false, 'a refused attempt left its file on disk');
     assert.equal(gitLines(repo, ['rev-list', '--count', 'HEAD'])[0], '2', 'only the initial commit and M2 landed');
@@ -335,6 +340,7 @@ test('a credential in the staged content is refused at the commit boundary and n
     const unit = record.units[0];
     assert.equal(unit.status, 'stuck');
     const refusal = unit.attempts.at(-1)!;
+    assert.equal(refusal.failureClass, 'security', 'a credential in the diff is a security failure');
     assert.match(refusal.detail, /SECRET_CONTENT_REFUSED/, `expected a content refusal, got: ${refusal.detail}`);
     assert.equal(record.commits.length, 0, 'a commit was created from a refused diff');
     assert.equal(gitLines(repo, ['rev-list', '--count', 'HEAD'])[0], '1', 'only the initial commit exists');
@@ -532,6 +538,7 @@ verify: node check-a.cjs
     const rejected = unit.attempts[0];
     assert.equal(rejected.stage, 'review');
     assert.equal(rejected.passed, false);
+    assert.equal(rejected.failureClass, 'review', 'a review-gate refusal must classify as review');
     assert.match(rejected.reason, /GATE_REFUSED/);
     assert.equal(rejected.review?.approved, false);
     assert.match(rejected.detail, /stray\.log/, 'the refusal quoted the reviewer finding');
