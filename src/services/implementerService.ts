@@ -29,6 +29,12 @@ export interface ImplementRequest {
   timeoutMs: number;
   /** Why the previous attempt of this unit failed, quoted back to the model. */
   feedback?: string;
+  /**
+   * The exact prompts to send. When present they are used verbatim, so the caller (the loop) can
+   * assert them — that no quarantined target instruction entered them — before any model call.
+   * When absent, they are built here. (Sprint 29, WP-1.)
+   */
+  prompts?: { system: string; task: string };
 }
 
 export interface ImplementResult {
@@ -236,7 +242,7 @@ export class ImplementerService {
       // error, not an invitation to try.
       throw fail('MODEL_NOT_REGISTERED_FOR_PROVIDER', `${request.assignment.providerId}/${request.assignment.model}`);
     }
-    const { system, task } = buildPrompts(request);
+    const { system, task } = request.prompts ?? buildPrompts(request);
     const response = await FrontierModelService.request(request.tenantId, {
       providerId: request.assignment.providerId,
       model: request.assignment.model,

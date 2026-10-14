@@ -8,8 +8,8 @@ import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsolationService';
 import { FrontierModelService } from './frontierModelService';
 import { ResourceGovernorService } from './resourceGovernorService';
-import { ImplementerService } from './implementerService';
-import { ReviewService } from './reviewService';
+import { ImplementerService, buildPrompts, type ImplementRequest } from './implementerService';
+import { ReviewService, buildReviewPrompts, REVIEW_AXES, type ReviewRequest, type ReviewAxis } from './reviewService';
 import { commitUnit, readLoopVersion } from './commitService';
 import { collectGroundTruth, proofDigest, type GroundTruthProof } from './groundTruthService';
 import { detectVerificationProfile } from './verificationProfileService';
@@ -288,7 +288,7 @@ export class ExecutionLoopService {
           tenantId,
           attemptCap,
           execution: loop.concurrency.execution,
-          quarantineCount: isolation.quarantine.length,
+          isolation,
           models: assignments,
           units,
         });
@@ -554,7 +554,7 @@ export class ExecutionLoopService {
           sandbox: loop.sandbox,
           timeoutMs: loop.verification.timeoutMs,
         });
-        const result = await ImplementerService.implement({
+        const implementRequest: ImplementRequest = {
           tenantId: input.tenantId,
           repo,
           unit,
@@ -564,7 +564,16 @@ export class ExecutionLoopService {
           isolation,
           timeoutMs: loop.verification.timeoutMs,
           feedback,
+        };
+        // A quarantined instruction file is recorded and never read — so prove its content did not
+        // enter this payload before the payload leaves the process. Done here, before the model
+        // call, so a leak is refused before any socket is opened. (Sprint 29, WP-1; ADR-008.)
+        const implementerPrompts = buildPrompts(implementRequest);
+        DoctrineIsolationService.assertNoTargetInstructionContent(isolation, {
+          'implementer.system': implementerPrompts.system,
+          'implementer.task': implementerPrompts.task,
         });
+        const result = await ImplementerService.implement({ ...implementRequest, prompts: implementerPrompts });
         const claimed = result.files.map((file) => {
           const target = resolveFileWithin(repo, file.path, 'IMPLEMENTER_PATH_INVALID');
           fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -609,7 +618,7 @@ export class ExecutionLoopService {
         attempt.stage = 'review';
         const reviewAssignment = DoctrineService.modelFor('reviewer', input.document.models);
         enter('review', 'before', { taskOverrides: input.document.models, usedRoles: ['reviewer'] });
-        const review = await ReviewService.review({
+        const reviewRequest: ReviewRequest = {
           tenantId: input.tenantId,
           repo,
           unit,
@@ -620,7 +629,19 @@ export class ExecutionLoopService {
           proof,
           timeoutMs: loop.verification.timeoutMs,
           feedback,
-        });
+        };
+        // The same proof for both review axes: the reviewer payloads (which carry the diff and the
+        // repository brief) are asserted clean before either axis is sent.
+        const reviewPrompts: Partial<Record<ReviewAxis, { system: string; task: string }>> = {};
+        const reviewPayloads: Record<string, string> = {};
+        for (const axis of REVIEW_AXES) {
+          const built = buildReviewPrompts(reviewRequest, axis);
+          reviewPrompts[axis] = built;
+          reviewPayloads[`reviewer.${axis}.system`] = built.system;
+          reviewPayloads[`reviewer.${axis}.task`] = built.task;
+        }
+        DoctrineIsolationService.assertNoTargetInstructionContent(isolation, reviewPayloads);
+        const review = await ReviewService.review({ ...reviewRequest, prompts: reviewPrompts });
         attempt.review = {
           approved: review.approved,
           findings: review.findings,
@@ -684,6 +705,10 @@ export class ExecutionLoopService {
 
         const ids = gateIdsFrom(message);
         const halting = ids.some((id) => HALTING_GATES.has(id));
+        // A quarantined instruction reaching a payload is a security halt, not a failed attempt.
+        // Nothing in the tree changes to make a leaked instruction un-leaked, so a retry would only
+        // re-send it. (Sprint 29, WP-1.)
+        const leaked = /^TARGET_DOCTRINE_LEAKED_INTO_RUN/.test(message);
         const nonRetryable = NON_RETRYABLE.test(message);
 
         // A commit that already landed is evidence, not something to erase. Keep it and stop.
@@ -696,7 +721,7 @@ export class ExecutionLoopService {
           rollback(repo, before);
         }
 
-        if (halting) throw new LoopHardStop(`${unit.id}: ${tail(message, 400)}`);
+        if (halting || leaked) throw new LoopHardStop(`${unit.id}: ${tail(message, 400)}`);
 
         if (ids.includes('no-op-unit') || /SANDBOX_TOOLCHAIN_HIDDEN/.test(message)) {
           // Terminal, and not retried: the tree is restored to the same committed state every
@@ -924,7 +949,7 @@ export class ExecutionLoopService {
     tenantId: string;
     attemptCap: number;
     execution: 'sequential' | 'worktree-parallel';
-    quarantineCount: number;
+    isolation: IsolationManifest;
     models: ReturnType<typeof DoctrineService.allAssignments>;
     units: WorkUnit[];
   }): LoopRunRecord {
@@ -941,7 +966,8 @@ export class ExecutionLoopService {
       execution: input.execution,
       attemptCap: input.attemptCap,
       tenantId: input.tenantId,
-      quarantineCount: input.quarantineCount,
+      quarantineCount: input.isolation.quarantine.length,
+      isolation: DoctrineIsolationService.evidence(input.isolation),
       units: input.units.map((unit): UnitRecord => ({
         unitId: unit.id,
         milestoneId: unit.milestoneId,
@@ -975,6 +1001,15 @@ export class ExecutionLoopService {
     // this process cannot vouch for. It fails closed rather than pretending to continue.
     if (existing.execution === 'worktree-parallel') {
       throw new Error(`LOOP_RUN_INCOMPATIBLE:${runId}: worktree-parallel runs cannot be resumed; start a fresh run`);
+    }
+    // Re-verify the isolation the original run was staged under. The target's instruction files
+    // are part of the rules the run was judged by; if one changed between sessions, the resumed run
+    // would be following a rulebook the first session did not. Fail closed rather than continue.
+    if (existing.isolation) {
+      const isolation = DoctrineIsolationService.verify(existing.isolation);
+      if (!isolation.ok) {
+        throw new Error(`LOOP_RUN_INCOMPATIBLE:${runId}: the target repository's instruction files changed since this run started: ${isolation.reasons.join('; ')}`);
+      }
     }
     // If the run was killed mid-work, it left residue: half-written files, staged changes. The
     // run is the only writer of this tree, so that residue is not evidence — restore the tree to
@@ -1097,6 +1132,18 @@ function renderReport(record: LoopRunRecord): string {
     `| Resume restoration | ${record.restoredOnResume ? `${record.restoredOnResume.paths.length} path(s) restored from an interrupted attempt` : '—'} |`,
     `| Narration claims discarded | ${record.narrationRejected} |`,
     '',
+    ...(record.isolation
+      ? [
+          '## Isolation',
+          '',
+          `Doctrine \`${record.isolation.doctrineDigest}\` staged against \`${record.isolation.targetRepo}\` at ${record.isolation.stagedAt}. The target's instruction files are hashed and never read:`,
+          '',
+          ...(record.isolation.quarantine.length
+            ? record.isolation.quarantine.map((entry) => `- \`${entry.relativePath}\` — ${entry.sha256} (${entry.bytes} bytes, ${entry.action})`)
+            : ['- none']),
+          '',
+        ]
+      : []),
     '## Units',
     '',
     '| Unit | Status | Attempts | Commit | Verify |',

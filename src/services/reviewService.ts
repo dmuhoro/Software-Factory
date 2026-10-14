@@ -31,6 +31,12 @@ export interface ReviewRequest {
   timeoutMs: number;
   /** A previous reviewer's findings, for the re-review of a corrected attempt. */
   feedback?: string;
+  /**
+   * The exact prompts to send per axis. When present they are used verbatim, so the caller (the
+   * loop) can assert them — that no quarantined target instruction entered them — before any model
+   * call. When absent, they are built here. (Sprint 29, WP-1.)
+   */
+  prompts?: Partial<Record<ReviewAxis, { system: string; task: string }>>;
 }
 
 /**
@@ -331,7 +337,7 @@ export class ReviewService {
     // One model read per axis. A malformed or rejected axis throws, which fails the whole review
     // closed — a change is never approved because the axis that would have refused stayed silent.
     const axes = await Promise.all(REVIEW_AXES.map(async (axis): Promise<AxisVerdict> => {
-      const { system, task } = buildReviewPrompts(request, axis);
+      const { system, task } = request.prompts?.[axis] ?? buildReviewPrompts(request, axis);
       const response = await FrontierModelService.request(request.tenantId, {
         providerId: assignment.providerId,
         model: assignment.model,
