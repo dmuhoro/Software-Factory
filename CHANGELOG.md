@@ -4,6 +4,37 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.31 — the learning digest, bounded and off by default
+
+The loop records every run and reads none of it back. A run that failed verification five times
+started a sixth run that would fail the same way, with no record of that shape reaching anything.
+WP-6 (Sprint 29) adds the read-back — and refuses the "recursive self-improvement" framing of the
+proposal that named the gap: the digest is a bounded, deterministic summary of durable records.
+
+- **ADR-012 flips Proposed → Accepted.** The decision and the code that satisfies it land together.
+- **`LearningDigestService` (new) reads only the ledger.** `buildLearningDigest` is pure — no LLM,
+  no clock, no randomness: the same `factoryLoopRuns` records produce byte-identical JSON, and
+  input order does not change the digest. It counts run-level failure classes (WP-3), refused gate
+  ids, and recurring refusal codes across a tenant's **completed** runs.
+- **Bounded, with explicit truncation.** A hard cap on entries per section (20), total entries (30),
+  key length (120 chars), and serialized size (4096 bytes). Dropping an entry sets `truncated: true`
+  and increments `omittedEntries`; truncation is never silent.
+- **A data-sufficiency threshold, not a conclusion.** Below `MINIMUM_COMPLETED_RUNS = 5` completed
+  runs the digest is `insufficient-data` with the count of what is missing, and empty sections.
+- **Tenant-scoped.** `LearningDigestService.build(tenantId)` reads only that tenant's runs; no
+  cross-tenant aggregate exists. Served read-only at `GET /api/loop/learning-digest`.
+- **Injection is OFF by default and provably a no-op.** `injectLearningDigest(task, digest, enabled)`
+  returns the task byte-for-byte when disabled; `buildGoalPrompt`/`buildIssuePrompt` gain an optional
+  seam that `GoalIntakeService.draft`/`IssueIntakeService.draft` populate only when
+  `loop.json:learning.inject` (new, validated, defaults `false`) is on. Enabling it is a later
+  sprint, gated on real data.
+- **Tests (432 total):** `test/learning-digest.test.ts` (new, 12 tests) covers determinism,
+  input-order independence, the sufficiency threshold, non-completed runs not counting, counting and
+  ordering, the size bound with explicit truncation, tenant isolation, the disabled-seam no-op (the
+  goal prompt is byte-identical), enabled rendering, the shipped doctrine flag, and the 401 +
+  tenant-scoped route. Failing-first: disabling the enabled branch fails the injection test;
+  removing the route fails `GET /api/loop/learning-digest`.
+
 ### 4.13.30 — the unrelated-writes guard, shipped in shadow mode
 
 The commit stages every change in the working tree. `claimed-files-exist` refuses a *claimed* file

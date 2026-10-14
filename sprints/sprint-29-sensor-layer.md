@@ -1,6 +1,6 @@
 # Sprint 29 — The Sensor Layer
 
-**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26, WP-2 egress door · 4.13.27, WP-3 failure classification · 4.13.28, WP-4 foundation readiness · 4.13.29, WP-5 unrelated-writes guard · 4.13.30) · **Opened:** 2026-10-14
+**Status:** **closed** (WP-0 governance, WP-1 leak guard · 4.13.26, WP-2 egress door · 4.13.27, WP-3 failure classification · 4.13.28, WP-4 foundation readiness · 4.13.29, WP-5 unrelated-writes guard · 4.13.30, WP-6 learning digest · 4.13.31) · **Opened:** 2026-10-14 · **Closed:** 2026-10-14
 
 **Thesis:** Sprint 28 joined the orchestration layer — planning, concurrency, and a reviewable
 change set — onto the unattended loop. What the loop cannot yet do is *feel*: it does not check
@@ -52,7 +52,7 @@ protection it does not provide, and a control that is not asserted (ADR-008).
 | WP-3 | Durable failure classification for the loop | classes persist, survive resume, appear in the report; exhaustive classifier tests | **done — 4.13.28** |
 | WP-4 | Foundation readiness check (disk space + write/fsync) | full/read-only `FACTORY_DATA_DIR` reports fail; server refuses (exit 75) | **done — 4.13.29** |
 | WP-5 | Unrelated-writes guard, **shadow mode only** | shadow log names an unrelated edit; allowlisted lockfile not flagged; flag flips enforcement | **done — 4.13.30** |
-| WP-6 | Learning digest, read-only, injection OFF | determinism, size-bound, tenant-isolation, insufficient-data, flag-off no-op | pending |
+| WP-6 | Learning digest, read-only, injection OFF | determinism, size-bound, tenant-isolation, insufficient-data, flag-off no-op | **done — 4.13.31** |
 
 ### Scope limits (hard — do not implement in this sprint)
 
@@ -355,3 +355,66 @@ their repository's generated files before turning enforcement on.
 
 **Next.** WP-6 — a bounded, deterministic learning digest over `factoryLoopRuns` (read-only,
 injection behind a default-OFF flag), and the flip of ADR-012 Proposed → Accepted with it.
+
+## WP-6 — Bounded learning digest (4.13.31)
+
+**Executive summary.** The loop records every run and reads none of it back: a run that failed
+verification five times started a sixth that would fail the same way, with no record of that shape
+reaching anything. WP-6 adds the read-back and refuses the "recursive self-improvement" framing of
+the proposal that named the gap. The digest is a bounded, deterministic summary of durable run
+records — the ledger is its only source — and prompt injection stays OFF until real data exists.
+
+**What was built.**
+
+- `src/services/learningDigestService.ts` (new). `buildLearningDigest(runs, tenantId, options)` is
+  **pure**: no model, no clock, no randomness. The same records produce byte-identical JSON and
+  input order does not change the result. It counts, across a tenant's **completed** runs, the
+  run-level failure classes (WP-3), the refused gate ids, and the recurring refusal codes on failed
+  attempts, ordered by count descending then key ascending.
+- **Bounded, with explicit truncation.** `MAX_ENTRIES_PER_SECTION = 20`, `MAX_TOTAL_ENTRIES = 30`,
+  `MAX_KEY_LENGTH = 120`, `MAX_SERIALIZED_BYTES = 4096`. Each cap is enforced and, when an entry is
+  dropped, `truncated: true` and `omittedEntries` report it. Truncation is never silent.
+- **A sufficiency threshold, not a conclusion.** Below `MINIMUM_COMPLETED_RUNS = 5` completed runs
+  the digest is `status: 'insufficient-data'` with empty sections and a `note` naming how many more
+  runs are needed (ADR-012 §5).
+- `LearningDigestService.build(tenantId)` reads the ledger and filters to that tenant. Served
+  read-only at **`GET /api/loop/learning-digest`** (401 unauthenticated; tenant-scoped via the same
+  middleware every loop route uses).
+- **Injection OFF by default, and provably a no-op.** `injectLearningDigest(task, digest, enabled)`
+  returns the task **byte-for-byte** when `enabled` is false or no digest is present.
+  `buildGoalPrompt`/`buildIssuePrompt` gained an optional seam; `GoalIntakeService.draft` and
+  `IssueIntakeService.draft` populate it only when `loop.json:learning.inject` is on. The new
+  `loop.json:learning { "inject": false }` block is validated by `doctrineService.ts` and defaults
+  off when absent.
+- **ADR-012 flipped Proposed → Accepted** in the same change (Constitution Scope rule 2).
+
+**Verification evidence (ground truth).**
+
+- Failing-first: disabling the enabled branch of `injectLearningDigest` fails the injection test;
+  removing the route fails `GET /api/loop/learning-digest …` — **2 fail** while the rest stay green.
+  Restored, 12/12 pass.
+- `test/learning-digest.test.ts` (new, 12 tests): determinism (byte-identical, order-independent),
+  the threshold and the non-completed run that does not count, counting and ordering, the size bound
+  with explicit truncation, tenant isolation, the disabled-seam no-op (goal prompt byte-identical),
+  enabled rendering, the shipped doctrine flag off, and the 401 + tenant-scoped route.
+- Full suite green: **432 tests, 432 pass** (up from 420). `tsc --noEmit` clean; `doctrine:manifest
+  --check` verified (6 files); `verify:docs` 6/6; `verify:loop` 7/7.
+
+**Remaining gaps.** Injection stays OFF by design (`loop.json:learning.inject = false`); enabling it
+is parked, gated on real recorded data (ADR-012 §6). The digest counts only what the loop recorded:
+a failure that was never recorded cannot be learned from, and the digest says so rather than
+inferring it.
+
+**Next.** Sprint 30 — the cloud/mobile layer, parked below.
+
+## Sprint close
+
+Sprint 29 is closed. Every work package landed with a failing-first test, a replay, a green full
+suite, a feature commit, a release commit, and a pushed annotated tag: WP-1 → v4.13.26, WP-2 →
+v4.13.27, WP-3 → v4.13.28, WP-4 → v4.13.29, WP-5 → v4.13.30, WP-6 → v4.13.31. ADR-011 and ADR-012
+are Accepted with their code. The sensors now observe the foundation, name failures, refuse
+unrelated writes in shadow, and read the ledger back — bounded, deterministic, and off by default.
+
+What Sprint 29 did **not** do, and why: it added sensors, not autonomy. Unrelated-writes enforcement,
+learning injection, the operator-blocked hosted-model path, the live GitHub PR path, and the sandbox
+in the shipped container all remain parked with their owners named under "Named blockers".
