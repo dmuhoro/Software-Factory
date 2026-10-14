@@ -4,6 +4,65 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.14.2 — the fleet read surface, and the boundary codes the guard could not see
+
+A thin client had no single read that answered "how are my runs doing, and what has the loop
+learned". WP-3 (Sprint 30) adds it — and this release corrects two release-discipline gaps that
+v4.14.0 and v4.14.1 shipped: their release commits omitted the changelog and the sprint file, and
+their new boundary codes were never mapped in the L3 error contract.
+
+- **`LoopControlService.overview(tenantId)` (new) plus pure `countRunsByStatus(runs)`.** The counter
+  is total — every status is present, zero when absent — so a client never has to tell "no runs"
+  from "a missing key". Served read-only, tenant-scoped, at `GET /api/loop/overview`, beside the
+  learning digest.
+- **Read-only.** It reads the same durable ledger the control plane reads; it starts no run and adds
+  no mutating route (`POST /api/loop/overview` is 404). A foreign tenant's runs never appear.
+- **The L3 error contract now covers every boundary code.** `src/utils/apiError.ts` maps the
+  `SKILL_*` codes (422 — a refused operator file) and the `CAPABILITY_*` codes (500 — a malformed
+  shipped manifest, our defect, honestly the one family that is not a caller refusal). Without this
+  the source guard in `test/l3-error-contract.test.ts` failed and both routes degraded to
+  `INTERNAL_ERROR`.
+- **Tests (450 total):** `test/loop-overview.test.ts` (new, 2 tests) — the counter is total; the
+  overview is tenant-scoped, does not write to the ledger, and refuses a write verb. Failing-first:
+  removing the tenant filter in `LoopControlService.list` surfaces a foreign run. The corrected
+  `test/l3-error-contract.test.ts` is green.
+
+### 4.14.1 — the declarative skills registry
+
+A capability that lives only as TypeScript is one the factory ships with. WP-2 (Sprint 30) adopts the
+*pattern* — a capability an operator adds as a governed file — without importing the external
+`skills` repository (a different trust boundary).
+
+- **`SkillRegistryService` (new).** Strict `parseSkillFile` for `SKILL.md`-style frontmatter (fences
+  `---`; allowed keys `name`/`description`/`version`/`tools`/`enabled`). An unknown field, a missing
+  required field, a bad version, a bad name, a duplicate field, or an empty body **refuses the file
+  with a code**. Pure: no clock, no model, no I/O in the parser.
+- **Refused, never silently dropped.** `loadSkills` returns the installed set beside a `refusals`
+  list; one malformed file does not take down the registry.
+- **Governed directory outside doctrine.** Default `<cwd>/skills` (`FACTORY_SKILLS_DIR` to override),
+  deliberately not under `doctrine/` so it does not couple to the strict doctrine manifest walk. An
+  example ships at `skills/repo-hygiene.skill.md`.
+- **Served read-only** (tenant-authenticated) at `GET /api/factory/skills`; the manifest's
+  `skills-registry` entry flips planned → live.
+- **Tests (new, 9):** the parser accepts a well-formed file and refuses each malformed shape; the
+  loader separates valid from refused and tolerates a missing directory; the shipped skill loads; the
+  route is 401 unauthenticated. Failing-first: disabling the unknown-field check fails the parser and
+  loader tests.
+
+### 4.14.0 — the capability manifest
+
+A capability that exists only as prose is one nobody can audit. WP-1 (Sprint 30) makes the
+Constitution's "no claim without a named command" mechanical.
+
+- **`capabilityManifest.ts` (new).** A machine-readable declaration of what the factory can do. A
+  **live** entry must name the command that proves it; a **blocked** entry must name its owner.
+  `validateCapabilityManifest` refuses a live entry with no proof, a blocked entry with no owner, a
+  duplicate id, a malformed entry, and an unknown status — each with a code.
+- **Served read-only** (tenant-authenticated) at `GET /api/factory/capabilities`.
+- **Tests (new, 7):** the shipped manifest validates; each refusal shape is rejected; the route is
+  401 unauthenticated and serves the manifest with a credential. Failing-first: disabling the proof
+  and owner checks fails two of them.
+
 ### 4.13.31 — the learning digest, bounded and off by default
 
 The loop records every run and reads none of it back. A run that failed verification five times
