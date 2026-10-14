@@ -1,10 +1,13 @@
 # ADR-011: Model egress has one door
 
-- **Status**: Proposed — awaiting founder sign-off (Sprint 29, WP-0)
+- **Status**: Accepted — sign-off recorded 2026-10-14; implemented by WP-2 (Sprint 29, 4.13.27)
 - **Date**: 2026-10-14
 - **Resolves**: the unguarded `@google/genai` egress path (a second door beside
   `src/utils/egressGuard.ts`)
 - **Supersedes**: nothing (narrows ADR-002; see the tension below)
+- **Implementation**: `src/utils/modelEgress.ts` (the one door), `egressGuard.ts`
+  `resolveOptionalSecretRef` + `authorizeProviderEndpoint`, and the architectural assertion
+  `test/egress-confinement.test.ts`
 
 ## Context
 
@@ -113,6 +116,8 @@ with a different environment and trust boundary; folding it in would claim cover
 does not provide.
 
 ## Options presented for sign-off
+
+Option A was selected at sign-off on 2026-10-14 and is implemented as described above.
 
 - **Option A (recommended): route through the guard.** Keep `@google/genai` for schema
   construction (ADR-002 preserved); resolve the key via `resolveSecretRef` and validate the host

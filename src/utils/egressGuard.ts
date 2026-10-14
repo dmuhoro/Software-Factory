@@ -79,6 +79,22 @@ export function resolveSecretRef(secretRef: unknown): string | undefined {
   return value;
 }
 
+/**
+ * Resolves a secret reference the caller may or may not have mounted.
+ *
+ * Returns undefined when nothing is mounted under the reference name — the caller's offline,
+ * deterministic path. Refuses (throws) when the variable is mounted but the reference is not
+ * permitted: a mounted credential without an allowlist is a configuration error, never a silent
+ * downgrade to an unauthenticated live call.
+ */
+export function resolveOptionalSecretRef(secretRef: unknown): string | undefined {
+  if (!isWellFormedSecretRef(secretRef)) return undefined;
+  const mounted = process.env[secretRef];
+  if (mounted === undefined || mounted === '') return undefined;
+  if (!allowedSecretRefs().has(secretRef)) throw new Error('MODEL_PROVIDER_SECRET_REF_NOT_ALLOWED');
+  return mounted;
+}
+
 function ipv4ToInt(address: string): number | null {
   const parts = address.split('.');
   if (parts.length !== 4) return null;
@@ -193,6 +209,19 @@ async function assertResolvedAddressesAllowed(hostname: string): Promise<void> {
     const reason = classifyAddress(record.address);
     if (reason) throw new Error(`MODEL_PROVIDER_ADDRESS_NOT_ALLOWED:${reason}`);
   }
+}
+
+/**
+ * Authorizes an endpoint for a module that owns its own socket (a vendor SDK).
+ *
+ * The guarded door performs the request itself; a module that cannot — the SDK constructs its own
+ * transport — still must pass the same name-and-address checks before it is handed the secret.
+ * This is the guard's contract applied to a socket the guard does not own.
+ */
+export async function authorizeProviderEndpoint(baseUrl: unknown, kind: string): Promise<URL> {
+  const url = validateProviderUrl(baseUrl, kind);
+  if (!LOCAL_PROVIDER_KINDS.has(kind)) await assertResolvedAddressesAllowed(url.hostname);
+  return url;
 }
 
 export interface EgressOptions {

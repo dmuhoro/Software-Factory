@@ -3,39 +3,19 @@
  * Implements Google GenAI SDK (@google/genai) integration with deterministic structured outputs.
  */
 
-import { GoogleGenAI } from '@google/genai';
 import { IndustryNiche } from '../models/tenant';
 import { getNicheResponseSchema } from '../models/geminiSchema';
 import { StructuredAiOutput } from '../models/telemetry';
 import { GeminiConfig } from '../configurations/gemini.config';
 import { CircuitBreaker, withExponentialBackoff } from '../utils/circuitBreaker';
 import { TelemetryLogger } from '../utils/telemetryLogger';
+import { createGeminiClient } from '../utils/modelEgress';
 
-// Lazy-initialized Gemini client instance
-let geminiClient: GoogleGenAI | null = null;
 const circuitBreaker = new CircuitBreaker('gemini-structured-engine', {
   failureThreshold: 4,
   resetTimeoutMs: 12000,
   successThreshold: 2,
 });
-
-function getGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
-    return null;
-  }
-  if (!geminiClient) {
-    geminiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': GeminiConfig.userAgent,
-        },
-      },
-    });
-  }
-  return geminiClient;
-}
 
 export class GeminiService {
   /**
@@ -51,7 +31,7 @@ export class GeminiService {
   ): Promise<{ output: StructuredAiOutput; tokensUsed: number; durationMs: number; model: string; attempts: number; circuitBreakerState: 'CLOSED' | 'HALF_OPEN' | 'OPEN' }> {
     const startTime = Date.now();
     const schema = getNicheResponseSchema(niche);
-    const client = getGeminiClient();
+    const client = await createGeminiClient();
 
     TelemetryLogger.info('Initiating Gemini structured transformation', {
       tenantId,

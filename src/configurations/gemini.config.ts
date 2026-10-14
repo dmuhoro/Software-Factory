@@ -8,6 +8,9 @@ export const GeminiConfig = {
   defaultModel: 'gemini-3.8-flash',
   // Advanced reasoning fallback
   proModel: 'gemini-3.1-pro-preview',
+  // The endpoint the SDK is permitted to reach. Validated through the egress guard before the
+  // client is constructed (ADR-011), so the host must also appear in FACTORY_MODEL_ALLOWED_HOSTS.
+  baseUrl: 'https://generativelanguage.googleapis.com',
   userAgent: 'software-factory-runtime',
   generationParameters: {
     temperature: 0.1, // Near zero temperature for strict schema compliance & deterministic output

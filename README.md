@@ -55,8 +55,8 @@ with a placeholder, because a service that starts unconfigured fails quietly at 
 | `FACTORY_API_KEY` | yes | `platform_operator` credential, for cross-tenant operations. |
 | `FACTORY_DATA_DIR` | no | Ledger location. Single-writer. |
 | `FACTORY_WORKSPACE_ROOT` | production | Bounded directory the service may write to. |
-| `FACTORY_MODEL_ALLOWED_HOSTS` | production | Egress allowlist for model providers. |
-| `FACTORY_ALLOWED_SECRET_REFS` | production | Names a job may substitute into a request. |
+| `FACTORY_MODEL_ALLOWED_HOSTS` | production | Egress allowlist for model providers. Add `generativelanguage.googleapis.com` to enable live Gemini. |
+| `FACTORY_ALLOWED_SECRET_REFS` | production | Names a job may substitute into a request. Add `GEMINI_API_KEY` to enable live Gemini. |
 | `ALLOW_INSECURE_LOCAL` | no | Only for local work; refused when `NODE_ENV=production`. |
 
 A request carries its credential in `x-tenant-id` and `x-api-key`. A credential issued for
