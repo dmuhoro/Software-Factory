@@ -1,6 +1,6 @@
 # Sprint 29 — The Sensor Layer
 
-**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26, WP-2 egress door · 4.13.27, WP-3 failure classification · 4.13.28) · **Opened:** 2026-10-14
+**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26, WP-2 egress door · 4.13.27, WP-3 failure classification · 4.13.28, WP-4 foundation readiness · 4.13.29) · **Opened:** 2026-10-14
 
 **Thesis:** Sprint 28 joined the orchestration layer — planning, concurrency, and a reviewable
 change set — onto the unattended loop. What the loop cannot yet do is *feel*: it does not check
@@ -50,7 +50,7 @@ protection it does not provide, and a control that is not asserted (ADR-008).
 | WP-1 | Wire the dead leak guard + persist isolation evidence | planted target-instruction content refuses the run; manifest survives `--resume` | **done — 4.13.26** |
 | WP-2 | One egress door (implements ADR-011) | architectural assertion test fails pre-fix, passes post-fix | **done — 4.13.27** |
 | WP-3 | Durable failure classification for the loop | classes persist, survive resume, appear in the report; exhaustive classifier tests | **done — 4.13.28** |
-| WP-4 | Foundation readiness check (disk space + write/fsync) | full/read-only `FACTORY_DATA_DIR` reports fail; server refuses (exit 75) | pending |
+| WP-4 | Foundation readiness check (disk space + write/fsync) | full/read-only `FACTORY_DATA_DIR` reports fail; server refuses (exit 75) | **done — 4.13.29** |
 | WP-5 | Unrelated-writes guard, **shadow mode only** | shadow log names an unrelated edit; allowlisted lockfile not flagged; flag flips enforcement | pending |
 | WP-6 | Learning digest, read-only, injection OFF | determinism, size-bound, tenant-isolation, insufficient-data, flag-off no-op | pending |
 
@@ -263,3 +263,43 @@ is the consumer, and ADR-012 stays Proposed until that code lands.
 
 **Next.** WP-4 — foundation readiness (disk space + write/fsync), so an unwritable data directory
 refuses at startup (exit 75) instead of failing mid-run.
+
+## WP-4 — Foundation readiness (4.13.29)
+
+**Executive summary.** `classifyReadiness` probed the ledger's own write path — whether the store
+could read and write its file — but not the ground the store stands on. A data directory that is
+read-only, not creatable, or nearly full fails the *next* whole-file rewrite, not the probe that
+just ran: the service could report healthy and lose the ledger minutes later. The data directory is
+now its own readiness check, and a failure there refuses startup with exit 75.
+
+**What was built.**
+
+- `healthService.ts`: a `storage` check beside the ledger, configuration, and runtime checks. It
+  writes a bounded payload into `path.dirname(DurableStore.dataFile())`, `fsync`s it, reads it back,
+  and always removes the probe file. It then measures free space via `statfsSync` and applies a
+  64 MiB floor (`MIN_FREE_BYTES`), because a near-full volume accepts the probe write and fails the
+  whole-file rewrite that follows.
+- `evaluateFreeSpace(freeBytes)` is pure and exported so the threshold boundary is unit-tested.
+  A `statfs` failure degrades to `warn`, not `fail`, because the write/fsync probe already proved
+  durability.
+- No new environment variable; no behaviour change to the healthy path. `README.md` documents the
+  check.
+
+**Verification evidence (ground truth).**
+
+- Failing-first: with `checkStorage()` removed from `classifyReadiness`, the writable-directory,
+  read-only-directory, and uncreatable-directory assertions all fail (**3 fail**); the pure
+  free-space boundary and the server-refusal assertions do not depend on the wiring and stay green.
+- `test/health-storage.test.ts` — the floor boundary (`MIN_FREE_BYTES - 1` fails, exactly
+  `MIN_FREE_BYTES` passes, `NaN`/negative warn), a writable directory passing with no `.health-*`
+  litter left behind, a read-only directory (`chmod 0o500`, skipped under root) failing with
+  `not writable or not fsync-durable`, an uncreatable directory (`ENOTDIR`, root-proof) failing,
+  and `server.ts` reading `unhealthy` into `refuseWhileLedgerUnusable` → `process.exit(75)`.
+- Full suite green: **412 tests, 412 pass** (up from 407). `tsc --noEmit` clean; docs gate 6/6.
+
+**Remaining gaps.** The floor is a fixed 64 MiB constant, not operator-configurable — deliberately,
+so it cannot be silently lowered to silence the check. The loop's own worktree directories sit under
+`FACTORY_WORKSPACE_ROOT`, a different filesystem that this probe does not cover.
+
+**Next.** WP-5 — unrelated-writes guard, shipped in shadow mode only, naming an edit it would have
+refused without refusing it.

@@ -4,6 +4,26 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.29 — foundation readiness: the data directory is a readiness check
+
+The ledger probe proved the store's own write path; it did not prove the ground the store stands
+on. A data directory that is read-only, not creatable, or running out of space fails the *next*
+whole-file rewrite, not the probe that just ran — so a service could report healthy and lose the
+ledger minutes later. WP-4 (Sprint 29) makes the directory its own readiness check.
+
+- **A `storage` check beside the ledger, configuration, and runtime checks.** It writes a bounded
+  payload into the directory the ledger lives in, `fsync`s it, reads it back, and always removes the
+  probe file — proving the directory is writable and durable, not merely that the store is.
+- **A free-space floor.** `evaluateFreeSpace` measures the volume's free bytes against a 64 MiB
+  floor, because a near-full volume accepts the probe write and then fails the whole-file rewrite
+  that follows. The threshold is pure and unit-tested at its boundary.
+- **Fail closed at startup.** A `fail` makes the report `unhealthy`, which the startup pre-flight
+  already treats as fatal with exit 75 (`EX_TEMPFAIL`) — a foundation that cannot hold the ledger
+  refuses before a port is bound.
+- **Tests (412 total):** `test/health-storage.test.ts` covers the floor boundary, a writable
+  directory passing with no probe litter, a read-only directory failing, an uncreatable directory
+  failing, and that `server.ts` refuses on `unhealthy` with exit 75 rather than warning.
+
 ### 4.13.28 — durable failure classification for the loop
 
 A run recorded *why* an attempt failed as a free-text reason (the first token of the thrown refusal)
