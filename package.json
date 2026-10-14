@@ -38,6 +38,7 @@
     "doctrine:manifest": "tsx scripts/doctrine-manifest.ts",
     "factory:run": "tsx scripts/run-factory-loop.ts",
     "verify:loop": "bash scripts/verify-loop.sh",
+    "verify:deploy": "npm run build && bash scripts/verify-deploy.sh",
     "verify:fundios": "tsx scripts/verify-fundios-e2e.ts"
   },
   "dependencies": {
