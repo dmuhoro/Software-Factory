@@ -4,6 +4,33 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.26 — the loop refuses a quarantined instruction before a model sees it
+
+The isolation guard existed and its error code was registered, but nothing on the live path called
+it — so a target's own instruction file could reach an implementer payload and be obeyed. WP-1
+(Sprint 29) makes the guard real and gives the run durable evidence of what it isolated.
+
+- **The guard runs at the boundary, before any model call.** `ExecutionLoopService.runUnit` builds
+  the implementer payload and both review-axis payloads, asserts each against the isolation manifest
+  via `DoctrineIsolationService.assertNoTargetInstructionContent`, and only then dials the model. A
+  leak throws `TARGET_DOCTRINE_LEAKED_INTO_RUN`, which the attempt loop recognizes as fatal: the run
+  **halts**, commits nothing, and leaves the tree clean. `ImplementerService.implement` and
+  `ReviewService.review` now accept pre-built `prompts`, so the asserted payload is byte-for-byte the
+  payload that is sent.
+- **Full isolation evidence is persisted on the run.** `LoopRunRecord.isolation` (an
+  `IsolationEvidence`: doctrine root + digest, target repo, `stagedAt`, and each quarantined file's
+  `relativePath`, `sha256` and `bytes`) replaces the bare `quarantineCount`. `renderReport` prints an
+  **Isolation** section.
+- **Resume re-verifies the manifest.** `resume()` recomputes the current quarantine and compares it
+  with the persisted evidence; any drift (a target instruction file edited between sessions) refuses
+  with `LOOP_RUN_INCOMPATIBLE` before worktree cleanup, rather than continuing under a rulebook that
+  moved.
+- **Tests (386 total):** `test/loop-execution.test.ts` proves a criterion whose `check` reads the
+  target's `AGENTS.md` is refused before the stub model is dialled (empty prompt list, no commit,
+  clean tree), and that the persisted manifest is re-verified on resume after a tamper.
+  `test/l3-error-contract.test.ts` gains `TARGET_DOCTRINE_LEAKED_INTO_RUN`. The negative result was
+  recorded: with the assertion removed, the leak test fails (the payload reaches the model).
+
 ### 4.13.25 — the pull request flow: a finished run drafts a reviewable change set
 
 The loop could already plan, implement, verify, review and commit a unit — but when it finished,

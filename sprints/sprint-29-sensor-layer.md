@@ -1,6 +1,6 @@
 # Sprint 29 — The Sensor Layer
 
-**Status:** governance open (WP-0) · **Opened:** 2026-10-14
+**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26) · **Opened:** 2026-10-14
 
 **Thesis:** Sprint 28 joined the orchestration layer — planning, concurrency, and a reviewable
 change set — onto the unattended loop. What the loop cannot yet do is *feel*: it does not check
@@ -46,8 +46,8 @@ protection it does not provide, and a control that is not asserted (ADR-008).
 
 | WP | Objective | Proof | Status |
 |---|---|---|---|
-| **WP-0** | Governance: this sprint file + ADR-011 (one egress door) + ADR-012 (bounded learning) | `npm run verify:docs` green; ADRs presented for sign-off | **proposed — awaiting sign-off** |
-| WP-1 | Wire the dead leak guard + persist isolation evidence | planted target-instruction content refuses the run; manifest survives `--resume` | pending |
+| **WP-0** | Governance: this sprint file + ADR-011 (one egress door) + ADR-012 (bounded learning) | `npm run verify:docs` green; ADRs presented for sign-off | **done** |
+| WP-1 | Wire the dead leak guard + persist isolation evidence | planted target-instruction content refuses the run; manifest survives `--resume` | **done — 4.13.26** |
 | WP-2 | One egress door (implements ADR-011) | architectural assertion test fails pre-fix, passes post-fix | pending |
 | WP-3 | Durable failure classification for the loop | classes persist, survive resume, appear in the report; exhaustive classifier tests | pending |
 | WP-4 | Foundation readiness check (disk space + write/fsync) | full/read-only `FACTORY_DATA_DIR` reports fail; server refuses (exit 75) | pending |
@@ -144,3 +144,41 @@ code touched in WP-0).
 **Stopping point:** WP-1 does not begin until the founder approves ADR-011 and ADR-012. The
 Constitution requires the code that satisfies a decision to land with it; WP-2 lands ADR-011's
 code and flips its status in the same change, and WP-6 lands ADR-012's code likewise.
+
+## WP-1 — Wire the dead leak guard (4.13.26)
+
+**Executive summary.** `DoctrineIsolationService.assertNoTargetInstructionContent` existed and its
+code `TARGET_DOCTRINE_LEAKED_INTO_RUN` was registered, but the only callers were tests. The live
+loop never asserted its payloads, so a target's own instruction file — pulled in by the
+reference-file reader when a criterion's `check` names it — could reach an implementer and be
+obeyed. The guard now runs at the real boundary, before any socket, and the run keeps durable
+evidence of what it isolated.
+
+**What was built.**
+
+- `ExecutionLoopService.runUnit` builds the implementer payload and both review-axis payloads,
+  asserts each against the isolation manifest, and only then dials the model. A leak throws
+  `TARGET_DOCTRINE_LEAKED_INTO_RUN`; the attempt loop treats it as fatal, so the run **halts**,
+  commits nothing, and leaves the tree clean.
+- `ImplementerService.implement` and `ReviewService.review` accept pre-built `prompts`, so the
+  asserted bytes are the sent bytes (no second prompt construction to drift).
+- `LoopRunRecord.isolation: IsolationEvidence` (doctrine root + digest, target repo, `stagedAt`,
+  and each quarantined file's `relativePath`, `sha256`, `bytes`) replaces the bare
+  `quarantineCount`; `renderReport` prints an **Isolation** section.
+- `resume()` re-verifies the persisted manifest against the current tree and refuses
+  `LOOP_RUN_INCOMPATIBLE` on drift, before any worktree cleanup.
+
+**Verification evidence (ground truth).**
+
+- Failing-first: with `assertNoTargetInstructionContent` removed from the implementer path, the new
+  test **fails** (`# fail 1`) — the leaky payload reaches the stub model. Restored, it passes.
+- `test/loop-execution.test.ts` — the leak test asserts `stub.prompts` is empty (the model was never
+  dialled), zero commits, `rev-list --count HEAD == 1`, and an empty `git status --porcelain`; the
+  resume test asserts the persisted `AGENTS.md` entry carries `sha256:[0-9a-f]{64}` and a byte
+  count, then tampers the file and asserts `LOOP_RUN_INCOMPATIBLE … instruction files changed`.
+- Full suite green: **386 tests, 386 pass, 0 fail** (up from 384). `tsc --noEmit` clean.
+
+**Remaining gaps.** WP-2 does not yet exist, so `geminiService.ts` is still a second egress door.
+The hosted-model and live-GitHub paths remain operator-blocked.
+
+**Next.** WP-2 — one egress door, with an architectural assertion that fails on the pre-fix tree.
