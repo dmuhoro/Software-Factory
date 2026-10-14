@@ -1,6 +1,7 @@
 # Sprint 28 — The Orchestration Layer
 
-**Status:** in progress · **Opened:** 2026-10-12
+**Status:** engineering complete · **Opened:** 2026-10-12 · **Closed:** 2026-10-14
+(WP-1…WP-4 shipped through 4.13.25; WP-5 parked on an operator input, not an engineering task)
 
 **Thesis:** the unattended loop is real and gated — it plans, implements, verifies,
 reviews and commits a unit, and refuses when any gate fails. What the "workforce"
@@ -38,11 +39,19 @@ joined, and two of them (concurrency, PR flow) do not run end to end.
 | **WP-2** | Tracker bridge: issue → spec → tickets with blocking edges | an issue produces a task document whose DAG blocks correctly | **done (4.13.23)** |
 | WP-3 | Concurrent execution driver over worktrees + task graph | two independent units run at once; a dependent unit waits | **done (4.13.24)** |
 | WP-4 | PR flow adapter: local branch + manifest default, GitHub behind a credential | a completed run yields a reviewable branch/manifest, never a silent commit | **done (4.13.25)** |
-| WP-5 | Model layer: the frontier provider actually answers | a hosted model key is required; blocked, not worked around | blocked |
+| WP-5 | Model layer: the frontier provider actually answers | a hosted model key is required; blocked, not worked around | **blocked (operator key + egress permit; code complete)** |
 
 WP-5 depends on an operator input that is not code — a hosted model provider key with spend
 (and, for WP-4's real-PR half, a GitHub App/token). The blocker is named rather than worked
 around; the code halves that do not need the credential are delivered.
+
+For WP-5 the code half is *already complete*: a model provider registered against the guarded
+egress path answers end to end (`FrontierModelService.request`), and the loop refuses to start a
+unit whose assigned provider is not registered (`tenantProviders`). What is missing is not code —
+it is an operator-registered provider whose secret reference is allowlisted
+(`FACTORY_ALLOWED_SECRET_REFS`), whose host is permitted (`FACTORY_MODEL_ALLOWED_HOSTS`), and which
+has spend. There is no honest way to fabricate that answer here, so WP-5 is parked rather than
+stubbed (SOP §9).
 
 ## WP-2 — The tracker bridge (4.13.23)
 
@@ -185,9 +194,14 @@ the spec-refusal arm fail. Full suite: **365/365**; `npm run verify` green (Laye
 
 ## Named blockers (not worked around)
 
-- **WP-5 / WP-4-real-PR:** WP-4's local flow is done (4.13.25); the *real* GitHub pull request needs
-  an operator-appointed allowlisted token and an egress permit. WP-5 needs a hosted model key with
-  spend. Both halves stay behind their input, delivered as fail-closed code, and are named here
-  rather than worked around.
+- **WP-5 — hosted frontier answer (owner: operator):** the model layer's code is complete and
+  proven against a real loopback provider; the hosted answer needs an operator-registered provider
+  with (a) an allowlisted secret reference present in the process environment
+  (`FACTORY_ALLOWED_SECRET_REFS`), (b) its host permitted (`FACTORY_MODEL_ALLOWED_HOSTS`), and (c)
+  spend. Until then the frontier tier cannot answer and the loop fails closed — it never fabricates
+  a response. Unblock condition: both env allowlists set and the referenced key present.
+- **WP-4 — real GitHub pull request (owner: operator):** the local flow is done (4.13.25); opening
+  on GitHub needs an operator-appointed allowlisted token and an egress permit. The refusal path
+  (before any socket) is proven; the live open is not testable here.
 - **WP-3 sandbox:** the shipped container runs no bubblewrap, so sandboxed execution in-container
   requires `--privileged` (documented in ADR-010) — an operator decision, not a code change.
