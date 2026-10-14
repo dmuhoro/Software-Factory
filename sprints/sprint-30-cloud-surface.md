@@ -1,6 +1,6 @@
 # Sprint 30 — The Cloud Surface
 
-**Status:** in progress — WP-1 (v4.14.0), WP-2 (v4.14.1) and WP-3 (v4.14.2) shipped; WP-4 and WP-5 open · **Opened:** 2026-10-14 · **Updated:** 2026-10-14
+**Status:** in progress — WP-1 (v4.14.0), WP-2 (v4.14.1), WP-3 (v4.14.2) and WP-4 (v4.14.3) shipped; WP-5 open · **Opened:** 2026-10-14 · **Updated:** 2026-10-14
 
 **Thesis.** Sprint 29 gave the factory senses: it checks the ground it stands on, names why an
 attempt failed, records a write it would have refused, and reads its own ledger back as a bounded
@@ -44,7 +44,7 @@ the truth about it.
 | WP-1 | Capability manifest: one machine-readable declaration of what the factory can do, each entry tied to a command that demonstrates it | a test that refuses a declared capability with no named command; served read-only | **done — v4.14.0** |
 | WP-2 | Skills adoption: load declarative `SKILL.md`-style definitions from a governed directory, validate them, expose the installed set; refuse unknown fields | a malformed skill refuses with a code; an installed one is surfaced; no dependency on the external repo | **done — v4.14.1** |
 | WP-3 | Fleet read surface: tenant-scoped summaries across runs plus the learning digest, for a thin web/mobile client; **no new writes** | a foreign tenant sees nothing; the surface adds no mutating route | **done — v4.14.2** |
-| WP-4 | Cloud deployment readiness: a preflight that the runtime can serve (config, single-writer ledger, persistence path, required env), fail closed; the documented Docker/Railway path verified | a misconfigured container refuses at startup; the documented path boots | pending |
+| WP-4 | Cloud deployment readiness: a preflight that the runtime can serve (config, single-writer ledger, persistence path, required env), fail closed; the documented Docker/Railway path verified | a misconfigured container refuses at startup; the documented path boots | **done — v4.14.3** |
 | WP-5 | Public evidence page: `site/` states what is **live**, **planned**, or **blocked**, each live item linked to its proving command | the page names no capability the manifest does not declare | pending |
 
 ### Scope limits (hard — do not implement in this sprint)
@@ -155,3 +155,28 @@ here: (1) their release commits omitted `CHANGELOG.md` and this sprint file — 
 contract, so the source guard in `test/l3-error-contract.test.ts` failed and the routes would have
 degraded to `INTERNAL_ERROR`. `src/utils/apiError.ts` now maps every one (SKILL_* 422, CAPABILITY_*
 500 for a malformed shipped manifest). Full suite: **450/450**.
+
+## WP-4 — Cloud deployment readiness (v4.14.3)
+
+**What was built.** The runtime already refused to start on an unusable configuration (`server.ts`
+exits 78 before binding, via `classifyReadiness` + `resolveRuntimeConfig`). What was never checked is
+that the *documented* deployment path invokes that runtime correctly. Two artifacts close the gap:
+
+- `test/deploy-contract.test.ts` (new): static assertions that tie the manifests back to the code.
+  The platform health path is a real, public route the code serves; `railway.json` runs the command
+  the image builds (`node dist/server.cjs`), polls `/api/factory/health`, and declares
+  `numReplicas: 1` — the single-writer ledger (NC-2) cannot honour a second writer. The image's
+  `HEALTHCHECK` probes the same path, and the compose file is fail-closed with the ledger on a volume.
+- `scripts/verify-deploy.sh` + `verify:deploy`: boots the **real** entrypoint (`node dist/server.cjs`,
+  the container CMD) three ways — a placeholder credential and an enabled loopback bypass must each
+  refuse to start (exit 78, named refusal), and a correctly-configured production deploy must bind and
+  answer `/api/factory/health` with a serveable status.
+
+**Why.** A manifest that drifts from the code is the failure mode: a platform polling the wrong path
+marks a healthy service down, and a second replica silently races the whole-file ledger and drops the
+other's records.
+
+**Evidence.** `test/deploy-contract.test.ts` (4 tests). Failing-first: setting `railway.json`
+`numReplicas` to 2 fails the single-writer assertion. Failing-first for the gate: disabling the
+`fatal` startup check in `server.ts` (so a misconfigured deploy binds instead of refusing) fails 5 of
+the gate's 8 checks. Gate: **8/8**. Full suite: **454/454**.
