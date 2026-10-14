@@ -1,6 +1,6 @@
 # Sprint 29 — The Sensor Layer
 
-**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26, WP-2 egress door · 4.13.27, WP-3 failure classification · 4.13.28, WP-4 foundation readiness · 4.13.29) · **Opened:** 2026-10-14
+**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26, WP-2 egress door · 4.13.27, WP-3 failure classification · 4.13.28, WP-4 foundation readiness · 4.13.29, WP-5 unrelated-writes guard · 4.13.30) · **Opened:** 2026-10-14
 
 **Thesis:** Sprint 28 joined the orchestration layer — planning, concurrency, and a reviewable
 change set — onto the unattended loop. What the loop cannot yet do is *feel*: it does not check
@@ -51,7 +51,7 @@ protection it does not provide, and a control that is not asserted (ADR-008).
 | WP-2 | One egress door (implements ADR-011) | architectural assertion test fails pre-fix, passes post-fix | **done — 4.13.27** |
 | WP-3 | Durable failure classification for the loop | classes persist, survive resume, appear in the report; exhaustive classifier tests | **done — 4.13.28** |
 | WP-4 | Foundation readiness check (disk space + write/fsync) | full/read-only `FACTORY_DATA_DIR` reports fail; server refuses (exit 75) | **done — 4.13.29** |
-| WP-5 | Unrelated-writes guard, **shadow mode only** | shadow log names an unrelated edit; allowlisted lockfile not flagged; flag flips enforcement | pending |
+| WP-5 | Unrelated-writes guard, **shadow mode only** | shadow log names an unrelated edit; allowlisted lockfile not flagged; flag flips enforcement | **done — 4.13.30** |
 | WP-6 | Learning digest, read-only, injection OFF | determinism, size-bound, tenant-isolation, insufficient-data, flag-off no-op | pending |
 
 ### Scope limits (hard — do not implement in this sprint)
@@ -303,3 +303,55 @@ so it cannot be silently lowered to silence the check. The loop's own worktree d
 
 **Next.** WP-5 — unrelated-writes guard, shipped in shadow mode only, naming an edit it would have
 refused without refusing it.
+
+## WP-5 — Unrelated-writes guard, shadow mode (4.13.30)
+
+**Executive summary.** Every commit stages the whole working tree, so the diff that reaches git is
+the implementer's claim *plus whatever else landed in the tree*. `claimed-files-exist` refused a
+claimed file that did not change; nothing looked the other way — a file that changed and was never
+claimed. That is the cross-cutting write: a formatter's rewrite, a codegen side effect, residue from
+a tool the unit ran, all committed under a message that describes only the claimed work. This WP
+adds the sensor and, deliberately, not yet the enforcer.
+
+**What was built.**
+
+- `unrelated-writes`, a new gate at `commit.before`. It reads `Proof.claimedFiles` (the
+  implementer's manifest) and `Proof.observedFiles` (`git status --porcelain
+  --untracked-files=all`), subtracts the claimed set and the allowlist, and names any file that
+  changed without being claimed. Wired end to end: `gateIds.ts:unrelated-writes` →
+  `REGISTRY` in `loopGates.ts` → `doctrine/hooks/hooks.json:commit.before` →
+  `doctrine/rules/rules.json:R-16` (mapping `policy` in `loopFailureClass.ts`). A gate with no
+  implementation, a rule with no gate, or a gate no stage runs is a test failure.
+- `loop.json:unrelatedWrites` is a validated, optional doctrine block: `{ enforce, allow }`.
+  Absent → `{ enforce: false, allow: [] }`. `parseUnrelatedWritesBlock` refuses any other shape.
+  The allowlist matches a full path or a basename via the commit boundary's own glob
+  (`pathMatchesPattern`).
+- **Shadow is the default.** With `enforce: false`, the gate records
+  `SHADOW: would refuse N unrelated write(s): <files>` and returns `passed: true` — recorded, not
+  refused. `enforce: true` returns `passed: false` with the same list. No proof → inert
+  (`passed: true`, "no proof"), never a fabricated refusal.
+- Docs: `README.md` loop safety model and `doctrine/DOCTRINE.md` (stage table + R-16).
+
+**Verification evidence (ground truth).**
+
+- Failing-first, unit: with the `REGISTRY` entry removed, **7 assertions fail** — the whole
+  `test/unrelated-writes.test.ts` suite (the gate has no implementation) plus the loop-doctrine
+  wiring test. Restored, all pass.
+- Failing-first, end to end: with `unrelated-writes` removed from `hooks.json` (and the manifest
+  re-pinned), the real loop test fails with `gates never executed during a real run:
+  ['unrelated-writes']` — the happy-path assertion that every `GATE_ID` actually runs during a run.
+- `test/unrelated-writes.test.ts` (new, 8 tests): the shadow record, the enforced refusal,
+  allowlist-by-basename and by-pattern, a fully claimed tree passing, a missing proof staying inert,
+  the registry/classification wiring (`registeredGateIds`, `unclassifiedGateIds`, `GATE_IDS`), and
+  the doctrine boundary (shipped default, absent block, malformed `enforce`, malformed `allow`).
+- `test/loop-failure-class.test.ts` — the gate→class map test now pins `unrelated-writes → policy`.
+- Full suite green: **420 tests, 420 pass** (up from 412). `tsc --noEmit` clean; `doctrine:manifest
+  --check` verified (6 files).
+
+**Remaining gaps.** The guard is a sensor: `enforce` is `false`, so a real unrelated write is
+recorded and still committed. Graduating it to enforce is parked for a later sprint, gated on the
+observed false-positive rate. The allowlist is empty in the shipped doctrine — an operator adds
+their repository's generated files before turning enforcement on.
+
+**Next.** WP-6 — a bounded, deterministic learning digest over `factoryLoopRuns` (read-only,
+injection behind a default-OFF flag), and the flip of ADR-012 Proposed → Accepted with it.
