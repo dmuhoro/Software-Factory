@@ -1,6 +1,6 @@
 # Sprint 29 — The Sensor Layer
 
-**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26, WP-2 egress door · 4.13.27) · **Opened:** 2026-10-14
+**Status:** in flight (WP-0 governance, WP-1 leak guard · 4.13.26, WP-2 egress door · 4.13.27, WP-3 failure classification · 4.13.28) · **Opened:** 2026-10-14
 
 **Thesis:** Sprint 28 joined the orchestration layer — planning, concurrency, and a reviewable
 change set — onto the unattended loop. What the loop cannot yet do is *feel*: it does not check
@@ -49,7 +49,7 @@ protection it does not provide, and a control that is not asserted (ADR-008).
 | **WP-0** | Governance: this sprint file + ADR-011 (one egress door) + ADR-012 (bounded learning) | `npm run verify:docs` green; ADRs presented for sign-off | **done** |
 | WP-1 | Wire the dead leak guard + persist isolation evidence | planted target-instruction content refuses the run; manifest survives `--resume` | **done — 4.13.26** |
 | WP-2 | One egress door (implements ADR-011) | architectural assertion test fails pre-fix, passes post-fix | **done — 4.13.27** |
-| WP-3 | Durable failure classification for the loop | classes persist, survive resume, appear in the report; exhaustive classifier tests | pending |
+| WP-3 | Durable failure classification for the loop | classes persist, survive resume, appear in the report; exhaustive classifier tests | **done — 4.13.28** |
 | WP-4 | Foundation readiness check (disk space + write/fsync) | full/read-only `FACTORY_DATA_DIR` reports fail; server refuses (exit 75) | pending |
 | WP-5 | Unrelated-writes guard, **shadow mode only** | shadow log names an unrelated edit; allowlisted lockfile not flagged; flag flips enforcement | pending |
 | WP-6 | Learning digest, read-only, injection OFF | determinism, size-bound, tenant-isolation, insufficient-data, flag-off no-op | pending |
@@ -223,3 +223,43 @@ separate deployables with their own trust boundaries; ADR-011 names them out of 
 egress (`webhookService.ts`) is a different egress class and is unchanged.
 
 **Next.** WP-3 — durable failure classification, so an attempt's reason persists as a machine-readable class.
+
+## WP-3 — Durable failure classification (4.13.28)
+
+**Executive summary.** An attempt recorded why it failed as a free-text reason — the first token of
+the thrown refusal — plus a truncated detail. A human can read that; a count cannot. Nothing could
+answer how often a repository fails verification versus review versus a policy gate. ADR-012 turns
+recorded outcomes into a bounded digest, and a class must exist before it can be counted. The
+classifier is now the loop's second sensor, and it is pure: no model, no clock, no randomness.
+
+**What was built.**
+
+- `src/services/loopFailureClass.ts` (new): `classifyLoopFailure` returns one of `security |
+  verification | review | model | environment | policy | unknown` from the refusal code, stage, gate
+  ids, and message. `GATE_FAILURE_CLASSES` maps every gate id; `unclassifiedGateIds()` makes a
+  missing mapping a visible, testable fact.
+- `failureClass` joins `AttemptRecord` (assigned at the moment of failure in the driver),
+  `UnitRecord` (the last failed attempt while stuck; cleared once the unit is done), and
+  `LoopRunRecord` (the dominant class, or the class of a run-level hard stop when no attempt
+  failed). `summariseFailureClasses` orders counts by count then severity; `runFailureClass`
+  resolves the run-level class.
+- `renderReport` gains a **Failure classes** section and names the class beside each failed
+  attempt. `README.md` documents the class set in the loop's safety model.
+
+**Verification evidence (ground truth).**
+
+- Failing-first: with the `attempt.failureClass = …` wiring removed, the three integration
+  assertions fail (**3 tests, 3 fail**); restored they pass. The pure classifier tests are not
+  vacuous: removing a gate's mapping fails `every gate id the registry knows has a failure class`.
+- `test/loop-failure-class.test.ts` — registry completeness, every real refusal code, gate-id
+  parsing, determinism (50 repeats), and summary ordering/dominance.
+- `test/loop-execution.test.ts` — a failed verification classifies `verification` (3 attempts, unit
+  and run carry the class, the report shows `- verification: 3`); a reviewer refusal classifies
+  `review`; a credential in the diff classifies `security`.
+- Full suite green: **407 tests, 407 pass** (up from 396). `tsc --noEmit` clean.
+
+**Remaining gaps.** The class is recorded; nothing yet reads it back. WP-6's `LearningDigestService`
+is the consumer, and ADR-012 stays Proposed until that code lands.
+
+**Next.** WP-4 — foundation readiness (disk space + write/fsync), so an unwritable data directory
+refuses at startup (exit 75) instead of failing mid-run.
