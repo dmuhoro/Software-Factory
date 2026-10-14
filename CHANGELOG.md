@@ -4,6 +4,40 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] - 2026-10-08
 
+### 4.13.25 — the pull request flow: a finished run drafts a reviewable change set
+
+The loop could already plan, implement, verify, review and commit a unit — but when it finished,
+the work sat inline on whatever branch the run happened to be on. There was no reviewable artifact,
+no manifest of what had been committed or merged, and no path to a pull request. WP-4 (Sprint 28)
+closes that gap with a flow that turns a finished run into a reviewable change set, **local by
+default and GitHub behind a credential that refuses before any socket**.
+
+- **`prFlowService` (new)** is the adapter. `draft` writes three things and invents none of them:
+  a durable `pullRequests` record, a rendered manifest whose every fact comes from the run
+  (title, commit list with per-commit proof digest, merge list, open-unit list), and a branch ref
+  (`factory/pr/<runId12>`) pointing at the run head. `mergeable` reports the run's own verdict —
+  a `halted` run or a unit not `done` is not advertised as mergeable.
+- **The GitHub half fails closed, before the network.** `openGithub` resolves the token through
+  `resolveSecretRef` first — an empty, malformed, or non-allowlisted reference refuses with
+  `PR_GITHUB_TOKEN_REQUIRED` with no socket opened. Then owner/name (`PR_GITHUB_REPO_REQUIRED`,
+  `PR_GITHUB_REPO_MALFORMED`), then head (`PR_GITHUB_HEAD_REQUIRED`), then the base URL is
+  re-validated at the socket via `egressJson`. A 401/403 → `PR_GITHUB_AUTH_FAILED`, 422 →
+  `PR_GITHUB_UNPROCESSABLE`, other non-2xx → `PR_GITHUB_OPEN_FAILED`. It never merges.
+- **The loop drafts automatically only when doctrine says so.** A new optional `loop.json:pullRequest`
+  block (absent ⇒ off) gates a post-report draft; a draft failure is a `warn` event and never
+  changes the run's exit code. `mode` is `local` (no network, no credential) or `github` (which must
+  name an allowlisted `github:tokenSecret`, validated at parse time).
+- **New endpoints:** `POST /api/operations/runs/:runId/pr` (draft, or draft-and-open in github mode,
+  pulling `owner/name` from the repo's `origin` remote) and `GET /api/operations/runs/:runId/pr`.
+- **Ledger and contract:** `pullRequests` collection, `LEDGER_VERSION` 8; the ten `PR_*` codes join
+  `apiError.ts` and the layer-4 error contract (`test/l3-error-contract.test.ts`).
+- **Tests (384 total):** `test/pr-flow.test.ts` (new) drives the real service against real git
+  repositories — the local draft writes a record whose `getRecord` resolves, a real branch ref at
+  HEAD, and a truthful manifest; a halted run is not mergeable; and the GitHub path refuses with
+  `PR_GITHUB_TOKEN_REQUIRED`. It also fixes a real defect the test found: the record id was minted
+  with a time/process-varying id, so `getRecord` could never find the record a draft had written —
+  the id is now content-derived (`deterministicId`).
+
 ### 4.13.24 — the concurrent execution driver: one plan, several workers, dep-gated
 
 The doctrine has always advertised a `worktree-parallel` execution mode, but the driver only ever
