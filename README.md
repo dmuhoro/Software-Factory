@@ -37,6 +37,13 @@ The TypeScript ledger is protected by a process-lifetime writer lock. A second p
 against the same data directory exits 75 rather than starting, because the adapter rewrites
 the whole file on every change and two writers would silently overwrite each other.
 
+The data directory is a readiness check in its own right, and a failure there is fatal at
+startup with the same exit 75. Before a port is bound the service writes a bounded payload
+into the directory, flushes it with `fsync`, and reads it back — so a directory that is
+read-only, not creatable, or not durable is refused rather than discovered on the next real
+write — and the volume's free space is checked against a 64 MiB floor, because a near-full
+volume accepts the probe write and then fails the whole-file rewrite that follows.
+
 ## Running the TypeScript service
 
 ```bash
