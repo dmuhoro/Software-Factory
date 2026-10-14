@@ -36,6 +36,8 @@
     "verify:full": "bash scripts/verify-full.sh",
     "verify:secrets:argv": "bash scripts/verify-argv-leak-control.sh",
     "doctrine:manifest": "tsx scripts/doctrine-manifest.ts",
+    "render:evidence": "tsx scripts/render-evidence.ts",
+    "verify:evidence": "tsx scripts/render-evidence.ts --check",
     "factory:run": "tsx scripts/run-factory-loop.ts",
     "verify:loop": "bash scripts/verify-loop.sh",
     "verify:deploy": "npm run build && bash scripts/verify-deploy.sh",
