@@ -113,9 +113,9 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
   {
     id: 'skills-registry',
     title: 'Declarative skills registry',
-    status: 'planned',
-    summary: 'Load SKILL.md-style capability definitions from a governed directory, validate them, and expose the installed set.',
-    proves: 'npm test -- test/skills-registry.test.ts',
+    status: 'live',
+    summary: 'Loads SKILL.md-style capability definitions from a governed directory, validates them strictly, and exposes the installed set plus any file it refused.',
+    proves: 'GET /api/factory/skills',
   },
   {
     id: 'hosted-frontier-model',
