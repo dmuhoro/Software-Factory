@@ -21,6 +21,8 @@ import { FrontierModelService } from './frontierModelService';
 import { fileInventory } from './implementerService';
 import { parseTaskDocument } from './taskDocumentService';
 import { resolveLoopRepo } from './loopControlService';
+import { DoctrineService } from './doctrineService';
+import { LearningDigestService, injectLearningDigest, type LearningDigest } from './learningDigestService';
 import { workspaceRoot } from '../utils/pathGuard';
 
 export interface GoalDraftInput {
@@ -101,7 +103,7 @@ export function taskDocumentSystem(providerId: string, model: string): string {
   ].join('\n');
 }
 
-export function buildGoalPrompt(repo: string, goal: string, providerId: string, model: string): { system: string; task: string } {
+export function buildGoalPrompt(repo: string, goal: string, providerId: string, model: string, learning: { digest?: LearningDigest; enabled: boolean } = { enabled: false }): { system: string; task: string } {
   const inventory = fileInventory(repo).slice(0, 200);
   const task = [
     `Goal: ${goal}`,
@@ -112,7 +114,17 @@ export function buildGoalPrompt(repo: string, goal: string, providerId: string, 
     '',
     'Write the task document now.',
   ].join('\n');
-  return { system: taskDocumentSystem(providerId, model), task };
+  return { system: taskDocumentSystem(providerId, model), task: injectLearningDigest(task, learning.digest, learning.enabled) };
+}
+
+/**
+ * Resolves the learning-digest wiring for a draft (ADR-012 §6). The doctrine flag defaults **off**;
+ * when it is off this returns `{ enabled: false }` and the prompt builder appends nothing — a
+ * byte-identical prompt, which the tests assert.
+ */
+export function resolveLearning(tenantId: string): { digest?: LearningDigest; enabled: boolean } {
+  if (!DoctrineService.load().loop.learning.inject) return { enabled: false };
+  return { digest: LearningDigestService.build(tenantId), enabled: true };
 }
 
 /**
@@ -164,7 +176,7 @@ export class GoalIntakeService {
     }
     const repo = resolveLoopRepo(input.repo);
 
-    const { system, task } = buildGoalPrompt(repo, input.goal.trim(), input.providerId, input.model);
+    const { system, task } = buildGoalPrompt(repo, input.goal.trim(), input.providerId, input.model, resolveLearning(input.tenantId));
     return draftTaskDocument({ tenantId: input.tenantId, system, task, providerId: input.providerId, model: input.model, maxOutputTokens: input.maxOutputTokens });
   }
 }

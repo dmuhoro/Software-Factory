@@ -15,6 +15,7 @@ import { validateTenantRequest } from '../middleware/tenantAuth';
 import { LoopControlService } from '../../services/loopControlService';
 import { GoalIntakeService } from '../../services/goalIntakeService';
 import { IssueIntakeService } from '../../services/issueIntakeService';
+import { LearningDigestService } from '../../services/learningDigestService';
 
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
@@ -144,6 +145,17 @@ router.post('/runs/:id/cancel', (req: Request, res: Response) => {
 router.get('/runs', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;
   return res.json({ status: 'success', runs: LoopControlService.summaries(tenant(req)) });
+});
+
+/**
+ * The bounded learning digest for this tenant (ADR-012). Read-only: it is derived from the durable
+ * run records and crosses no tenant boundary. Below the sufficiency threshold it returns an explicit
+ * `insufficient-data` record rather than a conclusion.
+ */
+router.get('/learning-digest', (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  const digest = LearningDigestService.build(tenant(req));
+  return res.json({ status: 'success', digest });
 });
 
 /** One run's full record. */

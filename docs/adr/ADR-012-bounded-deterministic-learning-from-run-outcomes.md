@@ -1,6 +1,6 @@
 # ADR-012: Learning from run outcomes is bounded, deterministic, and off by default
 
-- **Status**: Proposed — awaiting founder sign-off (Sprint 29, WP-0)
+- **Status**: Accepted (Sprint 29, WP-6 — implemented as `LearningDigestService`, injection off by default)
 - **Date**: 2026-10-14
 - **Resolves**: the missing read-back from the factory's own recorded runs (the one genuine gap in
   the Google-AI "recursive self-improvement" proposal)
