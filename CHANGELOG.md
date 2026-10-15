@@ -4,6 +4,35 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.1] - 2026-10-15 — truthful docs: the README is generated from the manifest
+
+WP-2 (Sprint 31). The README now derives its capability list from
+`src/services/capabilityManifest.ts` instead of carrying a hand-typed list that drifts. The audit that
+scoped this sprint found the README claiming a stale test count, a false model locality, and a
+throughput extrapolated from four units.
+
+- **The capability list is generated, not typed.** `scripts/render-readme.ts` (new) renders the marked
+  block between `<!-- readme-capabilities:start -->` and `<!-- readme-capabilities:end -->` from the
+  same manifest the API and evidence page read; `npm run render:readme -- --check` fails when the README
+  drifts. `test/readme-truth.test.ts` (new) asserts the block equals the rendered manifest and proves
+  the renderer tracks a manifest change.
+- **The duplicate "Remote control plane" section is removed** (it had been left with its code stripped
+  to empty bullets).
+- **Model locality is stated honestly.** The loop's recorded runs used a model served by a local Ollama
+  daemon (`gpt-oss:20b-cloud`); its `-cloud` path forwards to a remote host, so the egress guard sees
+  loopback, not the model's true location — which is why the hosted path is declared `blocked`.
+- **The extrapolated throughput is gone**; only the runs' own measurements remain.
+- **The stale Manus audit is archived** at `docs/archive/DEEP_READINESS_AUDIT.md` with a superseded
+  banner, and the README's contracts list links it.
+- **A generated codebase index** (`docs/audit/CODEBASE-INDEX.md`) is rendered from `git ls-files` by
+  `scripts/render-codebase-index.ts` (new); `--check` fails when it is stale.
+- **The docs gate now reads the README.** `scripts/verify-docs.sh` includes `README.md` in its live
+  documents, so every `npm run` command the README instructs is checked to exist.
+
+Gates: `verify:docs` 6/6 (now including both render `--check`s), `npx tsc --noEmit` clean,
+`test/readme-truth.test.ts` 4/4 with a recorded failing-first (drifted README → 1 fail; stale index →
+exit 1).
+
 ## [4.15.0] - 2026-10-15 — reproducibility: a fresh clone runs green anywhere
 
 The suite was green on the author's machine, red in CI, and red on a fresh clone. WP-1 (Sprint 31)

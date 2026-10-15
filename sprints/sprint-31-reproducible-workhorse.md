@@ -1,6 +1,6 @@
 # Sprint 31 — The Reproducible Workhorse
 
-**Status:** WP-0 governance and WP-1 reproducibility landed (v4.15.0); ADR-013 and ADR-014 signed off 2026-10-15; WP-2…WP-7 pending · **Opened:** 2026-10-15 · **Closed:** —
+**Status:** WP-0 governance, WP-1 reproducibility (v4.15.0) and WP-2 truthful docs (v4.15.1) landed; WP-3…WP-7 pending · **Opened:** 2026-10-15 · **Closed:** —
 
 **Thesis.** Sprint 30 gave the factory a face and a floor: a declarative capability manifest, a
 skills registry, a fleet read surface, a fail-closed deploy preflight, and an evidence page rendered
@@ -63,7 +63,7 @@ delete, then host, then face, then skills, then measure.
 |---|---|---|---|
 | **WP-0** | Governance: this sprint file + ADR-013 + ADR-014 | `npm run verify:docs` green; no production code | **done** |
 | WP-1 | Reproducibility: a fresh clone runs green anywhere (hermetic tests, a loud sandbox preflight, `bubblewrap` in CI, a tracked contributor `AGENTS.md`) | `verify:fresh-clone` red on the pre-fix tree, green after | **done** |
-| WP-2 | Truthful docs: README counts and the capability list generated from the manifest; stale claims removed; the Manus audit archived | no README figure that a command does not reproduce | pending |
+| WP-2 | Truthful docs: README counts and the capability list generated from the manifest; stale claims removed; the Manus audit archived | no README figure that a command does not reproduce | **done** |
 | WP-3 | Dead-code gate: `knip` (or equivalent) in CI; every unreferenced export wired or removed | the gate fails on the pre-fix tree; the tree is clean after | pending |
 | WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | pending |
 | WP-5 | Phone surface: mobile-first Loop tab (goal/issue submit, run list, live events, two-phase cancel) + signed outbound notifications via `WebhookService` | delivery test + the operator's recorded on-device check | pending |
@@ -192,13 +192,36 @@ CI: `typescript` (7m52s), `fresh clone` (6m21s), `rust`, `kubernetes manifests`,
 all pass on the PR. Failing-first recorded for the preflight wiring, the doctrine self-stage, and the
 toolchain resolver.
 
-## WP-2 — Truthful docs (planned)
+## WP-2 — Truthful docs (done, v4.15.1)
 
-`README.md` counts and the capability list are generated from the manifest / CI output; the duplicate
-"Remote control plane" section is removed; the model-locality wording is corrected (the egress guard
-sees only loopback for a daemon that forwards); extrapolated throughput is replaced by measured
-figures only; `DEEP_READINESS_AUDIT.md` moves to `docs/archive/` with a superseded banner; a
-`docs/audit/CODEBASE-INDEX.md` is generated from the tree.
+The README's capability list is now generated from `src/services/capabilityManifest.ts` — the same
+list the API and the evidence page read — so it cannot describe a capability the code does not, and
+the figures that had drifted are gone.
+
+- **Generated capability block.** `scripts/render-readme.ts` (new) renders the marked block in
+  `README.md` between `<!-- readme-capabilities:start -->` and `<!-- readme-capabilities:end -->`;
+  `npm run render:readme -- --check` fails on drift, and it runs inside `verify:docs`.
+- **Generated codebase index.** `scripts/render-codebase-index.ts` (new) renders
+  `docs/audit/CODEBASE-INDEX.md` from `git ls-files`; `--check` fails on drift, and it also runs inside
+  `verify:docs`.
+- **The duplicate "Remote control plane" section is removed** — the first copy had lost its code and
+  was rendering as empty bullets.
+- **Model locality corrected.** The recorded runs used a model served by a local Ollama daemon
+  (`gpt-oss:20b-cloud`); the `-cloud` path forwards to a remote host, so the egress guard observes
+  loopback and not the model's true location — the hosted path is therefore declared `blocked`.
+- **Extrapolated throughput removed**; only the runs' own measurements remain.
+- **The Manus audit archived** at `docs/archive/DEEP_READINESS_AUDIT.md` with a superseded banner and a
+  link from the README's contracts list.
+- **The README is now a gated live document** in `scripts/verify-docs.sh`, so every `npm run` command
+  it instructs must resolve to a real script.
+
+**New files:** `scripts/render-readme.ts`, `scripts/render-codebase-index.ts`,
+`test/readme-truth.test.ts`, `docs/audit/CODEBASE-INDEX.md`,
+`docs/archive/DEEP_READINESS_AUDIT.md` (moved from the repository root).
+
+**Evidence:** `verify:docs` **6/6** (both `--check`s green); `npx tsc --noEmit` clean;
+`test/readme-truth.test.ts` **4/4**, failing-first recorded — a drifted README block fails 1 test, and a
+stale index exits 1; both green when restored.
 
 ## WP-3 — Dead-code gate (planned)
 
