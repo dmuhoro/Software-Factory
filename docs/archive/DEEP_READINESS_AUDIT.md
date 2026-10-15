@@ -1,5 +1,11 @@
 # Software Factory: Deep Readiness Audit
 
+> **Archived — superseded.** This audit was written on 2026-09-18 against `main` at `944fea1` (the
+> v4.14.4 era) by Manus AI. It is kept as a dated record of what was true then and is **not** a
+> description of the current build. For the current state read [README.md](../../README.md),
+> [docs/audit/CODEBASE-INDEX.md](../audit/CODEBASE-INDEX.md), and [CHANGELOG.md](../../CHANGELOG.md).
+> Its findings seeded the repair program that Sprint 31's reproducibility work continues.
+
 **Repository:** `dmuhoro/Software-Factory`  
 **Audit basis:** repository contents at commit `944fea1` (`main`)  
 **Audit date:** 2026-09-18  

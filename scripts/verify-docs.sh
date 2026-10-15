@@ -32,7 +32,7 @@ section "No document instructs a package manager this repository does not use"
 # historical note -- and the distinction matters, so records under sprints/ and the ADRs are
 # excluded: they are dated history of what was true then, and rewriting them would be falsifying
 # the record. What must not exist is a live instruction in a live document.
-LIVE_DOCS="docs/FOUNDER_OPERATING_PLAYBOOK.md docs/CONSTITUTION.md docs/REPOSITORY_CONTEXT_INDEX.md"
+LIVE_DOCS="README.md docs/FOUNDER_OPERATING_PLAYBOOK.md docs/CONSTITUTION.md docs/REPOSITORY_CONTEXT_INDEX.md"
 STALE=""
 for f in $LIVE_DOCS; do
   # Match a command, not the word: `bun install`, `bun run`, `bunx`. The prose that explains
