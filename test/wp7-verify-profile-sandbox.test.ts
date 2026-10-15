@@ -13,6 +13,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 import { parseLoopConfig } from '../src/services/doctrineService';
+import { isSandboxVisible } from '../src/services/groundTruthService';
 import {
   detectVerificationProfile,
   executeVerification,
@@ -103,4 +104,25 @@ test('WP-7: a sandbox failure names the condition instead of dumping the command
   assert.equal(execution.passed, false);
   assert.doesNotMatch(execution.output, /--setenv|--ro-bind|Command failed:/, 'the sandbox command line must not be persisted as the failure output');
   assert.match(execution.output, /exited with code 1|produced no output/i, execution.output);
+});
+
+test('WP-1: a sandboxed node step resolves a toolchain outside /usr/bin', () => {
+  const repo = makeRepo();
+  const command = verificationStepCommand({ id: 'x', label: 'node probe.cjs', executable: 'node', args: ['probe.cjs'] }, repo);
+  const pathToken = command.match(/^PATH='([^']*)'/);
+  assert.ok(pathToken, `the command must lead with a PATH assignment: ${command}`);
+  const entries = pathToken![1].split(':');
+  assert.ok(entries.includes('/usr/local/bin'), `the sandbox PATH must include /usr/local/bin, where node lives in node:22-slim: ${command}`);
+  assert.ok(
+    entries.includes(path.dirname(process.execPath)),
+    `the sandbox PATH must include the running interpreter's directory so node resolves when it is not under /usr/bin: ${command}`,
+  );
+});
+
+test('WP-1: a masked sandbox root is never offered as a toolchain directory', () => {
+  assert.equal(isSandboxVisible('/home/runner/.nvm/versions/node/v22/bin'), false);
+  assert.equal(isSandboxVisible('/tmp/scratch/bin'), false);
+  assert.equal(isSandboxVisible('/root/.nvm/bin'), false);
+  assert.equal(isSandboxVisible('/usr/local/bin'), true);
+  assert.equal(isSandboxVisible('/opt/hostedtoolcache/node/22.22.1/x64/bin'), true);
 });
