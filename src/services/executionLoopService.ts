@@ -13,6 +13,7 @@ import { ReviewService, buildReviewPrompts, REVIEW_AXES, type ReviewRequest, typ
 import { commitUnit, readLoopVersion } from './commitService';
 import { collectGroundTruth, proofDigest, type GroundTruthProof } from './groundTruthService';
 import { detectVerificationProfile } from './verificationProfileService';
+import { preflightSandbox } from './sandboxPreflightService';
 import { decompose, loadTaskDocument, type WorkUnit } from './taskDocumentService';
 import { assertRegistryComplete, runStageGates, type GateContext } from './loopGates';
 import { resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
@@ -265,6 +266,17 @@ export class ExecutionLoopService {
     const loop = doctrine.loop;
 
     assertRegistryComplete();
+
+    // The sandbox is a precondition of the whole run, not of one command. If bubblewrap is
+    // absent or cannot unshare, every verification command would be refused deep inside a unit
+    // attempt, and the run would fail as a broken unit rather than a broken host. Refuse once,
+    // here, before any work starts. Fail-closed: an unusable sandbox stops the run.
+    if (loop.sandbox.enabled) {
+      const preflight = preflightSandbox(loop.sandbox);
+      if (!preflight.ok) {
+        throw new Error(`${preflight.code}: ${preflight.detail}${preflight.remediation ? ` — ${preflight.remediation}` : ''}`);
+      }
+    }
 
     const repo = path.resolve(options.repo);
     const tenantId = options.tenantId ?? 'default';
