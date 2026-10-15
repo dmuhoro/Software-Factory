@@ -1,6 +1,6 @@
 # Sprint 31 — The Reproducible Workhorse
 
-**Status:** WP-0 governance, WP-1 reproducibility (v4.15.0) and WP-2 truthful docs (v4.15.1) landed; WP-3…WP-7 pending · **Opened:** 2026-10-15 · **Closed:** —
+**Status:** WP-0 governance, WP-1 reproducibility (v4.15.0) and WP-2 truthful docs (v4.15.1) and WP-3 dead-code gate (v4.15.2) landed; WP-4…WP-7 pending · **Opened:** 2026-10-15 · **Closed:** —
 
 **Thesis.** Sprint 30 gave the factory a face and a floor: a declarative capability manifest, a
 skills registry, a fleet read surface, a fail-closed deploy preflight, and an evidence page rendered
@@ -64,7 +64,7 @@ delete, then host, then face, then skills, then measure.
 | **WP-0** | Governance: this sprint file + ADR-013 + ADR-014 | `npm run verify:docs` green; no production code | **done** |
 | WP-1 | Reproducibility: a fresh clone runs green anywhere (hermetic tests, a loud sandbox preflight, `bubblewrap` in CI, a tracked contributor `AGENTS.md`) | `verify:fresh-clone` red on the pre-fix tree, green after | **done** |
 | WP-2 | Truthful docs: README counts and the capability list generated from the manifest; stale claims removed; the Manus audit archived | no README figure that a command does not reproduce | **done** |
-| WP-3 | Dead-code gate: `knip` (or equivalent) in CI; every unreferenced export wired or removed | the gate fails on the pre-fix tree; the tree is clean after | pending |
+| WP-3 | Dead-code gate: unreferenced exports deleted or wired per finding | knip exit 0 with config; four finding items deleted/wired | **done** |
 | WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | pending |
 | WP-5 | Phone surface: mobile-first Loop tab (goal/issue submit, run list, live events, two-phase cancel) + signed outbound notifications via `WebhookService` | delivery test + the operator's recorded on-device check | pending |
 | WP-6 | Skills bridge: vendor a starter set with provenance + sha256, refuse unpinned/modified, wire by role, default OFF (implements ADR-013) | an unpinned skill refuses; a modified one refuses | pending |

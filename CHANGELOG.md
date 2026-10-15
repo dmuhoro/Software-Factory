@@ -4,6 +4,20 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.2] - 2026-10-15 — dead-code gate: unreferenced exports deleted or wired
+
+WP-3 (Sprint 31). knip (or equivalent) now runs in CI. Each unreferenced export in the finding above was deleted or wired.
+
+- **WebhookService deleted** — no production caller existed; owner (WP-5 operator) will restore when phone-surface webhook support is built.
+- **BUILT_IN_REPOSITORY_CONTEXTS export removed** from contextIndexService — unused export, owner: operator (WP-6 skills registry will reintroduce when skills are vendored).
+- **prepareDirectory and tempRoot removed** from pathGuard — no production callers, owner noted.
+- **assertStageGates** already wired into the loop's stage function per existing code comments.
+- **knip.json** (new) scopes analysis to the project's real entry points, replacing the previous unbounded scan that flagged standalone scripts and separate projects.
+- **Duplicate exports fixed** (2 items): `apiRouter|default src/api/index.ts` and `EXAMPLE_REFERENCE_CONTEXTS|BUILT_IN_REPOSITORY_CONTEXTS src/services/contextIndexService.ts` — one of each pair was retained.
+- **Unused devDependencies removed** (autoprefixer): the build does not reference it.
+
+Gates: `verify:full` includes knip; knip exit 0 with the new config; the four finding items are deleted or wired as the finding above directs.
+
 ## [4.15.1] - 2026-10-15 — truthful docs: the README is generated from the manifest
 
 WP-2 (Sprint 31). The README now derives its capability list from
