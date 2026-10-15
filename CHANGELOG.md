@@ -4,6 +4,45 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.0] - 2026-10-15 — reproducibility: a fresh clone runs green anywhere
+
+The suite was green on the author's machine, red in CI, and red on a fresh clone. WP-1 (Sprint 31)
+makes "green" a property of the repository: the host requirements fail loudly, the release records
+match the release, and the sandbox finds its toolchain wherever the runtime is installed.
+
+- **CI installs and proves `bubblewrap`** before the suite, and lifts the Ubuntu 24.04
+  unprivileged-user-namespace restriction on the ephemeral runner; the prove step is the gate that
+  confirms the sandbox can unshare, and it fails by name if it cannot (`.github/workflows/verify.yml`).
+- **The loop refuses to start when the sandbox cannot run.** `src/services/sandboxPreflightService.ts`
+  (new) resolves the binary and runs a real bwrap probe; `ExecutionLoopService.run()` calls it before
+  any work. Boundary codes `SANDBOX_BACKEND_UNSUPPORTED`, `SANDBOX_BINARY_MISSING` and
+  `SANDBOX_BINARY_UNUSABLE` are registered in `src/utils/apiError.ts`.
+- **The sandbox finds node wherever the runtime is installed.** The toolchain resolver assumed
+  `/usr/bin/node` and offered a PATH of `/usr/bin:/bin:<repo>/node_modules/.bin`; CI (setup-node under
+  `/opt/hostedtoolcache`) and the `node:22-slim` runtime image (`/usr/local/bin/node`) both failed with
+  `SANDBOX_TOOLCHAIN_HIDDEN`. `resolveExecutable` now falls back to the running interpreter
+  (`process.execPath`) when the sandbox can see it, and `sandboxVisiblePath` includes `/usr/local/bin`
+  and that runtime directory. The masked roots are declared once (`SANDBOX_MASKED_ROOTS`,
+  `groundTruthService.ts`) and shared with the mount list.
+- **Release records agree again.** The 41 changelog headings under `[Unreleased]` were promoted to
+  `## [x.y.z] - <tag date>`, and `Cargo.toml`/`Cargo.lock` were re-synced. The release gate had been
+  red since 4.9.1 — it read 4.9.1 against 4.14.4 — because CI aborted at `npm test` before reaching it.
+- **The deployment manifest names the release that exists** (`runtime:v4.15.0`), so the
+  `kubernetes manifests` job is green (58 assertions).
+- **The doctrine test measures the repository.** `AGENTS.md` is tracked at the root and the self-stage
+  test asserts on it by name instead of on a gitignored `.claude/`/`.agents/` that a fresh clone lacks.
+- **`verify:fresh-clone`** (new, `scripts/verify-fresh-clone.sh`) clones the committed tree into a temp
+  directory, runs `npm ci`, proves the sandbox, typechecks and runs the suite — plus a CI job. It is the
+  gate that notices when green depends on the author's machine.
+- **Tests (468 total, +11).** `test/sandbox-preflight.test.ts` (new, 9) and two toolchain-resolution
+  tests in `test/wp7-verify-profile-sandbox.test.ts`. Failing-first recorded: removing the run preflight
+  fails the wiring test (8/9); removing `AGENTS.md` fails the doctrine test (9/10); the toolchain test
+  fails on the committed resolver (`PATH='/usr/bin:/bin:…'`).
+
+Full verification: `verify-release.sh --pre-release` 11/11, `verify:docs` 6/6, `verify-k8s.py` 58/58,
+`verify:fresh-clone` green, `npm test` 468/468; CI `typescript`, `fresh clone`, `rust`,
+`kubernetes manifests` and `workflow definitions` all pass.
+
 ## [4.14.4] - 2026-10-14 — the public evidence page, generated from the manifest
 
 The evidence page stated capabilities and figures by hand, so it drifted release over release. WP-5

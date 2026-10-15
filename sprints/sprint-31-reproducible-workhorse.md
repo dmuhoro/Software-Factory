@@ -1,6 +1,6 @@
 # Sprint 31 — The Reproducible Workhorse
 
-**Status:** in progress — WP-0 governance landed; ADR-013 and ADR-014 signed off 2026-10-15; WP-1…WP-7 pending · **Opened:** 2026-10-15 · **Closed:** —
+**Status:** WP-0 governance and WP-1 reproducibility landed (v4.15.0); ADR-013 and ADR-014 signed off 2026-10-15; WP-2…WP-7 pending · **Opened:** 2026-10-15 · **Closed:** —
 
 **Thesis.** Sprint 30 gave the factory a face and a floor: a declarative capability manifest, a
 skills registry, a fleet read surface, a fail-closed deploy preflight, and an evidence page rendered
@@ -62,7 +62,7 @@ delete, then host, then face, then skills, then measure.
 | WP | Objective | Proof | Status |
 |---|---|---|---|
 | **WP-0** | Governance: this sprint file + ADR-013 + ADR-014 | `npm run verify:docs` green; no production code | **done** |
-| WP-1 | Reproducibility: a fresh clone runs green anywhere (hermetic tests, a loud sandbox preflight, `bubblewrap` in CI, a tracked contributor `AGENTS.md`) | `verify:fresh-clone` red on the pre-fix tree, green after | pending |
+| WP-1 | Reproducibility: a fresh clone runs green anywhere (hermetic tests, a loud sandbox preflight, `bubblewrap` in CI, a tracked contributor `AGENTS.md`) | `verify:fresh-clone` red on the pre-fix tree, green after | **done** |
 | WP-2 | Truthful docs: README counts and the capability list generated from the manifest; stale claims removed; the Manus audit archived | no README figure that a command does not reproduce | pending |
 | WP-3 | Dead-code gate: `knip` (or equivalent) in CI; every unreferenced export wired or removed | the gate fails on the pre-fix tree; the tree is clean after | pending |
 | WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | pending |
@@ -149,13 +149,48 @@ not defaults an implementation should assume.
 **Proposed** in status until the code that satisfies them lands (WP-6 and WP-4), per the Constitution's
 scope rule.
 
-## WP-1 — Reproducibility (planned)
+## WP-1 — Reproducibility (done, v4.15.0)
 
-A fresh clone runs the full suite green with no undeclared local state. Tests stage their own fixtures;
-the doctrine self-stage test asserts on tracked evidence or a fixture, not on `process.cwd()` contents.
-A preflight fails **loudly** with remediation text when `bubblewrap` or user namespaces are
-unavailable; sandbox tests never skip silently. `bubblewrap` is installed in CI. A contributor
-`AGENTS.md` is tracked. `verify:fresh-clone` clones to a temp dir, runs `npm ci`, and runs the suite.
+A fresh clone runs the full suite green with no undeclared local state. Landed in layers, each its
+own commit on `sprint-31/wp-1-reproducibility`, merged as PR #6:
+
+- **Release records agree (L0).** The 41 changelog headings under `[Unreleased]` were promoted to
+  `## [x.y.z] - <tag date>`; `software_factory/Cargo.toml` and `Cargo.lock` were re-synced from 4.9.1
+  to the live version. The release gate had been red since 4.9.1 and CI never reached it because it
+  aborted at `npm test`. `verify-release.sh --pre-release` went 7/4 → **11/11**.
+- **`bubblewrap` in CI (L1).** The `typescript` job installs bubblewrap and proves it can unshare
+  before the suite; the proof is the gate.
+- **A loud sandbox preflight (L2).** `src/services/sandboxPreflightService.ts` (new) resolves the
+  binary and runs a real probe; `ExecutionLoopService.run()` refuses before any work when the sandbox
+  cannot run. Three boundary codes registered in `src/utils/apiError.ts`. `test/sandbox-preflight.test.ts`
+  (new, 9 tests). Failing-first: 8/9 with the preflight removed from `run()`.
+- **Hermetic doctrine test + tracked contributor file (L3).** `AGENTS.md` is tracked at the root and
+  the self-stage test asserts on it by name — no more dependence on a gitignored `.claude/`/`.agents/`.
+  Failing-first: absent `AGENTS.md` → 9/10.
+- **`verify:fresh-clone` (L4).** `scripts/verify-fresh-clone.sh` (new) clones the committed tree,
+  `npm ci`, proves the sandbox, typechecks and runs the suite; a CI job runs it. Green end to end.
+- **The deployment manifest names the release (L5).** `k8s/deployment.yaml` moved off `runtime:v4.8.0`
+  to the live tag; `verify-k8s.py` 58/58.
+- **The README moves with the product (L6).** Verifying section names `verify:docs` and
+  `verify:fresh-clone`, states the bubblewrap dependency, and corrects the manifest count.
+- **CI unprivileged-userns fix (L7a).** On `ubuntu-latest` (24.04) the sandbox probe failed with
+  `loopback: Failed RTM_NEWADDR: Operation not permitted`; the job lifts
+  `kernel.apparmor_restrict_unprivileged_userns` on the ephemeral runner (both sandbox jobs).
+- **The sandbox finds node wherever the runtime is installed (L7b).** Six tests passed locally and
+  failed in CI with `SANDBOX_TOOLCHAIN_HIDDEN`: the resolver assumed `/usr/bin/node`, but CI installs
+  node under `/opt/hostedtoolcache` and the `node:22-slim` runtime image puts it under `/usr/local/bin`.
+  `resolveExecutable` now falls back to `process.execPath` when the sandbox can see it, and
+  `sandboxVisiblePath` includes `/usr/local/bin` and that runtime directory. Masked roots are declared
+  once (`SANDBOX_MASKED_ROOTS`, `groundTruthService.ts`) and shared with the mount list.
+
+**New files:** `AGENTS.md`, `scripts/verify-fresh-clone.sh`, `src/services/sandboxPreflightService.ts`,
+`test/sandbox-preflight.test.ts`.
+
+**Evidence:** `npm test` **468/468**; `verify:fresh-clone` green in a clean clone; `verify-release.sh
+--pre-release` **11/11**; `verify:docs` **6/6**; `verify-k8s.py` **58/58**; `npx tsc --noEmit` clean.
+CI: `typescript` (7m52s), `fresh clone` (6m21s), `rust`, `kubernetes manifests`, `workflow definitions`
+all pass on the PR. Failing-first recorded for the preflight wiring, the doctrine self-stage, and the
+toolchain resolver.
 
 ## WP-2 — Truthful docs (planned)
 
