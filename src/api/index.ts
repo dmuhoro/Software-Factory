@@ -19,4 +19,4 @@ apiRouter.use('/', apiRoutes);
 
 export * from './middleware';
 export * from './routes';
-export default apiRouter;
+

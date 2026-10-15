@@ -108,9 +108,6 @@ export const EXAMPLE_REFERENCE_CONTEXTS: Array<Omit<RepositoryContext, 'id' | 'i
   { repository: 'Forge.ai', commit: '717e960', provenance: 'bundled-example', mission: 'AI-assisted product builder surface for turning an idea into an application experience.', kinds: ['product', 'architecture'], patterns: ['guided product builder', 'authenticated project workspace', 'interactive preview surface', 'Supabase-backed product state'], qualityPractices: ['typecheck and build scripts'], risks: ['no detected tests or CI', 'provider and deployment boundaries need verification', 'product claims should be separated from verified capability'], adapters: ['product brief UI', 'preview surface', 'project intake'], qualityScore: 34, qualityDimensions: { verification: 5, security: 8, evidence: 4, operability: 5, productDiscipline: 12 } },
 ];
 
-/** Backwards-compatible alias. Retained because older call sites import this name. */
-export const BUILT_IN_REPOSITORY_CONTEXTS = EXAMPLE_REFERENCE_CONTEXTS;
-
 /**
  * Ensures the bundled examples exist in the index. Idempotent, and safe to call
  * from a request handler: it must never be invoked at module scope, because that
