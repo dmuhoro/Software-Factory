@@ -95,6 +95,8 @@ Endpoints: `/health` (liveness, public), `/ready` (readiness, 503 when unconfigu
 
 ```bash
 npm test                    # unit + source-invariant tests
+npm run verify:docs         # documentation gates
+npm run verify:fresh-clone  # a clean clone installs and verifies (needs bubblewrap)
 npx tsc --noEmit            # types
 npm run verify:layer1       # 34 checks against the built server
 npm run verify:layer2       # 26 checks: tenant isolation
@@ -104,12 +106,16 @@ cd software_factory
 cargo test                  # 15 tests
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
-python3 scripts/verify-k8s.py   # 51 manifest assertions
+python3 scripts/verify-k8s.py   # 58 manifest assertions
 ```
 
 The three harnesses start the built server and drive it over HTTP, then assert nothing is
 left listening. A unit test cannot pass while the real request path is unguarded; several
-defects in 4.7.0 were found only by the harnesses.
+defects in 4.7.0 were found only by the harnesses. The sandbox tests execute verification
+commands inside `bubblewrap`: a run whose doctrine enables the sandbox refuses to start unless
+`bwrap` is present and can actually unshare, so a host without it fails loudly rather than
+running verification commands unsandboxed. `npm run verify:fresh-clone` proves the same suite
+passes from a clone that has none of the working tree's gitignored files.
 
 ## Known limits
 
