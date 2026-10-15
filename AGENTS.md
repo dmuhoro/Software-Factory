@@ -47,9 +47,9 @@ Run the checks that cover what you touched:
     npm run verify:docs   # the documentation gates
     npm run verify        # lint, test, build, and the Layer 4 harness
 
-Wider gates: `npm run verify:full`, `verify:loop`, `verify:deploy`, `verify:evidence`, and
-`verify:release`. The sandbox tests run inside `bwrap`; a host without bubblewrap fails the
-preflight by design rather than running verification unsandboxed.
+Wider gates: `npm run verify:full`, `verify:loop`, `verify:deploy`, `verify:evidence`,
+`verify:fresh-clone`, and `verify:release`. The sandbox tests run inside `bwrap`; a host
+without bubblewrap fails the preflight by design rather than running verification unsandboxed.
 
 ## Releasing
 

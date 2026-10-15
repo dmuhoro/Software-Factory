@@ -205,3 +205,30 @@ jobs:
 
       - name: Validate manifests
         run: python software_factory/scripts/verify-k8s.py
+
+  fresh-clone:
+    name: fresh clone (reproducibility)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # The script clones this checkout into a temp directory and installs from the lockfile.
+      # The clone has none of the working tree's gitignored files, which is what makes it a
+      # different — and stronger — claim than the typescript job: green must be a property of
+      # the committed repository, not of a developer's machine.
+      - name: Install bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+
+      - name: A fresh clone installs and verifies
+        run: bash scripts/verify-fresh-clone.sh
