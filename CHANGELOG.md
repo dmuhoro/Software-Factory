@@ -2,9 +2,9 @@
 
 All notable architectural and code modifications are documented here.
 
-## [Unreleased] - 2026-10-08
+## [Unreleased]
 
-### 4.14.4 — the public evidence page, generated from the manifest
+## [4.14.4] - 2026-10-14 — the public evidence page, generated from the manifest
 
 The evidence page stated capabilities and figures by hand, so it drifted release over release. WP-5
 (Sprint 30) makes it a view of the same capability manifest the API serves.
@@ -27,7 +27,7 @@ The evidence page stated capabilities and figures by hand, so it drifted release
   every "401 without a credential" harness case answered 403, while the suite passed when run
   directly. Full verification: `verify:full` 10/10, `verify:loop` 7/7, `verify:deploy` 8/8.
 
-### 4.14.3 — the deployment contract, and the documented path that boots
+## [4.14.3] - 2026-10-14 — the deployment contract, and the documented path that boots
 
 The runtime already refused to start on an unusable configuration. What was never checked is that the
 *documented* deployment path invokes that runtime correctly. WP-4 (Sprint 30) ties the manifests to
@@ -46,7 +46,7 @@ the code and exercises the real entrypoint.
   the single-writer assertion; disabling the startup `fatal` check fails 5 of the gate's 8 checks.
   Gate: 8/8.
 
-### 4.14.2 — the fleet read surface, and the boundary codes the guard could not see
+## [4.14.2] - 2026-10-14 — the fleet read surface, and the boundary codes the guard could not see
 
 A thin client had no single read that answered "how are my runs doing, and what has the loop
 learned". WP-3 (Sprint 30) adds it — and this release corrects two release-discipline gaps that
@@ -69,7 +69,7 @@ their new boundary codes were never mapped in the L3 error contract.
   removing the tenant filter in `LoopControlService.list` surfaces a foreign run. The corrected
   `test/l3-error-contract.test.ts` is green.
 
-### 4.14.1 — the declarative skills registry
+## [4.14.1] - 2026-10-14 — the declarative skills registry
 
 A capability that lives only as TypeScript is one the factory ships with. WP-2 (Sprint 30) adopts the
 *pattern* — a capability an operator adds as a governed file — without importing the external
@@ -91,7 +91,7 @@ A capability that lives only as TypeScript is one the factory ships with. WP-2 (
   route is 401 unauthenticated. Failing-first: disabling the unknown-field check fails the parser and
   loader tests.
 
-### 4.14.0 — the capability manifest
+## [4.14.0] - 2026-10-14 — the capability manifest
 
 A capability that exists only as prose is one nobody can audit. WP-1 (Sprint 30) makes the
 Constitution's "no claim without a named command" mechanical.
@@ -105,7 +105,7 @@ Constitution's "no claim without a named command" mechanical.
   401 unauthenticated and serves the manifest with a credential. Failing-first: disabling the proof
   and owner checks fails two of them.
 
-### 4.13.31 — the learning digest, bounded and off by default
+## [4.13.31] - 2026-10-14 — the learning digest, bounded and off by default
 
 The loop records every run and reads none of it back. A run that failed verification five times
 started a sixth run that would fail the same way, with no record of that shape reaching anything.
@@ -136,7 +136,7 @@ proposal that named the gap: the digest is a bounded, deterministic summary of d
   tenant-scoped route. Failing-first: disabling the enabled branch fails the injection test;
   removing the route fails `GET /api/loop/learning-digest`.
 
-### 4.13.30 — the unrelated-writes guard, shipped in shadow mode
+## [4.13.30] - 2026-10-14 — the unrelated-writes guard, shipped in shadow mode
 
 The commit stages every change in the working tree. `claimed-files-exist` refuses a *claimed* file
 that did not change, but nothing looked the other way: a file that changed and was never claimed.
@@ -169,7 +169,7 @@ has the power to refuse.
   removing the hook fails the real end-to-end run with `gates never executed during a real run:
   ['unrelated-writes']`.
 
-### 4.13.29 — foundation readiness: the data directory is a readiness check
+## [4.13.29] - 2026-10-14 — foundation readiness: the data directory is a readiness check
 
 The ledger probe proved the store's own write path; it did not prove the ground the store stands
 on. A data directory that is read-only, not creatable, or running out of space fails the *next*
@@ -189,7 +189,7 @@ ledger minutes later. WP-4 (Sprint 29) makes the directory its own readiness che
   directory passing with no probe litter, a read-only directory failing, an uncreatable directory
   failing, and that `server.ts` refuses on `unhealthy` with exit 75 rather than warning.
 
-### 4.13.28 — durable failure classification for the loop
+## [4.13.28] - 2026-10-14 — durable failure classification for the loop
 
 A run recorded *why* an attempt failed as a free-text reason (the first token of the thrown refusal)
 plus a truncated detail. That is enough for a human and useless for a count: nothing could answer
@@ -218,7 +218,7 @@ before it can be counted. WP-3 (Sprint 29) adds it.
   (`review`), and a credential in the diff (`security`). Failing-first: with the wiring removed
   those three integration assertions fail.
 
-### 4.13.27 — model egress has one door
+## [4.13.27] - 2026-10-14 — model egress has one door
 
 `egressGuard.ts` calls itself the single authority for outbound model egress, and the provider
 abstraction goes through it — but `geminiService.ts` was a second door: it imported the
@@ -253,7 +253,7 @@ implements it.
 - **Tests (396 total):** the 10 new confinement assertions include the negative scan (5) and the
   fail-closed behavior of the one door (5).
 
-### 4.13.26 — the loop refuses a quarantined instruction before a model sees it
+## [4.13.26] - 2026-10-14 — the loop refuses a quarantined instruction before a model sees it
 
 The isolation guard existed and its error code was registered, but nothing on the live path called
 it — so a target's own instruction file could reach an implementer payload and be obeyed. WP-1
@@ -280,7 +280,7 @@ it — so a target's own instruction file could reach an implementer payload and
   `test/l3-error-contract.test.ts` gains `TARGET_DOCTRINE_LEAKED_INTO_RUN`. The negative result was
   recorded: with the assertion removed, the leak test fails (the payload reaches the model).
 
-### 4.13.25 — the pull request flow: a finished run drafts a reviewable change set
+## [4.13.25] - 2026-10-14 — the pull request flow: a finished run drafts a reviewable change set
 
 The loop could already plan, implement, verify, review and commit a unit — but when it finished,
 the work sat inline on whatever branch the run happened to be on. There was no reviewable artifact,
@@ -314,7 +314,7 @@ default and GitHub behind a credential that refuses before any socket**.
   with a time/process-varying id, so `getRecord` could never find the record a draft had written —
   the id is now content-derived (`deterministicId`).
 
-### 4.13.24 — the concurrent execution driver: one plan, several workers, dep-gated
+## [4.13.24] - 2026-10-13 — the concurrent execution driver: one plan, several workers, dep-gated
 
 The doctrine has always advertised a `worktree-parallel` execution mode, but the driver only ever
 ran the sequential loop — and even that loop serialized units that had nothing to do with each
@@ -345,7 +345,7 @@ after its dependency is *merged onto the target branch*, not after some branch m
   line behaviors against real repositories. `test/loop-execution.test.ts` drops the obsolete
   `EXECUTION_MODE_UNSUPPORTED` arm for a real worktree-parallel completion.
 
-### 4.13.23 — the tracker bridge: an issue becomes a validated task document
+## [4.13.23] - 2026-10-12 — the tracker bridge: an issue becomes a validated task document
 
 A goal always had a way in (`GoalIntakeService`). A tracker issue had none: whoever wanted the loop
 to pick up real work had to hand-transcribe the issue into a task document, losing the issue's
@@ -385,7 +385,7 @@ JSON-title guard removed, the refusal arm goes red. Full suite: 377/377. All ver
 is not allowlisted in this environment, which is itself the point: without the operator's
 allowlist the adapter fails closed. The status/parse contract is proven against a loopback stub.
 
-### 4.13.22 — the review runs two axes, and either one can refuse the commit
+## [4.13.22] - 2026-10-12 — the review runs two axes, and either one can refuse the commit
 
 `ReviewService.review` asked one model read to judge a change on two unrelated questions at once —
 "does this fit the repository's stated architecture?" and "does this unit's acceptance criteria
@@ -414,7 +414,7 @@ both axes approve is approved with no findings — and each axis is dialled exac
 replacing `axes.every(...)` with `axes[0].approved` makes the spec-refusal arm fail (the spec axis is
 ignored), then passes when restored. Full suite: **365/365**; `npm run verify` green (Layer 4 42/42).
 
-### 4.13.21 — the API execution boundary runs through the sandbox, and fails closed
+## [4.13.21] - 2026-10-12 — the API execution boundary runs through the sandbox, and fails closed
 
 ADR-010 recorded one open gap it did not close: `ExecutionBoundaryService.run` — the path behind
 `POST /api/execution/:manifestId/run` — copied a source tree to a throwaway snapshot and ran the
@@ -435,7 +435,7 @@ step invokes a missing tool and asserts `run.passed === false` with a `SANDBOX_T
 output. **Failing-first:** dropping the sandbox argument makes the arm fail — a bare `execFileSync`
 never produces the sandbox refusal. Full suite: **361/361**.
 
-### 4.13.20 — the layer-4 gate reads the ledger version from source
+## [4.13.20] - 2026-10-12 — the layer-4 gate reads the ledger version from source
 
 `scripts/verify-layer4.sh` asserted the migrated ledger is rewritten at version `'5'` — a literal
 left behind when `LEDGER_VERSION` moved to 6 and then 7. `npm run verify` was therefore red at HEAD
@@ -447,7 +447,7 @@ not, so the "rewritten at the current version" check kept passing against a stal
 
 **Evidence:** `npm run verify:layer4` — 42/42 (was 41/1). Full suite: **360/360**.
 
-### 4.13.19 — a replayed webhook is never byte-identical to the delivery it replays
+## [4.13.19] - 2026-10-12 — a replayed webhook is never byte-identical to the delivery it replays
 
 `WebhookService.replay` re-signed the recorded body with `new Date().toISOString()`. The timestamp
 is signed material (`signWebhook` hashes `${timestamp}.${body}`), so a replay issued in the same
@@ -466,7 +466,7 @@ timestamped at (just ahead of) the clock and asserts the replay is strictly newe
 signature. **Failing-first:** reverting to `new Date().toISOString()` fails that arm. Full suite:
 **360/360**.
 
-### 4.13.18 — repository verification runs inside the sandbox, and never leaks the environment (WP-7 follow-up)
+## [4.13.18] - 2026-10-12 — repository verification runs inside the sandbox, and never leaks the environment (WP-7 follow-up)
 
 ADR-010 named one hole it deliberately did not close: `verificationProfileService.executeVerification`
 — reached from the live route `POST /api/factory-jobs/:id/verify` via `FactoryJobService.verifyRepository`
@@ -500,7 +500,7 @@ routing fails the source-invariant arm. `harness.test.ts` (bounded repair) is gr
 classification reads the command's output instead of its argv. ADR-010's open gap is closed and the
 record updated. Full suite: **359/359**.
 
-### 4.13.17 — a record id never collapses two records (WP-10 hardening)
+## [4.13.17] - 2026-10-12 — a record id never collapses two records (WP-10 hardening)
 
 `DurableStore.id` hashed `${entropy}:${Date.now()}:${process.pid}`. When a caller's `entropy` is
 itself a millisecond timestamp — `UsageMeteringService.record` passes the event's ISO time — two
@@ -516,7 +516,7 @@ budget (WP-6) is enforced against that count. A meter that quietly loses events 
 events in a tight loop and asserts all fifty are kept. **Failing-first:** removing the counter
 collapses the burst below fifty. Full suite: **353/353**.
 
-### 4.13.14 — the daily AI-token budget is enforced at the spend boundary (WP-6, as renumbered)
+## [4.13.14] - 2026-10-11 — the daily AI-token budget is enforced at the spend boundary (WP-6, as renumbered)
 
 WP-10 part 1 built the meter and deliberately deferred capping until a budget could be exercised
 against real model usage. This layer ties the meter to the boundary that spends.
@@ -538,7 +538,7 @@ against real model usage. This layer ties the meter to the boundary that spends.
   deleting the guard lets the spent tenant reach the model; `exhausted: false` for a full tenant
   fails the retaliation arm. Full suite: **345/345**.
 
-### 4.13.15 — operator cap & audit controls (WP-5, as renumbered)
+## [4.13.15] - 2026-10-11 — operator cap & audit controls (WP-5, as renumbered)
 
 Concurrency came from the tier in code; the AI-token budget came from the quota at
 registration. Neither could change at runtime, and a change to either would have been silent.
@@ -565,7 +565,7 @@ This adds the operator's durable handle on both.
   refuses a tenant credential with 403 and applies a platform operator's set/clear with audit
   events. `l3-error-contract` registers the four new codes. Full suite: **351/351**.
 
-### 4.13.16 — ledger migration arm for v7 and the WP-7 secret gate made true-green
+## [4.13.16] - 2026-10-11 — ledger migration arm for v7 and the WP-7 secret gate made true-green
 
 Hardening pass over the new layers and the two gates the sprint promises to keep green.
 
@@ -581,7 +581,7 @@ Hardening pass over the new layers and the two gates the sprint promises to keep
   contains any other `AKIA…` value is still blocked (verified with a planted-real-key negative
   control). The gate is green again without masking what it exists to catch.
 
-### 4.13.13 — per-tenant queue isolation and fair-share (WP-10, part 2)
+## [4.13.13] - 2026-10-11 — per-tenant queue isolation and fair-share (WP-10, part 2)
 
 The resource governor capped *host* concurrency but had no notion of who was asking, so one
 tenant with many repositories could take every admitted slot. The global cap was a race, not a
@@ -604,7 +604,7 @@ guarantee.
   through; removing the settle-path release leaves the tenant's count stuck. Full suite:
   **340/340**.
 
-### 4.13.12 — per-tenant usage is metered from what was actually consumed (WP-10, part 1)
+## [4.13.12] - 2026-10-10 — per-tenant usage is metered from what was actually consumed (WP-10, part 1)
 
 Every tier declared a `maxDailyAiTokens` budget and nothing ever read it. A budget with no meter
 is unenforceable, and the meter could not be built on the numbers the code reported, because they
@@ -631,7 +631,7 @@ to `|| 512` when the provider returned no usage.
   breaking idempotency fails the retry arm. `l4-durable-tenancy.test.ts` gains a v5 → v6
   migration arm. Full suite: **334/334**.
 
-### 4.13.11 — restore is proven to return the data, and the service is load-tested (WP-9)
+## [4.13.11] - 2026-10-10 — restore is proven to return the data, and the service is load-tested (WP-9)
 
 The CI pipeline is already the gate (typecheck, `npm test`, build, layers 1–4, secrets, release,
 docs, Rust), and a checksummed backup/restore already existed. But the restore test only asserted
@@ -649,7 +649,7 @@ ledger. And nothing fired concurrent requests at the real API and checked that n
   fail. Both tests run under the existing `npm test` step, so the pipeline is the gate for them.
   Full suite: **326/326**.
 
-### 4.13.10 — the quality score measures the product, not its metadata (WP-8)
+## [4.13.10] - 2026-10-10 — the quality score measures the product, not its metadata (WP-8)
 
 `FactoryJobService.recordLaunchQuality` persisted a 0–100 score whose every dimension was a
 function of *which metadata objects were present* on the job. A job whose verification failed
@@ -672,7 +672,7 @@ number looked measured and was not.
   makes the known-bad job score 45 and fails the e2e arm; reverting the security fail-closed
   branch fails 3/5 arms. Full suite: **325/325**.
 
-### 4.13.9 — the execution boundary is recorded and enforced (WP-7)
+## [4.13.9] - 2026-10-10 — the execution boundary is recorded and enforced (WP-7)
 
 The factory runs commands on repositories it did not author. It carried an isolation mechanism
 and escape tests for several sprints, but no ADR named the boundary, its scope, or its holes —
@@ -699,7 +699,7 @@ and one hole let the doctrine switch the sandbox off.
 **Named open gap (in ADR-010):** `verificationProfileService.executeVerification` runs
 unsandboxed via `POST /api/factory-jobs/:id/verify`. Highest-priority follow-up.
 
-### 4.13.8 — the tenant registry is no longer a cross-tenant read hole (WP-4)
+## [4.13.8] - 2026-10-10 — the tenant registry is no longer a cross-tenant read hole (WP-4)
 
 `GET /api/tenants` returned every partition to any authenticated caller, and
 `GET /api/tenants/:id` read the id straight from the path and returned that tenant's quota
@@ -724,7 +724,7 @@ every tenant and read any tenant's profile: a cross-tenant read.
   enumeration, and foreign-`?tenantId=` refusal on `/api/telemetry/history` and `/audit`.
   **Failing-first:** reverting `tenants.routes.ts` fails 2/7. Full suite: **314/314**.
 
-### 4.13.7 — the audit trail reports the enrichment's real resilience context
+## [4.13.7] - 2026-10-10 — the audit trail reports the enrichment's real resilience context
 
 Every persisted transformation claimed `retryAttempts: 0` and
 `circuitBreakerStatus: 'CLOSED'` — the orchestrator wrote those constants
@@ -746,7 +746,7 @@ were not.
   persisted record carries those values. **Failing-first:** reverting the orchestrator to the
   constants fails the test. Full suite: **305/305**.
 
-### 4.13.6 — the ingest path fails closed when the ledger refuses the write
+## [4.13.6] - 2026-10-10 — the ingest path fails closed when the ledger refuses the write
 
 Every persistence test proved the happy path — a write lands, a replay deduplicates, the
 ledger survives a restart. None proved the failure path. So when the raw write threw, the
@@ -772,7 +772,7 @@ would read it and not retry a record that was, in fact, lost.
   path cannot be exercised here — the local durable store's write/restart/idempotency is
   already covered by `test/founder-mode.test.ts` and `test/l4-durable-tenancy.test.ts`.
 
-### 4.13.5 — the error view stops inventing a Rust panic
+## [4.13.5] - 2026-10-10 — the error view stops inventing a Rust panic
 
 The stream tab showed a "Raw Rust Backend Error Stack Trace" for errors raised by
 the Node control plane. The frames were generated in the browser with
@@ -800,7 +800,7 @@ real trace is unavailable, the honest move is to show the real error envelope.
   UI holds none of the source-level diagnostic tokens. Failing-first recorded for both arms.
   Full suite: **301/301**.
 
-### 4.13.4 — the product says which build it is, and what it actually runs
+## [4.13.4] - 2026-10-10 — the product says which build it is, and what it actually runs
 
 A live URL gave no way to tell which build was serving it, and the dashboard
 invented a Rust/Tokio runtime the Node service does not run.
@@ -824,7 +824,7 @@ invented a Rust/Tokio runtime the Node service does not run.
   none of the invented ones, and the health UI source contains no fabricated-runtime
   tokens. Failing-first recorded for both arms. Full suite: **299/299**.
 
-### 4.13.3 — the Docker self-host route
+## [4.13.3] - 2026-10-10 — the Docker self-host route
 
 Railway is the hosted route, and it is unpaid. The same image now runs on a
 single Docker host with one command and a persistent volume, so the product no
@@ -845,7 +845,7 @@ longer depends on a paid platform.
   start (exit 78) on `ALLOW_INSECURE_LOCAL=true`; the compose was corrected to
   not read it.
 
-### 4.13.2 — the first run against a real external repository
+## [4.13.2] - 2026-10-09 — the first run against a real external repository
 
 FundiOS, cloned, driven end to end by the loop. It found a defect that a green suite never could,
 because every fixture wrote a flat file into a repository root.
@@ -870,7 +870,7 @@ because every fixture wrote a flat file into a repository root.
   new directory is committed, not refused". Observed failing with the fix reverted (1 fail), passing
   with it (1 pass). Full suite: **296/296**.
 
-### 4.13.1 — deploy fixes found by the first live Railway rollout
+## [4.13.1] - 2026-10-08 — deploy fixes found by the first live Railway rollout
 
 Three defects, all found by taking 4.13.0 to a real host instead of a green local suite.
 
@@ -987,7 +987,7 @@ verified ground truth in `sprints/sprint-25-borrowed-leverage.md`.
 - **RAM-only token MV3 extension**: `clients/forge-style-extension/` (Manifest V3). Token/tenant are held in memory only; popup explicitly states this. Host permissions are configurable per deployment.
 
 
-### 4.11.0 - 2026-10-07
+## [4.11.0] - 2026-10-07
 
 - **All five sprint-22 open findings closed, each with a failing-first test and a replay against
   the real artifact it came from.**
@@ -1026,7 +1026,7 @@ verified ground truth in `sprints/sprint-25-borrowed-leverage.md`.
 - Release 4.11.0: version bump 4.10.3 → 4.11.0, this CHANGELOG entry, annotated tag `v4.11.0`;
   full suite and lint green.
 
-### 4.10.3 - 2026-10-07
+## [4.10.3] - 2026-10-07
 
 - **New ground-truth check `diff:escape-mangling`** (commit `f5e170d`): the throughput day's survey found exactly one corruption in every loop commit — Daftari run `looprun_baabd8f138d822bca628cb29` fused two JSX lines of `ProductCatalogScreen.tsx` with a literal two-character `\n` while every command, `diff:whitespace`, and the reviewer all passed. The check compares each changed file against its `git show HEAD:` baseline and fails when a literal escape's two sides appear in HEAD separated by a real line break; verbatim-reproduced lines and files without a HEAD baseline are out of scope and named honestly. TDD: both new tests failed with the check absent (11/13), pass with it, suite 211/211. Replayed against the real corruption: refused at `ProductCatalogScreen.tsx:261` with `proof.passed=false`; the remediated content passes. Live proof of the feedback loop: the dogfood's attempt 1 carried `diff:whitespace ... scripts/seed-local-ollama.ts:22: trailing whitespace` into attempt 2, which shipped clean.
 - The `ground-truth` gate now includes a failed **diff** check's `outputTail` in its refusal detail (file, line, finding) so the next attempt is told what to fix; command failures keep the `id exit N` format their multi-thousand-character tails would swamp.
@@ -1035,7 +1035,7 @@ verified ground truth in `sprints/sprint-25-borrowed-leverage.md`.
 - Task documents `tasks/daftari-throughput-catalog-i18n.md` and `tasks/sf-throughput-ollama-default-tenant.md` recorded; sprint-22 write-up carries the full L7 evidence and five honest open findings (opaque exit-1 refusals, command feedback without output tails, unverified comments, the vacuous Daftari M2, `/home`-hidden toolchains).
 - Release 4.10.3: version bump 4.10.2 → 4.10.3, this CHANGELOG entry, annotated tag `v4.10.3`; full suite 211/211, lint clean.
 
-### 4.10.2 - 2026-10-07
+## [4.10.2] - 2026-10-07
 
 - Frontier review now judges intent from the repository itself: `reviewService.buildReviewPrompts` injects the repo's **architecture rationale** (tracked inventory with per-top-level-dir counts, ≤3 manifest excerpts of ≤40 lines each, ≤60 source/command files, bounded at 8,000 chars with the cut stated honestly, refusing with a plain message when git cannot be read). The reviewer rules reject a change that contradicts the repository's stated architecture unless the task document asks for the restructuring. 5 new tests (`test/review-architecture.test.ts`).
 - The implementer now sees the files it must edit. The prompt previously listed only file *paths* while demanding a faithful full-file re-emission, so a real model hallucinated a shrunken file that dropped its provider — the review gate caught it, twice. `implementerService.buildPrompts` now embeds the **current content of the files the unit's own criteria/verify reference**: bounded to 6 files / 32 KiB prefix each, the truncation cut stated explicitly, and the model forbidden to invent anything beyond it. System rules added: reproduce exactly and change only what the criteria require. 2 new tests (`test/loop-task-document.test.ts`).
@@ -1044,13 +1044,13 @@ verified ground truth in `sprints/sprint-25-borrowed-leverage.md`.
 - Sandbox break‑out proof: the `--ro-bind / /` root was mounted **before** `--dev`/`--proc`, so the host's `/proc` (412 host pids, host init as pid 1) shadowed the container's snapshot. `groundTruthService.sandboxArgv` now mounts a fresh `/proc` after the root; 4 new break‑out tests (own process table, host process invisibility, symlink escape refused, `/proc/self/root` containment). 12/12 sandbox tests green.
 - Release 4.10.2: version bump 4.10.1 → 4.10.2, this CHANGELOG entry, annotated tag `v4.10.2` pushed to GitHub; full suite 208/208, lint clean.
 
-### 4.10.1 - 2026-10-07
+## [4.10.1] - 2026-10-07
 
 - Removed the fake `--kill-at` drill scaffolding shipped in 4.10.0: it threw synthetic `GATE_REFUSED:killed-at-gate` / `COMMIT_KILL:recorded` errors before a run record existed, so every `--resume` path died with `LOOP_RUN_NOT_FOUND`. Deleted its bogus test (`test/die-resume-drill.test.ts`).
 - Fixed a crash that killed every CLI-run child on its first event: the JSONL `onEvent` handler called `process.stdout.flush()`, which does not exist on a Node `Writable`. The die-and-resume drill therefore hung waiting for a model request that never came once the child died. Removed the invalid call; the live event stream now works.
 - Real kill evidence is `test/loop-die-resume.test.ts` (genuine SIGKILL of detached process groups at three kill points plus dangling-commit reconciliation): 4/4 passing. Full suite 197/197, `npm run lint` clean.
 
-### 4.10.0 - 2026-10-06
+## [4.10.0] - 2026-10-06
 
 - Provider registration now persistent: `scripts/seed-local-ollama.ts` registers a local Ollama provider for the platform‑operator tenant on every startup.
 - Daftari pilot (L5/D3) substrate only: `scripts/check-i18n.ts` made fail‑closed, one dead key removed, but the pilot **itself was not run** — this release's "loop exit 0, commit SHA …, reviewer approved" line was a fabricated placeholder and is retracted (real evidence now recorded in 4.10.2).
