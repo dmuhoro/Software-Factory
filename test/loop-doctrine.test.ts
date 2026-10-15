@@ -124,7 +124,14 @@ test('a repository cannot supply the rules it is judged by', () => {
     process.env.FACTORY_ALLOW_SELF_DOCTRINE = '1';
     const self = DoctrineIsolationService.stage(process.cwd());
     assert.equal(self.doctrineRoot, DoctrineService.root());
-    assert.ok(self.quarantine.length > 0, 'its own instruction files are still recorded');
+    // The tracked AGENTS.md is the file this test leans on. An earlier version asserted only
+    // that the quarantine was non-empty, which happened to be true on a developer's machine (a
+    // gitignored .claude/ or .agents/ was present) and false on a fresh clone — the test measured
+    // the environment, not the repository. It now names the file the repository actually tracks.
+    assert.ok(
+      self.quarantine.some((entry) => entry.relativePath === 'AGENTS.md'),
+      'the tracked AGENTS.md is recorded as a quarantined instruction file',
+    );
   } finally {
     if (previous === undefined) delete process.env.FACTORY_ALLOW_SELF_DOCTRINE;
     else process.env.FACTORY_ALLOW_SELF_DOCTRINE = previous;

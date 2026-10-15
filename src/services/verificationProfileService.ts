@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { runCommand } from './groundTruthService';
+import { runCommand, isSandboxVisible } from './groundTruthService';
 import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService } from './doctrineIsolationService';
 import type { LoopSandboxConfig } from './loopTypes';
@@ -32,15 +32,44 @@ function shellQuote(token: string): string {
   return `'${token.replace(/'/g, `'\\''`)}'`;
 }
 
+/** System directories a sandboxed verification command may resolve its toolchain from. */
+const SANDBOX_BIN_DIRS = ['/usr/bin', '/bin', '/usr/local/bin'];
+
+/**
+ * The PATH a sandboxed verification command runs with. The bwrap sandbox masks /home, /tmp, /run
+ * and /root, so an interpreter installed under any of those (a version-manager node) is only
+ * reachable if its own directory is named here. The directory of the interpreter running this
+ * loop — `process.execPath` — is added when the sandbox can actually see it, so `node` resolves
+ * wherever the runtime lives instead of assuming `/usr/bin/node` exists. That assumption held on a
+ * developer machine with a distro node and broke everywhere else, including the `node:22-slim`
+ * runtime image, where node is under `/usr/local/bin`.
+ */
 function sandboxVisiblePath(repo: string): string {
   const localBin = path.join(path.resolve(repo), 'node_modules', '.bin');
-  return `/usr/bin:/bin:${localBin}`;
+  const dirs = [...SANDBOX_BIN_DIRS];
+  const runtimeBin = path.dirname(process.execPath);
+  if (isSandboxVisible(runtimeBin)) dirs.push(runtimeBin);
+  dirs.push(localBin);
+  return [...new Set(dirs)].join(':');
 }
 
+/**
+ * Resolve an executable to a path the sandbox can execute. `node` may fall back to the interpreter
+ * running this process when no system node exists — the runtime that drives the loop is the runtime
+ * that must run the verification. `npm` deliberately does not fall back that way: when no system
+ * npm is reachable the caller expands the npm script body instead (see `verificationStepCommand`),
+ * running the script under the sandbox PATH rather than through a package manager that expects a
+ * shell environment the sandbox has scrubbed.
+ */
 function resolveExecutable(executable: string, repo: string): string {
   if (executable.startsWith('./') || executable.startsWith('../') || path.isAbsolute(executable)) return executable;
-  const system = executable === 'node' ? '/usr/bin/node' : executable === 'npm' ? '/usr/bin/npm' : executable === 'git' ? '/usr/bin/git' : '';
-  if (system && fs.existsSync(system)) return system;
+  if (executable === 'node' || executable === 'npm' || executable === 'git') {
+    for (const dir of SANDBOX_BIN_DIRS) {
+      const system = path.join(dir, executable);
+      if (fs.existsSync(system)) return system;
+    }
+  }
+  if (executable === 'node' && isSandboxVisible(process.execPath) && fs.existsSync(process.execPath)) return process.execPath;
   const local = path.join(path.resolve(repo), 'node_modules', '.bin', executable);
   if (fs.existsSync(local)) return local;
   return executable;

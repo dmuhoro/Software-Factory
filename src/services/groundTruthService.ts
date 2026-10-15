@@ -150,6 +150,20 @@ export function runCommand(repo: string, command: string, timeoutMs: number, env
   }
 }
 
+/**
+ * Host paths the sandbox masks with an empty tmpfs (see `sandboxArgv`). A path under one of these
+ * cannot be resolved inside the sandbox, so toolchain resolution must not claim it is reachable.
+ * Declared once so the mount list and the resolution helpers cannot drift — the toolchain resolver
+ * in `verificationProfileService` reads this same list.
+ */
+export const SANDBOX_MASKED_ROOTS: readonly string[] = ['/tmp', '/run', '/home', '/root'];
+
+/** True when `candidate` is reachable inside the sandbox (i.e. not under a masked root). */
+export function isSandboxVisible(candidate: string): boolean {
+  const resolved = path.resolve(candidate);
+  return !SANDBOX_MASKED_ROOTS.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
+}
+
 /** Build the bubblewrap invocation for a verification command. Refuses, does not warn. */
 function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, env?: NodeJS.ProcessEnv): { ok: true; argv: string[] } | { ok: false; reason: string } {
   const repoPath = path.resolve(repo);
@@ -168,10 +182,10 @@ function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, 
     // /proc, which would expose the entire host process table (and their cmdlines) to a
     // verification command. The fixed order exposes only the container's own processes.
     '--ro-bind', '/', '/',
-    '--tmpfs', '/tmp',
-    '--tmpfs', '/run',
-    '--tmpfs', '/home',
-    '--tmpfs', '/root',
+    // Each masked root becomes an empty tmpfs, so a toolchain installed under it (/home for a
+    // version-manager node, /tmp for a scratch install) is invisible to a verification command.
+    // Sourced from SANDBOX_MASKED_ROOTS so this list and `isSandboxVisible` cannot drift apart.
+    ...SANDBOX_MASKED_ROOTS.flatMap((masked) => ['--tmpfs', masked]),
     '--dev', '/dev',
     '--proc', '/proc',
   ];

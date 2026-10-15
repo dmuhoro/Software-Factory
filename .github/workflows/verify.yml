@@ -76,6 +76,30 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      # The sandbox tests run verification commands inside bubblewrap (see sandboxArgv in
+      # src/services/groundTruthService.ts). GitHub's runner restricts unprivileged user
+      # namespaces; without the AppArmor profile the distro package ships, every namespaced
+      # container is refused, which surfaced as 44 opaque `not ok` sandbox tests signalling
+      # only `bwrap`. Install it, then prove it can actually unshare before anything relies
+      # on it: a runner that lost the capability fails here, by name, instead of 44 later.
+      - name: Sandbox - install and prove bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          # Ubuntu 24.04 restricts unprivileged user namespaces for unconfined binaries.
+          # bwrap is unconfined, so it falls back to no user namespace and then cannot set
+          # the loopback address in a fresh net namespace (loopback: Failed RTM_NEWADDR).
+          # Lift the restriction on this ephemeral runner so the sandbox can run; the prove
+          # step below is what confirms it actually can, and fails by name if it cannot.
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          bwrap --version
+          bwrap --unshare-user-try --unshare-pid --unshare-ipc --unshare-uts \
+            --unshare-cgroup --unshare-net --die-with-parent --new-session \
+            --ro-bind / / --dev /dev --proc /proc \
+            /bin/sh -c 'echo sandbox preflight: bwrap can unshare and run a process'
+
       - name: Install
         run: npm ci
 
@@ -189,3 +213,36 @@ jobs:
 
       - name: Validate manifests
         run: python software_factory/scripts/verify-k8s.py
+
+  fresh-clone:
+    name: fresh clone (reproducibility)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # The script clones this checkout into a temp directory and installs from the lockfile.
+      # The clone has none of the working tree's gitignored files, which is what makes it a
+      # different — and stronger — claim than the typescript job: green must be a property of
+      # the committed repository, not of a developer's machine.
+      - name: Install bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          # Same unprivileged-userns restriction as the typescript job: without lifting it,
+          # bwrap falls back to no user namespace and the sandbox probe in the script fails
+          # closed. The script's own prove step is the gate that confirms it now works.
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: A fresh clone installs and verifies
+        run: bash scripts/verify-fresh-clone.sh

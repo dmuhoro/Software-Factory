@@ -34,6 +34,7 @@
     "verify:storage:live": "bash scripts/verify-storage-backend.sh --require-appwrite",
     "verify:scopes": "bash scripts/verify-appwrite-scopes.sh",
     "verify:full": "bash scripts/verify-full.sh",
+    "verify:fresh-clone": "bash scripts/verify-fresh-clone.sh",
     "verify:secrets:argv": "bash scripts/verify-argv-leak-control.sh",
     "doctrine:manifest": "tsx scripts/doctrine-manifest.ts",
     "render:evidence": "tsx scripts/render-evidence.ts",

@@ -251,6 +251,15 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   MODEL_ASSIGNMENT_INVALID: { status: 400, message: 'A model assignment in the doctrine is not in the required form.' },
   MODEL_ROLE_UNKNOWN: { status: 500, message: 'The doctrine assigns a model to a role that does not exist.' },
 
+  // Sprint 31 (WP-1): the sandbox preflight. A run whose doctrine enables the sandbox refuses
+  // to start unless bubblewrap is present and can actually unshare. These describe the host and
+  // its configuration, not the caller's request, so they are 500 by the same reasoning as the
+  // DOCTRINE_* codes above: publishing them by name lets an operator fix the host, while the
+  // path-bearing detail stays in the log.
+  SANDBOX_BACKEND_UNSUPPORTED: { status: 500, message: 'The doctrine asks for a sandbox backend this build does not implement.' },
+  SANDBOX_BINARY_MISSING: { status: 500, message: 'The sandbox executable the doctrine names is not installed on this host.' },
+  SANDBOX_BINARY_UNUSABLE: { status: 500, message: 'The sandbox executable is installed but cannot create a container on this host.' },
+
   // ── Unattended loop: refusals raised at the run boundary. ──────────────────
   //   A cron job scraping the CLI's exit-1 line must see the reason. Every one of
   //   these was invisible to the source scan's first two regexes (they are raised by
