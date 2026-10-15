@@ -94,7 +94,7 @@ Endpoints: `/health` (liveness, public), `/ready` (readiness, 503 when unconfigu
 ## Verifying
 
 ```bash
-npm test                    # 76 tests
+npm test                    # unit + source-invariant tests
 npx tsc --noEmit            # types
 npm run verify:layer1       # 34 checks against the built server
 npm run verify:layer2       # 26 checks: tenant isolation
