@@ -1,6 +1,6 @@
 # Sprint 31 — The Reproducible Workhorse
 
-**Status:** in progress — WP-0 governance written, awaiting founder sign-off on ADR-013 and ADR-014; WP-1…WP-7 pending · **Opened:** 2026-10-15 · **Closed:** —
+**Status:** in progress — WP-0 governance landed; ADR-013 and ADR-014 signed off 2026-10-15; WP-1…WP-7 pending · **Opened:** 2026-10-15 · **Closed:** —
 
 **Thesis.** Sprint 30 gave the factory a face and a floor: a declarative capability manifest, a
 skills registry, a fleet read surface, a fail-closed deploy preflight, and an evidence page rendered
@@ -40,6 +40,13 @@ to prevent: **"457 / 457" was true on the author's machine and false on a fresh 
   (`webhookService.ts:141,165`), `assertStageGates` (`loopGates.ts:369`),
   `BUILT_IN_REPOSITORY_CONTEXTS` (`contextIndexService.ts:112`), `prepareDirectory` / `tempRoot`
   (`pathGuard.ts:118,138`) have no production caller, and nothing (`knip`) notices.
+- **Measured at HEAD: the pipeline is red.** The `verify` workflow on `main` (run `38630649578`,
+  v4.14.4) reports `# tests 457 · # pass 413 · # fail 44`; the job aborts at `npm test`, so every
+  later gate (Layers 1–4, storage, secrets, release records, docs, knowledge base) has not run on
+  `main`. A separate job fails its own check: the Kubernetes deployment still pins `runtime:v4.8.0`
+  while the release is v4.14.4. `v4.14.2`, `v4.14.3` and `v4.14.4` were all tagged on this red
+  pipeline. This is WP-1's first job, and it is the strongest single piece of evidence in the audit:
+  the local green was real, and it was local only.
 
 The corrected scope is **reproducibility first**, because every other goal — the VPS, the phone, the
 skills — is worthless if a clean clone is red. Then truthful docs, then a dead-code gate, then the
@@ -54,7 +61,7 @@ delete, then host, then face, then skills, then measure.
 
 | WP | Objective | Proof | Status |
 |---|---|---|---|
-| **WP-0** | Governance: this sprint file + ADR-013 + ADR-014 | `npm run verify:docs` green; no production code | **done — pending sign-off** |
+| **WP-0** | Governance: this sprint file + ADR-013 + ADR-014 | `npm run verify:docs` green; no production code | **done** |
 | WP-1 | Reproducibility: a fresh clone runs green anywhere (hermetic tests, a loud sandbox preflight, `bubblewrap` in CI, a tracked contributor `AGENTS.md`) | `verify:fresh-clone` red on the pre-fix tree, green after | pending |
 | WP-2 | Truthful docs: README counts and the capability list generated from the manifest; stale claims removed; the Manus audit archived | no README figure that a command does not reproduce | pending |
 | WP-3 | Dead-code gate: `knip` (or equivalent) in CI; every unreferenced export wired or removed | the gate fails on the pre-fix tree; the tree is clean after | pending |
@@ -137,6 +144,10 @@ the same change; WP-4 lands ADR-014's.
 because ADR-014 fixes a trust boundary (who may run the loop, where secrets live) and ADR-013 fixes a
 supply-chain stance (what an adopted skill is allowed to be), and both are decisions the founder owns,
 not defaults an implementation should assume.
+
+**Sign-off:** ADR-013 and ADR-014 were approved 2026-10-15, so WP-1 may begin. Both ADRs remain
+**Proposed** in status until the code that satisfies them lands (WP-6 and WP-4), per the Constitution's
+scope rule.
 
 ## WP-1 — Reproducibility (planned)
 
