@@ -1,6 +1,6 @@
 # Sprint 31 — The Reproducible Workhorse
 
-**Status:** WP-0 governance (v4.15.x), WP-1 reproducibility (v4.15.0), WP-2 truthful docs (v4.15.1), WP-3 dead-code gate (v4.15.2 — shipped red, corrected v4.15.3), WP-4 executor-host artifacts, WP-5 phone surface and WP-6 skills bridge landed; WP-7 open · **Opened:** 2026-10-15 · **Closed:** —
+**Status:** WP-0 governance (v4.15.x), WP-1 reproducibility (v4.15.0), WP-2 truthful docs (v4.15.1), WP-3 dead-code gate (v4.15.2 — shipped red, corrected v4.15.3), WP-4 executor-host artifacts, WP-5 phone surface and WP-6 skills bridge landed and released together as **v4.15.4**; WP-7 open · **Opened:** 2026-10-15 · **Closed:** —
 
 **Thesis.** Sprint 30 gave the factory a face and a floor: a declarative capability manifest, a
 skills registry, a fleet read surface, a fail-closed deploy preflight, and an evidence page rendered

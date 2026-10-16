@@ -4,6 +4,47 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.4] - 2026-10-16 — Sprint 31's tail: the executor host, the settlement webhook, and a skill that is reference text
+
+A release consolidating Sprint 31's WP-4, WP-5 and WP-6. WP-5 (`8223ebb`) and WP-4 (`59aac63`) had
+already landed on `main` as feature commits; this tag puts a version behind them so `main` is never
+again ahead of its last release. WP-6 (`1785c5f`) ships in this same tag.
+
+**WP-6 — the skills bridge (ADR-013, now Accepted).** A skill may be shown to a role, never obeyed.
+
+- **The pin gate** (`loadPinnedSkills`): a skill with no pin, whose bytes differ from the pin, or
+  whose pin records no licence is refused with a code, so a file that was never reviewed cannot reach a
+  run. Inspection and influence are separate switches. `skills-lock.json` pins `repo-hygiene` (MIT,
+  sha256); the opencode tooling entries are carried unchanged rather than given a fabricated licence.
+- **The fenced seam** (`skillInjectionService`): a skill body is fenced, labelled untrusted reference
+  text, and may not name a network endpoint (`SKILL_NAMES_EGRESS`). **OFF — the shipped default —
+  returns the prompt byte-for-byte and reads no skill file at all.**
+- **The doctrine flag**: a `skills: { inject, byRole }` block in `doctrine/loop.json`, default off and
+  empty. A skill named but not pinned is refused at resolve time (`SKILL_UNPINNED`), not silently
+  ignored, so a typo is loud rather than inert.
+- **The role wiring**: `advisoryForRole` is called at the four real prompt builders — implementer,
+  reviewer, and the drafter path in goal and issue intake. The advisory is appended to the *task* only;
+  the system prompt that carries the doctrine rules is untouched, and the gate machinery does not know
+  skills exist.
+- A live `skills-bridge` capability names its proof; adopting the external Pocock/Ondrej content is a
+  blocked capability with its owner named.
+
+**WP-5 — the settlement webhook and the phone control surface.** The run's durable record emits
+`loop.run.settled` at the real settlement boundary, delivered fire-and-forget; the phone's Loop panel
+gains issue-submit, a two-phase cancel gated on the real cancel path, and a stop control.
+
+**WP-4 — the executor host and its preflight.** `scripts/verify-host.ts` refuses the host that should
+not run the executor: an unset or public bind (`--bind-only` exits 1), a runner in the `sudo` group, a
+missing credential file, and a missing `bubblewrap` unit. On this development machine it exits 1 with
+those three refusals, and it binds only loopback or a tailnet `100.64.0.0/10` address. `npm run
+verify:host` is the command.
+
+Negative proof for WP-6: with the pin gate neutralized, 6 of the 17 skills tests fail. Both proofs
+were recorded against the running code and then restored.
+
+Gates: `tsc --noEmit` clean; `npm run knip` 0 findings; `npm test` **502/502**; `verify:docs` 6/6;
+`npm run build` exit 0; `verify-release.sh` 13/13.
+
 ## [4.15.3] - 2026-10-16 — fix-forward: the dead-code gate that 4.15.2 claimed
 
 WP-3 (Sprint 31), corrected. Everything 4.15.2 asserted is now true of the tree that carries the
