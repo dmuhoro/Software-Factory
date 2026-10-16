@@ -205,7 +205,12 @@ test('WP-6: a declared skill refused by the pin gate is not double-reported as a
 
 test('WP-6: the shipped doctrine leaves skills injection off, so the live resolver is a no-op', () => {
   assert.equal(DoctrineService.load().loop.skills.inject, false);
-  assert.deepEqual(DoctrineService.load().loop.skills.byRole, {});
+  assert.deepEqual(DoctrineService.load().loop.skills.byRole, {
+    drafter: ['grilling', 'to-spec', 'to-tickets'],
+    implementer: ['tdd'],
+    reviewer: ['code-review', 'improve-codebase-architecture'],
+    reporter: ['handoff'],
+  });
   assert.deepEqual(SkillInjectionService.advisoryForRole('implementer'), EMPTY_ADVISORY);
 });
 

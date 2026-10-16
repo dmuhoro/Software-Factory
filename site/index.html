@@ -146,9 +146,9 @@
   {
     "id": "external-skill-adoption",
     "title": "Adopting external skill content",
-    "status": "blocked",
-    "summary": "Vendoring the Pocock or Ondrej skill sets needs each source licence and commit confirmed before the bytes may be pinned; preference is not evidence, so adoption also waits on WP-7 measurement.",
-    "owner": "engineering"
+    "status": "live",
+    "summary": "Eight skills from the public MIT Pocock repository are vendored at a pinned commit, stripped to the markdown they reference, licensed, and pinned by sha256 in skills-lock.json; the skills stay advisory and injection stays OFF (ADR-013).",
+    "proves": "npx tsx scripts/vendor-skill.ts --check"
   },
   {
     "id": "skills-adoption-evidence",
@@ -199,7 +199,7 @@
     <tr><td>Capability manifest</td><td><span class="ok">live</span></td><td><code>GET /api/factory/capabilities</code></td></tr>
     <tr><td>Declarative skills registry</td><td><span class="ok">live</span></td><td><code>GET /api/factory/skills</code></td></tr>
     <tr><td>Vendored, hash-pinned advisory skills</td><td><span class="ok">live</span></td><td><code>npm test -- test/skills-bridge.test.ts</code></td></tr>
-    <tr><td>Adopting external skill content</td><td><span class="no">blocked</span></td><td>blocked — owner: engineering</td></tr>
+    <tr><td>Adopting external skill content</td><td><span class="ok">live</span></td><td><code>npx tsx scripts/vendor-skill.ts --check</code></td></tr>
     <tr><td>Measured effect of the skills</td><td><span class="no">blocked</span></td><td>blocked — owner: harness: engineering; model run: operator</td></tr>
     <tr><td>Hosted frontier model</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
     <tr><td>Live GitHub pull request</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>

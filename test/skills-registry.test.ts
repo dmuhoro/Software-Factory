@@ -20,7 +20,7 @@ process.env.NODE_ENV = 'test';
 process.env.FACTORY_API_KEY = 'test-platform-key-0123456789abcdef';
 fs.mkdirSync(process.env.FACTORY_DATA_DIR, { recursive: true });
 
-const { parseSkillFile, loadSkills, SkillError, resolveSkillsDir } = await import('../src/services/skillRegistryService');
+const { parseSkillFile, loadSkills, loadPinnedSkills, computeSkillHash, SkillError, resolveSkillsDir } = await import('../src/services/skillRegistryService');
 const { DurableStore } = await import('../src/services/durableStore');
 const { TenantService } = await import('../src/services/tenantService');
 const { resetRateLimiterForTests } = await import('../src/api/middleware/rateLimiter');
@@ -103,6 +103,38 @@ test('the shipped skills directory loads the example skill', () => {
   const { skills, refusals } = loadSkills(resolveSkillsDir());
   assert.deepEqual(refusals, [], 'the shipped skills must all be valid');
   assert.ok(skills.some((skill) => skill.name === 'repo-hygiene'), 'the example skill must load');
+});
+
+// ── the vendored set (Sprint 33, WP-1) ──────────────────────────────────────
+
+const VENDORED = ['code-review', 'diagnosing-bugs', 'grilling', 'handoff', 'improve-codebase-architecture', 'tdd', 'to-spec', 'to-tickets'];
+
+test('WP-1: every vendored skill is pinned, loads, and names no egress endpoint', () => {
+  const { skills, refusals } = loadPinnedSkills(resolveSkillsDir());
+  assert.deepEqual(refusals, [], 'every shipped skill must be pinned and match its pin');
+  const loaded = new Set(skills.map((skill) => skill.name));
+  for (const name of VENDORED) assert.ok(loaded.has(name), `${name} must load from the shipped skills directory`);
+  const EGRESS = /\b(?:https?|wss?|ftp):\/\//i;
+  for (const name of VENDORED) {
+    const body = fs.readFileSync(path.join(resolveSkillsDir(), `${name}.skill.md`), 'utf8');
+    assert.ok(!EGRESS.test(body), `${name}.skill.md must name no egress endpoint`);
+  }
+});
+
+test('WP-1: the pin gate refuses a vendored file whose bytes were changed', () => {
+  const dir = fs.mkdtempSync(path.join(state, 'vendored-'));
+  for (const entry of fs.readdirSync(resolveSkillsDir())) {
+    if (entry.endsWith('.skill.md')) fs.copyFileSync(path.join(resolveSkillsDir(), entry), path.join(dir, entry));
+  }
+  const target = path.join(dir, 'tdd.skill.md');
+  const original = fs.readFileSync(target, 'utf8');
+  assert.equal(computeSkillHash(original), JSON.parse(fs.readFileSync(path.resolve('skills-lock.json'), 'utf8')).skills.tdd.computedHash);
+  fs.writeFileSync(target, `${original}\nA smuggled trailing line.\n`);
+
+  const { skills, refusals } = loadPinnedSkills(dir, path.resolve('skills-lock.json'));
+  assert.ok(refusals.some((refusal) => refusal.code === 'SKILL_PIN_MISMATCH' && refusal.source === 'tdd.skill.md'), 'a changed byte must refuse with SKILL_PIN_MISMATCH');
+  assert.ok(!skills.some((skill) => skill.name === 'tdd'), 'the tampered skill must not reach a run');
+  assert.ok(skills.some((skill) => skill.name === 'repo-hygiene'), 'untouched skills still load');
 });
 
 // ── the route ───────────────────────────────────────────────────────────────

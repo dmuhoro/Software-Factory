@@ -127,9 +127,9 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
   {
     id: 'external-skill-adoption',
     title: 'Adopting external skill content',
-    status: 'blocked',
-    summary: 'Vendoring the Pocock or Ondrej skill sets needs each source licence and commit confirmed before the bytes may be pinned; preference is not evidence, so adoption also waits on WP-7 measurement.',
-    owner: 'engineering',
+    status: 'live',
+    summary: 'Eight skills from the public MIT Pocock repository are vendored at a pinned commit, stripped to the markdown they reference, licensed, and pinned by sha256 in skills-lock.json; the skills stay advisory and injection stays OFF (ADR-013).',
+    proves: 'npx tsx scripts/vendor-skill.ts --check',
   },
   {
     id: 'skills-adoption-evidence',

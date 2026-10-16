@@ -93,6 +93,11 @@
   },
   "skills": {
     "inject": false,
-    "byRole": {}
+    "byRole": {
+      "drafter": ["grilling", "to-spec", "to-tickets"],
+      "implementer": ["tdd"],
+      "reviewer": ["code-review", "improve-codebase-architecture"],
+      "reporter": ["handoff"]
+    }
   }
 }

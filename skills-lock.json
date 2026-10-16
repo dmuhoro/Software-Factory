@@ -67,12 +67,76 @@
       "skillPath": "skills/appwrite-typescript/SKILL.md",
       "computedHash": "abf6b3631d6aea32fa83c682c9c54881fbe13d81908d1a934be6a13809b3ff61"
     },
+    "code-review": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/code-review/SKILL.md",
+      "licence": "MIT",
+      "sourceCommit": "49dd158d1076134a641b33efb035946536778336",
+      "computedHash": "fc77192d18d5640affd742e84d09042c084bdaf62c1f0181748901e93be9cf18"
+    },
+    "diagnosing-bugs": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "licence": "MIT",
+      "sourceCommit": "49dd158d1076134a641b33efb035946536778336",
+      "computedHash": "b26a8d62cd8b40b0da4b9679565a659f954b432b1c2167139b7f4ecb91d89b78"
+    },
+    "grilling": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grilling/SKILL.md",
+      "licence": "MIT",
+      "sourceCommit": "49dd158d1076134a641b33efb035946536778336",
+      "computedHash": "41dbcba5b9ae5f6e00b7b5874756d12da6b4536f9acc5b6f2d2f246fc402f3cc"
+    },
+    "handoff": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/handoff/SKILL.md",
+      "licence": "MIT",
+      "sourceCommit": "49dd158d1076134a641b33efb035946536778336",
+      "computedHash": "390d6afeb906fb6163bb2bbd34290b733fdff20c18d73fb48db746dcfc6ec55f"
+    },
+    "improve-codebase-architecture": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "licence": "MIT",
+      "sourceCommit": "49dd158d1076134a641b33efb035946536778336",
+      "computedHash": "de0244a25cf0af878bd8f2fd0164d59d886944658777f0c1f6106f3df7e15270"
+    },
     "repo-hygiene": {
       "source": "this repository",
       "sourceType": "in-repo",
       "skillPath": "skills/repo-hygiene.skill.md",
       "licence": "MIT",
       "computedHash": "8effed46868d84c1c5a72aba3b0292ecef79c38edc1aad4cb9f6af586321f087"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "licence": "MIT",
+      "sourceCommit": "49dd158d1076134a641b33efb035946536778336",
+      "computedHash": "acb762ed0e76aadf8c32214f5fdda07db841a139667e6cf57a20af7a3a321215"
+    },
+    "to-spec": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-spec/SKILL.md",
+      "licence": "MIT",
+      "sourceCommit": "49dd158d1076134a641b33efb035946536778336",
+      "computedHash": "54cd586f8c261a9be788894babe0dd4f432e1d6ac261411a542ca4414a2129a2"
+    },
+    "to-tickets": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-tickets/SKILL.md",
+      "licence": "MIT",
+      "sourceCommit": "49dd158d1076134a641b33efb035946536778336",
+      "computedHash": "de19ad96cfbeb506a9a6b063df89f40e572f8014976a5aec903f94a150f0defc"
     }
   }
 }

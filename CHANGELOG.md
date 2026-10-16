@@ -4,6 +4,21 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+### Added
+- **External skill adoption is live (Sprint 33, WP-1).** Eight skills from the public MIT
+  `github.com/mattpocock/skills` repository are vendored at commit `49dd158d1076134a641b33efb035946536778336`
+  — `tdd`, `diagnosing-bugs`, `to-spec`, `to-tickets`, `code-review`, `improve-codebase-architecture`,
+  `grilling`, `handoff` — stripped to the markdown they reference (scripts, agent configs and hooks are
+  not copied) and pinned by sha256 in `skills-lock.json`. `scripts/vendor-skill.ts` performs the
+  vendoring and `--check` re-verifies every pin with no network; the registry refuses any skill whose
+  bytes differ from its pin (`loadPinnedSkills`). `skills/PROVENANCE.md` records the per-file review and
+  the licences. The skills stay advisory and injection stays **OFF** (`doctrine/loop.json` →
+  `skills.inject: false`); the role map is declared but no skill reaches a run. The brief's Ondrej set
+  (`total-review`, `risky-changes`, `global-agent-guardrails`) is excluded in full — each instructs
+  skipping approval, editing config, or network egress — as is every research-and-web skill by the
+  sprint's hard limit. `external-skill-adoption` is now a **live** capability, proved by
+  `npx tsx scripts/vendor-skill.ts --check`.
+
 ### Changed
 - **Blocker ownership corrected; the external skill sources recorded (Sprint 33, WP-0).** The
   `external-skill-adoption` capability named `engineering + Pocock/Ondrej` as its owner
