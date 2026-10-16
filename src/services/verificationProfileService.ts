@@ -130,7 +130,7 @@ export function executeVerification(
   return { profile, passed: true, exitCode: 0, output: logs.join('\n') };
 }
 
-export function classifyFailure(step: string, output: string): FailureClass {
+function classifyFailure(step: string, output: string): FailureClass {
   const value = `${step} ${output}`.toLowerCase();
   if (/security|vulnerability|secret|permission/.test(value)) return 'SECURITY';
   if (/\btypecheck\b|\btsc\b|\bcompile\b|error ts/i.test(value)) return 'TYPECHECK';

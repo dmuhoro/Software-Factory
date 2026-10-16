@@ -53,29 +53,6 @@ export interface SubmitLoopRunInput {
   attemptCap?: number;
 }
 
-export interface SubmitLoopRunResult {
-  runId: string;
-  repo: string;
-  taskDocument: string;
-  status: 'running';
-}
-
-export interface LoopRunSummary {
-  runId: string;
-  status: LoopStatus;
-  repo: string;
-  taskDocument: string;
-  startedAt: string;
-  finishedAt?: string;
-  active: boolean;
-  units: { total: number; done: number; stuck: number; blocked: number };
-  commits: number;
-  gates: number;
-  refusedGates: number;
-  hardStop?: string;
-  refusal?: string;
-}
-
 interface ActiveLoopRun {
   runId: string;
   repo: string;
@@ -255,7 +232,7 @@ export function resolveLoopRepo(raw: unknown): string {
 }
 
 /** Validates a task document path: required and inside the approved workspace. */
-export function resolveLoopTaskDocument(raw: unknown): string {
+function resolveLoopTaskDocument(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.trim()) throw new Error('LOOP_TASK_DOCUMENT_REQUIRED');
   return resolveWithin(raw, { code: 'LOOP_TASK_DOCUMENT_OUTSIDE_WORKSPACE', mustExist: true });
 }

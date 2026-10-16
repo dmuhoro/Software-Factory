@@ -6,16 +6,10 @@
 import { IndustryNiche } from './tenant';
 
 export enum ProcessingStatus {
-  RECEIVED = 'RECEIVED',
-  VALIDATING = 'VALIDATING',
-  ROUTED_TO_ADAPTER = 'ROUTED_TO_ADAPTER',
-  AI_PROCESSING = 'AI_PROCESSING',
   COMPLETED = 'COMPLETED',
-  FAILED = 'FAILED',
-  DLQ_ROUTED = 'DLQ_ROUTED',
 }
 
-export interface TelemetryMetadata {
+interface TelemetryMetadata {
   sourceSystem: string;
   region: string;
   clientVersion: string;
@@ -32,7 +26,7 @@ export interface RawTelemetryPayload {
   metadata: TelemetryMetadata;
 }
 
-export interface TransformationAuditTrail {
+interface TransformationAuditTrail {
   startedAt: string;
   completedAt: string;
   durationMs: number;

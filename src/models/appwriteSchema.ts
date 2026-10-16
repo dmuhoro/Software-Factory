@@ -9,7 +9,7 @@
  * 5. Composite Indexes for zero-latency queries and replay-attack protection
  */
 
-export interface AppwriteAttributeDef {
+interface AppwriteAttributeDef {
   key: string;
   type: 'string' | 'integer' | 'float' | 'boolean' | 'datetime' | 'enum';
   size?: number;
@@ -20,7 +20,7 @@ export interface AppwriteAttributeDef {
   description: string;
 }
 
-export interface AppwriteIndexDef {
+interface AppwriteIndexDef {
   key: string;
   type: 'key' | 'unique' | 'fulltext';
   attributes: string[];
@@ -28,7 +28,7 @@ export interface AppwriteIndexDef {
   description: string;
 }
 
-export interface AppwriteCollectionBlueprint {
+interface AppwriteCollectionBlueprint {
   collectionId: string;
   name: string;
   documentSecurity: boolean;
@@ -44,7 +44,7 @@ export const APPWRITE_DATABASE_CONFIG = {
   description: 'Enterprise multi-tenant data layer partitioned by Tenant ID with strict attribute security',
 };
 
-export const TENANTS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
+const TENANTS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
   collectionId: 'tenants',
   name: 'Tenants Registry',
   documentSecurity: true,
@@ -72,7 +72,7 @@ export const TENANTS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
   isolationGuarantee: 'Strict Tenant-Team isolation. Global cross-tenant scans are blocked by Appwrite attribute rules.',
 };
 
-export const TENANT_SETTINGS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
+const TENANT_SETTINGS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
   collectionId: 'tenant_settings',
   name: 'Tenant Settings & Feature Flags',
   documentSecurity: true,
@@ -96,7 +96,7 @@ export const TENANT_SETTINGS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint =
   isolationGuarantee: 'Only admin role within verified tenantId can view or toggle operational feature flags.',
 };
 
-export const TENANT_USERS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
+const TENANT_USERS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
   collectionId: 'tenant_users',
   name: 'Tenant Users & RBAC Matrix',
   documentSecurity: true,
@@ -121,7 +121,7 @@ export const TENANT_USERS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
   isolationGuarantee: 'Users are strictly bound to their tenantId team. No user can view or alter users in other partitions.',
 };
 
-export const TELEMETRY_EVENTS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
+const TELEMETRY_EVENTS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
   collectionId: 'telemetry_events',
   name: 'Telemetry Ingestion Stream',
   documentSecurity: true,
@@ -146,7 +146,7 @@ export const TELEMETRY_EVENTS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint 
   isolationGuarantee: 'Row-level security enforces that events cannot be read or written outside the verified tenant team token.',
 };
 
-export const AI_TRANSFORMATIONS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
+const AI_TRANSFORMATIONS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
   collectionId: 'ai_transformations',
   name: 'Gemini AI Transformations Ledger',
   documentSecurity: true,
@@ -173,7 +173,7 @@ export const AI_TRANSFORMATIONS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprin
   isolationGuarantee: 'Encrypted at rest with tenant KMS key; accessible only via verified tenant team permissions.',
 };
 
-export const AUDIT_LOGS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
+const AUDIT_LOGS_COLLECTION_BLUEPRINT: AppwriteCollectionBlueprint = {
   collectionId: 'audit_logs',
   name: 'Immutable Compliance Audit Trail',
   documentSecurity: true,

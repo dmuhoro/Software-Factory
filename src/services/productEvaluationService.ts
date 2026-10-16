@@ -38,7 +38,7 @@ export interface ProductSignals {
   unitsStuck?: number;
 }
 
-export interface ProductDimensions {
+interface ProductDimensions {
   verification: number;
   security: number;
   evidence: number;

@@ -13,16 +13,16 @@ import fs from 'node:fs';
  * be one independently mergeable unit are all refusals at parse time — before any work starts.
  */
 
-export type SplitMode = 'milestone' | 'criterion';
+type SplitMode = 'milestone' | 'criterion';
 
-export interface TaskCriterion {
+interface TaskCriterion {
   id: string;
   text: string;
   /** Ground-truth command proving this criterion. Executed, never narrated. */
   check?: string;
 }
 
-export interface TaskMilestone {
+interface TaskMilestone {
   id: string;
   title: string;
   independent: boolean;
@@ -64,7 +64,7 @@ const KNOWN_SECTIONS = new Set(['Goal', 'Constraints', 'Models', 'Verification',
 const MILESTONE_HEADING = /^###\s+([A-Za-z][A-Za-z0-9_-]{0,31})\s*:\s*(.+)$/;
 const FIELD_LINE = /^(independent|depends|split|verify|type)\s*:\s*(.+)$/i;
 export const COMMIT_TYPES = ['feat', 'fix', 'docs', 'refactor', 'test', 'chore'] as const;
-export type CommitType = (typeof COMMIT_TYPES)[number];
+type CommitType = (typeof COMMIT_TYPES)[number];
 const CRITERION = /^\s*[-*]\s*\[([ xX])\]\s*(.+)$/;
 const NESTED_CHECK = /^\s+[-*]\s*check\s*:\s*(.+)$/i;
 const MODEL_LINE = /^models\.([a-z][a-z0-9-]{1,31})\s*:\s*(.+)$/;

@@ -49,7 +49,7 @@ export type ReviewAxis = 'standards' | 'spec';
 export const REVIEW_AXES: readonly ReviewAxis[] = ['standards', 'spec'];
 
 /** One axis's verdict, kept beside the other so the report can say which axis refused. */
-export interface AxisVerdict {
+interface AxisVerdict {
   axis: ReviewAxis;
   approved: boolean;
   findings: string[];

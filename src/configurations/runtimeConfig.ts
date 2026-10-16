@@ -12,7 +12,7 @@
  *  - Local-development escape hatches are refused outright in production.
  */
 
-export type ConfigSeverity = 'error' | 'warning';
+type ConfigSeverity = 'error' | 'warning';
 
 export interface ConfigIssue { variable: string; severity: ConfigSeverity; message: string; }
 

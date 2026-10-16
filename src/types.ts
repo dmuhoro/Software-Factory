@@ -22,7 +22,7 @@ export interface TelemetryExecutionLog {
 
 export type AutoRefreshInterval = 'manual' | '5s' | '30s';
 
-export interface HealthCheckDetail {
+interface HealthCheckDetail {
   name: string;
   state: 'pass' | 'warn' | 'fail';
   detail: string;

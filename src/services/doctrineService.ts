@@ -30,32 +30,32 @@ const MODULE_DIR: string = typeof __dirname === 'string'
  * assignment, or a manifest mismatch is a refusal, never a default.
  */
 
-export interface AttemptConfig { maxPerUnit: number }
-export interface UnitConfig { maxAcceptanceCriteriaPerMilestone: number; oneCommitPerUnit: boolean }
-export interface HardStopConfig { maxWallClockMinutes: number; maxTotalAttempts: number; maxCommits: number; doctrineIntegrity: boolean; resourceExhaustion: boolean }
-export interface CommitConfig { requireGroundTruth: boolean; requireVerifiedStatement: boolean; requireProvenanceFooter: boolean; subjectMaxLength: number; refusePathPatterns: string[] }
+interface AttemptConfig { maxPerUnit: number }
+interface UnitConfig { maxAcceptanceCriteriaPerMilestone: number; oneCommitPerUnit: boolean }
+interface HardStopConfig { maxWallClockMinutes: number; maxTotalAttempts: number; maxCommits: number; doctrineIntegrity: boolean; resourceExhaustion: boolean }
+interface CommitConfig { requireGroundTruth: boolean; requireVerifiedStatement: boolean; requireProvenanceFooter: boolean; subjectMaxLength: number; refusePathPatterns: string[] }
 /** How the driver is permitted to run units. `sequential` is what the loop does today. */
-export type ExecutionMode = 'sequential' | 'worktree-parallel';
-export interface ConcurrencyConfig { maxParallelDefault: number; maxParallelCeiling: number; minFreeMemMb: number; maxLoadAvgPerCpu: number; execution: ExecutionMode }
-export interface VerificationConfig { requireCleanTreeAfterCommit: boolean; requireNonEmptyDiff: boolean; acceptNarratedEvidence: boolean; timeoutMs: number }
-export type ModelTier = 'cheap' | 'frontier';
-export interface TierDefinition { purpose: string; default: string }
-export interface RoleDefinition { tier: ModelTier }
-export interface GithubPrConfig { tokenSecret: string; baseUrl: string }
-export interface PullRequestConfig { enabled: boolean; mode: 'local' | 'github'; targetBranch: string; baseBranch: string; github: GithubPrConfig }
+type ExecutionMode = 'sequential' | 'worktree-parallel';
+interface ConcurrencyConfig { maxParallelDefault: number; maxParallelCeiling: number; minFreeMemMb: number; maxLoadAvgPerCpu: number; execution: ExecutionMode }
+interface VerificationConfig { requireCleanTreeAfterCommit: boolean; requireNonEmptyDiff: boolean; acceptNarratedEvidence: boolean; timeoutMs: number }
+type ModelTier = 'cheap' | 'frontier';
+interface TierDefinition { purpose: string; default: string }
+interface RoleDefinition { tier: ModelTier }
+interface GithubPrConfig { tokenSecret: string; baseUrl: string }
+interface PullRequestConfig { enabled: boolean; mode: 'local' | 'github'; targetBranch: string; baseBranch: string; github: GithubPrConfig }
 /**
  * The unrelated-writes policy. `allow` names paths (or basenames) the implementer may change without
  * claiming them — lockfiles are the canonical case. `enforce` decides whether a write that is
  * neither claimed nor allowlisted is refused, or only recorded. It defaults to `false`: the guard
  * runs in shadow mode until an operator has seen what it would refuse in their repository.
  */
-export interface UnrelatedWritesConfig { enforce: boolean; allow: string[] }
+interface UnrelatedWritesConfig { enforce: boolean; allow: string[] }
 /**
  * The learning digest wiring. `inject` decides whether a run-outcome digest (ADR-012) may be
  * appended to a drafted task document. It defaults to `false`, and OFF is provably a no-op: the
  * prompt is byte-identical, asserted in tests. Enabling it is a later sprint, gated on real data.
  */
-export interface LearningConfig { inject: boolean }
+interface LearningConfig { inject: boolean }
 export interface LoopConfig {
   version: number;
   stages: string[];
@@ -71,7 +71,7 @@ export interface LoopConfig {
   /** Optional. When enabled, a finished run drafts a reviewable PR (local by default). */
   pullRequest?: PullRequestConfig;
 }
-export interface ModelsConfig {
+interface ModelsConfig {
   version: number;
   tiers: Record<ModelTier, TierDefinition>;
   roles: Record<string, RoleDefinition>;
@@ -80,9 +80,9 @@ export interface ModelsConfig {
   requiredRoles: string[];
 }
 export interface Rule { id: string; statement: string; enforcement: string; stages: string[]; blocking: boolean }
-export interface RulesConfig { version: number; rules: Rule[] }
+interface RulesConfig { version: number; rules: Rule[] }
 export interface StageHooks { before: string[]; after: string[] }
-export interface HooksConfig { version: number; stages: Record<string, StageHooks> }
+interface HooksConfig { version: number; stages: Record<string, StageHooks> }
 
 export interface ModelAssignment {
   role: string;
@@ -336,7 +336,7 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   return config;
 }
 
-export function parseModelsConfig(raw: Record<string, unknown>): ModelsConfig {
+function parseModelsConfig(raw: Record<string, unknown>): ModelsConfig {
   const file = 'agents/models.json';
   requireKeys(file, raw, ['version', 'tiers', 'roles', 'overrides', 'assignmentFormat', 'requiredRoles'], ['version', 'tiers', 'roles', 'overrides', 'assignmentFormat', 'requiredRoles']);
   const version = reqNumber(file, raw, 'version', 1, 1_000_000);
@@ -387,7 +387,7 @@ export function parseModelsConfig(raw: Record<string, unknown>): ModelsConfig {
   };
 }
 
-export function parseRulesConfig(raw: Record<string, unknown>): RulesConfig {
+function parseRulesConfig(raw: Record<string, unknown>): RulesConfig {
   const file = 'rules/rules.json';
   requireKeys(file, raw, ['version', 'rules'], ['version', 'rules']);
   const version = reqNumber(file, raw, 'version', 1, 1_000_000);
@@ -412,7 +412,7 @@ export function parseRulesConfig(raw: Record<string, unknown>): RulesConfig {
   return { version, rules };
 }
 
-export function parseHooksConfig(raw: Record<string, unknown>): HooksConfig {
+function parseHooksConfig(raw: Record<string, unknown>): HooksConfig {
   const file = 'hooks/hooks.json';
   requireKeys(file, raw, ['version', 'stages'], ['version', 'stages']);
   const version = reqNumber(file, raw, 'version', 1, 1_000_000);
@@ -431,7 +431,7 @@ export function parseHooksConfig(raw: Record<string, unknown>): HooksConfig {
 }
 
 /** `providerId/model` — provider may not be empty, model may contain `/` and `:`. */
-export function assertAssignmentShape(value: string, where: string): { providerId: string; model: string } {
+function assertAssignmentShape(value: string, where: string): { providerId: string; model: string } {
   const slash = value.indexOf('/');
   if (slash <= 0 || slash === value.length - 1) throw doctrineError('MODEL_ASSIGNMENT_INVALID', where);
   const providerId = value.slice(0, slash);
@@ -442,7 +442,7 @@ export function assertAssignmentShape(value: string, where: string): { providerI
   return { providerId, model };
 }
 
-export function envKey(template: string, name: string): string {
+function envKey(template: string, name: string): string {
   return template.replace('{ROLE}', name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')).replace('{TIER}', name.toUpperCase().replace(/[^A-Z0-9]+/g, '_'));
 }
 

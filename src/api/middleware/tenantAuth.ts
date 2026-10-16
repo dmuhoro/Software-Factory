@@ -14,7 +14,7 @@ function secureEquals(left: string, right: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export type AuthenticatedRole = 'tenant_operator' | 'platform_operator';
+type AuthenticatedRole = 'tenant_operator' | 'platform_operator';
 
 export interface AuthenticatedPrincipal {
   tenantId: string;
@@ -233,7 +233,7 @@ function resolveTenantContext(
   next();
 }
 
-export function requireTenantMatch(req: Request, tenantId: string): boolean {
+function requireTenantMatch(req: Request, tenantId: string): boolean {
   const context = (req as Request & { tenantContext?: { tenantId?: string } }).tenantContext;
   return context?.tenantId === tenantId;
 }

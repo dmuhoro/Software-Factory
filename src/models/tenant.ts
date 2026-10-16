@@ -29,11 +29,6 @@ export interface TenantQuota {
   storageLimitMb: number;
 }
 
-export interface TenantRbacRule {
-  role: 'admin' | 'operator' | 'auditor' | 'viewer';
-  permissions: string[];
-}
-
 /**
  * A scoped, expiring credential issued under a tenant's root credential.
  *

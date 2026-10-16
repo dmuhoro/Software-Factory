@@ -21,16 +21,6 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
 
-export type EgressCode =
-  | 'MODEL_PROVIDER_URL_INVALID'
-  | 'MODEL_PROVIDER_URL_SCHEME_NOT_ALLOWED'
-  | 'MODEL_PROVIDER_HOST_NOT_ALLOWED'
-  | 'MODEL_PROVIDER_ADDRESS_NOT_ALLOWED'
-  | 'MODEL_PROVIDER_SECRET_REF_NOT_ALLOWED'
-  | 'MODEL_PROVIDER_REQUEST_TIMEOUT'
-  | 'MODEL_PROVIDER_RESPONSE_TOO_LARGE'
-  | 'MODEL_PROVIDER_MALFORMED_URL';
-
 /** Environment variable names must look like names, never like injected values. */
 const SECRET_REF_PATTERN = /^[A-Z][A-Z0-9_]{2,63}$/;
 
@@ -48,7 +38,7 @@ function parseAllowlist(raw: string | undefined): Set<string> {
 }
 
 /** Hosts an operator has explicitly permitted regardless of address class. */
-export function allowedHosts(): Set<string> {
+function allowedHosts(): Set<string> {
   return parseAllowlist(process.env.FACTORY_MODEL_ALLOWED_HOSTS);
 }
 
@@ -56,12 +46,12 @@ export function allowedHosts(): Set<string> {
  * Secret references the factory may resolve from its own environment.
  * Unset means NO secret may be resolved. This is the fail-closed default.
  */
-export function allowedSecretRefs(): Set<string> {
+function allowedSecretRefs(): Set<string> {
   return parseAllowlist(process.env.FACTORY_ALLOWED_SECRET_REFS);
 }
 
 /** Validates the shape of a secret reference. Does not grant permission. */
-export function isWellFormedSecretRef(value: unknown): value is string {
+function isWellFormedSecretRef(value: unknown): value is string {
   return typeof value === 'string' && SECRET_REF_PATTERN.test(value);
 }
 
@@ -135,7 +125,7 @@ const BLOCKED_V4 = [
 ];
 
 /** Returns a rejection reason for a literal IP, or undefined when it is acceptable. */
-export function classifyAddress(address: string): string | undefined {
+function classifyAddress(address: string): string | undefined {
   const version = net.isIP(address);
   if (version === 4) {
     for (const cidr of BLOCKED_V4) if (inCidrV4(address, cidr)) return `address ${address} is in blocked range ${cidr}`;
@@ -155,12 +145,6 @@ export function classifyAddress(address: string): string | undefined {
     return undefined;
   }
   return `address ${address} is not a valid IP`;
-}
-
-export interface ValidatedTarget {
-  url: URL;
-  hostname: string;
-  isLocalProvider: boolean;
 }
 
 /**

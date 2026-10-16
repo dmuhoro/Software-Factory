@@ -125,7 +125,7 @@ export function signWebhook(body: string, secret: string, timestamp: string): st
  * re-send. Advancing the clock by one millisecond when it has not moved keeps the
  * "fresh timestamp, new signature" contract true regardless of clock resolution.
  */
-export function freshTimestampAfter(previous: string): string {
+function freshTimestampAfter(previous: string): string {
   const now = Date.now();
   const prior = Date.parse(previous);
   const at = Number.isFinite(prior) && prior >= now ? prior + 1 : now;

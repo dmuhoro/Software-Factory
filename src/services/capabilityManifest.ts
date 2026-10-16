@@ -13,7 +13,7 @@
  * deterministic: no clock, no I/O, no model.
  */
 
-export type CapabilityStatus = 'live' | 'planned' | 'blocked';
+type CapabilityStatus = 'live' | 'planned' | 'blocked';
 
 export interface CapabilityEntry {
   id: string;

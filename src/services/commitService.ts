@@ -41,7 +41,7 @@ export interface CommitResult {
 }
 
 /** Patterns that make a diff or a path a credential. Deliberately broad: refusal is the safe answer. */
-export const SECRET_DIFF_PATTERNS: RegExp[] = [
+const SECRET_DIFF_PATTERNS: RegExp[] = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /sk-[A-Za-z0-9_-]{20,}/,
   /AKIA[0-9A-Z]{16}/,

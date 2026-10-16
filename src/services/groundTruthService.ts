@@ -16,18 +16,9 @@ import type { LoopSandboxConfig } from './loopTypes';
  * can state how much narration was rejected.
  */
 
-export type CheckKind = 'tree' | 'diff' | 'command';
-export type CheckId =
-  | 'tree:head'
-  | 'tree:clean'
-  | 'diff:non-empty'
-  | 'diff:claimed'
-  | 'diff:whitespace'
-  | 'diff:escape-mangling'
-  | 'diff:comment-claim'
-  | `cmd:${string}`;
+type CheckKind = 'tree' | 'diff' | 'command';
 
-export interface GroundTruthCheck {
+interface GroundTruthCheck {
   id: string;
   kind: CheckKind;
   /** The exact command executed. Absent for checks that read git state directly. */
@@ -156,7 +147,7 @@ export function runCommand(repo: string, command: string, timeoutMs: number, env
  * Declared once so the mount list and the resolution helpers cannot drift — the toolchain resolver
  * in `verificationProfileService` reads this same list.
  */
-export const SANDBOX_MASKED_ROOTS: readonly string[] = ['/tmp', '/run', '/home', '/root'];
+const SANDBOX_MASKED_ROOTS: readonly string[] = ['/tmp', '/run', '/home', '/root'];
 
 /** True when `candidate` is reachable inside the sandbox (i.e. not under a masked root). */
 export function isSandboxVisible(candidate: string): boolean {

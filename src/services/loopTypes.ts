@@ -27,7 +27,7 @@ export interface LoopSandboxConfig {
   bwrapBinary: string;
 }
 
-export type UnitStatus = 'pending' | 'running' | 'done' | 'stuck' | 'blocked';
+type UnitStatus = 'pending' | 'running' | 'done' | 'stuck' | 'blocked';
 
 export interface AttemptRecord {
   attempt: number;
@@ -139,7 +139,7 @@ export interface LoopRunRecord {
   narrationRejected: number;
 }
 
-export interface SlimCheck {
+interface SlimCheck {
   id: string;
   kind: 'tree' | 'diff' | 'command';
   command?: string;

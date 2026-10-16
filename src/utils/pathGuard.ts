@@ -15,10 +15,9 @@
  */
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-export type PathGuardCode =
+type PathGuardCode =
   | 'PATH_OUTSIDE_APPROVED_WORKSPACE'
   | 'PATH_DOES_NOT_EXIST'
   | 'PATH_NOT_A_DIRECTORY'
@@ -47,7 +46,7 @@ export function workspaceRoot(explicit?: string): string {
  * back so callers can validate a path they are about to create, without this
  * module performing any write.
  */
-export function realOrSelf(target: string): string {
+function realOrSelf(target: string): string {
   const resolved = path.resolve(target);
   let head = resolved;
   const tail: string[] = [];
@@ -111,20 +110,6 @@ export function resolveFileWithin(root: string, relative: string, code = 'FILE_O
   return candidate;
 }
 
-/**
- * Creates a directory inside the workspace root. Refuses to follow a symlink out
- * of the root. Returns the real path it is safe to write into.
- */
-export function prepareDirectory(root: string, relative: string, code = 'PATH_OUTSIDE_APPROVED_WORKSPACE'): string {
-  const realRoot = realOrSelf(path.resolve(root));
-  const target = path.isAbsolute(relative) ? path.resolve(relative) : path.resolve(realRoot, relative);
-  if (target !== realRoot && !target.startsWith(`${realRoot}${path.sep}`)) throw new Error(code);
-  fs.mkdirSync(target, { recursive: true, mode: 0o700 });
-  const real = realOrSelf(target);
-  if (real !== realRoot && !real.startsWith(`${realRoot}${path.sep}`)) throw new Error(code);
-  return real;
-}
-
 /** True when the path exists, is a directory, and contains a `.git` entry. */
 export function isGitRepository(target: string): boolean {
   try {
@@ -132,9 +117,4 @@ export function isGitRepository(target: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** OS temp directory, used for ephemeral execution snapshots. */
-export function tempRoot(prefix: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }

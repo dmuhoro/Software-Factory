@@ -6,7 +6,7 @@ import { ApprovalPolicyService } from './approvalPolicyService';
 import { FactoryJobService } from './factoryJobService';
 import { FailureService } from './failureService';
 
-export type ReleaseStatus = 'PREPARED' | 'DEPLOYED' | 'FAILED' | 'ROLLED_BACK';
+type ReleaseStatus = 'PREPARED' | 'DEPLOYED' | 'FAILED' | 'ROLLED_BACK';
 export interface ReleaseRecord { id: string; tenantId: string; jobId: string; sourceCommit: string; artifactDirectory: string; artifactChecksum: string; target: string; previousReleaseId?: string; status: ReleaseStatus; health: { passed: boolean; entrypoint: string; checkedAt: string; message: string }; createdAt: string; deployedAt?: string; rolledBackAt?: string; }
 function checksumDirectory(directory: string): string { const hash = crypto.createHash('sha256'); const walk = (current: string): void => { for (const entry of fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) { const target = path.join(current, entry.name); if (entry.isDirectory()) walk(target); else hash.update(path.relative(directory, target)).update(fs.readFileSync(target)); } }; walk(directory); return hash.digest('hex'); }
 

@@ -32,7 +32,7 @@ export const LEDGER_VERSION = 8 as const;
  */
 export const MIN_LEDGER_VERSION = 4 as const;
 
-export const LEDGER_COLLECTIONS = [
+const LEDGER_COLLECTIONS = [
   'telemetry', 'transformations', 'factoryJobs', 'repositoryContexts', 'qualitySnapshots',
   'approvals', 'projects', 'backups', 'releases', 'failures', 'outcomes', 'autonomySessions',
   'clientWorkspaces', 'handovers', 'clientAcceptances', 'hostedDeployments', 'modelProviders',

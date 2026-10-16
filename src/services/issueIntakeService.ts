@@ -34,7 +34,7 @@ function fail(code: string, detail?: string): Error {
 }
 
 /** The prompt is the same architect contract as a goal, with the issue as the request. */
-export function buildIssuePrompt(repo: string, issue: TrackerIssue, providerId: string, model: string, learning: { digest?: LearningDigest; enabled: boolean } = { enabled: false }): { system: string; task: string } {
+function buildIssuePrompt(repo: string, issue: TrackerIssue, providerId: string, model: string, learning: { digest?: LearningDigest; enabled: boolean } = { enabled: false }): { system: string; task: string } {
   const inventory = fileInventory(repo).slice(0, 200);
   const task = [
     `Issue source: ${issue.source}`,

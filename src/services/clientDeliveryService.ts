@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { DurableStore } from './durableStore';
 import { WorkspaceService } from './workspaceService';
 
-export type ClientAcceptanceStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
+type ClientAcceptanceStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
 export interface ClientWorkspace { id: string; tenantId: string; projectId: string; clientName: string; isolationRoot: string; allowedMembers: string[]; retentionDays: number; dataClassification: 'PUBLIC' | 'INTERNAL' | 'CONFIDENTIAL'; createdAt: string; }
 export interface HandoverPack { id: string; tenantId: string; projectId: string; file: string; checksum: string; sections: string[]; generatedAt: string; }
 export interface ClientAcceptance { id: string; tenantId: string; projectId: string; handoverId: string; status: ClientAcceptanceStatus; criteria: Array<{ id: string; label: string; passed: boolean; evidence: string[] }>; acceptedBy?: string; note?: string; updatedAt: string; }

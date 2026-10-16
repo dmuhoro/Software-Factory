@@ -5,9 +5,9 @@ import { resolveRuntimeConfig } from '../configurations/runtimeConfig';
 import { errorsOf } from '../configurations/runtimeConfig';
 
 export type ReadinessStatus = 'healthy' | 'degraded' | 'unhealthy';
-export type CheckState = 'pass' | 'warn' | 'fail';
+type CheckState = 'pass' | 'warn' | 'fail';
 export interface ReadinessCheck { name: string; state: CheckState; detail: string; }
-export interface ReadinessReport { status: ReadinessStatus; checks: ReadinessCheck[]; }
+interface ReadinessReport { status: ReadinessStatus; checks: ReadinessCheck[]; }
 
 /**
  * Free-space floor below which the data directory is unfit to serve.

@@ -2,9 +2,9 @@ import { DurableStore } from './durableStore';
 import { egressJson, resolveSecretRef, validateProviderUrl } from '../utils/egressGuard';
 
 export type ModelProviderKind = 'openai-compatible' | 'gemini-native' | 'local';
-export const MIN_MODEL_REQUEST_TIMEOUT_MS = 15_000;
-export const MAX_MODEL_REQUEST_TIMEOUT_MS = 600_000;
-export const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 120_000;
+const MIN_MODEL_REQUEST_TIMEOUT_MS = 15_000;
+const MAX_MODEL_REQUEST_TIMEOUT_MS = 600_000;
+const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 120_000;
 
 export interface ModelProvider { id: string; tenantId: string; kind: ModelProviderKind; baseUrl?: string; modelIds: string[]; secretRef?: string; enabled: boolean; timeoutMs?: number; createdAt: string; }
 export interface ModelRequest { providerId: string; model: string; system: string; task: string; maxOutputTokens?: number; }

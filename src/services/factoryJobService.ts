@@ -13,13 +13,13 @@ import { isWithin, resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
 export type FactoryJobStatus = 'IDEA' | 'DISCOVERY' | 'VALIDATION' | 'SPECIFIED' | 'DESIGNED' | 'ARCHITECTED' | 'IMPLEMENTING' | 'VALIDATING' | 'SECURITY_REVIEW' | 'PREVIEW_READY' | 'RELEASE_PENDING' | 'DEPLOYED' | 'OBSERVING' | 'DELIVERED' | 'LEARNING' | 'CLOSED' | 'BLOCKED';
 export type CompletionTaskStatus = 'pending' | 'in_progress' | 'complete' | 'blocked';
 export interface CompletionTask { id: string; title: string; category: 'product' | 'engineering' | 'security' | 'release' | 'operations'; required: boolean; status: CompletionTaskStatus; owner: string; verificationMethod: string; evidenceKinds: string[]; updatedAt: string; }
-export interface ProductBrief { problem: string; audience: string; valueHypothesis: string; wedge: string; nonGoals: string[]; acceptanceCriteria: string[]; createdAt: string; }
-export interface ImplementationPlan { objective: string; contextRefs: string[]; inheritedPatterns: string[]; qualityGates: string[]; steps: Array<{ id: string; title: string; description: string; status: 'pending' | 'complete' }>; verificationCommand: string; generatedAt: string; }
-export interface RepositoryRun { repositoryPath: string; branch: string; baseCommit: string; changedFiles: string[]; appliedAt: string; }
-export interface VerificationRun { command: string; profile: VerificationProfile; passed: boolean; exitCode: number; output: string; failedStep?: string; failureClass?: FailureClass; startedAt: string; completedAt: string; }
-export interface RepairAttempt { attempt: number; appliedFiles: string[]; passed: boolean; failedStep?: string; failureClass?: FailureClass; output: string; recordedAt: string; }
-export interface RepairLoopRun { maxAttempts: number; attempts: RepairAttempt[]; passed: boolean; stoppedReason: 'PASSED' | 'MAX_ATTEMPTS' | 'NO_REPAIR_AVAILABLE'; completedAt: string; }
-export interface PreviewArtifact { directory: string; entrypoint: string; generatedAt: string; }
+interface ProductBrief { problem: string; audience: string; valueHypothesis: string; wedge: string; nonGoals: string[]; acceptanceCriteria: string[]; createdAt: string; }
+interface ImplementationPlan { objective: string; contextRefs: string[]; inheritedPatterns: string[]; qualityGates: string[]; steps: Array<{ id: string; title: string; description: string; status: 'pending' | 'complete' }>; verificationCommand: string; generatedAt: string; }
+interface RepositoryRun { repositoryPath: string; branch: string; baseCommit: string; changedFiles: string[]; appliedAt: string; }
+interface VerificationRun { command: string; profile: VerificationProfile; passed: boolean; exitCode: number; output: string; failedStep?: string; failureClass?: FailureClass; startedAt: string; completedAt: string; }
+interface RepairAttempt { attempt: number; appliedFiles: string[]; passed: boolean; failedStep?: string; failureClass?: FailureClass; output: string; recordedAt: string; }
+interface RepairLoopRun { maxAttempts: number; attempts: RepairAttempt[]; passed: boolean; stoppedReason: 'PASSED' | 'MAX_ATTEMPTS' | 'NO_REPAIR_AVAILABLE'; completedAt: string; }
+interface PreviewArtifact { directory: string; entrypoint: string; generatedAt: string; }
 export interface FactoryJob {
   id: string; tenantId: string; title: string; problem: string; desiredOutcome: string; status: FactoryJobStatus; acceptanceCriteria: string[];
   evidence: Array<{ kind: string; description: string; uri?: string; recordedAt: string }>;

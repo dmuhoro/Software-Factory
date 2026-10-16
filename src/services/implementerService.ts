@@ -47,7 +47,7 @@ export interface ImplementResult {
 }
 
 export const MAX_FILES_PER_UNIT = 40;
-export const MAX_FILE_BYTES = 512 * 1024;
+const MAX_FILE_BYTES = 512 * 1024;
 
 function fail(code: string, detail?: string): Error {
   return new Error(detail ? `${code}:${detail}` : code);

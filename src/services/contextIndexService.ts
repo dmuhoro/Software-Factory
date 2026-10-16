@@ -4,7 +4,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { isGitRepository, resolveWithin } from '../utils/pathGuard';
 
-export type ContextKind = 'product' | 'architecture' | 'quality' | 'operations' | 'security' | 'knowledge';
+type ContextKind = 'product' | 'architecture' | 'quality' | 'operations' | 'security' | 'knowledge';
 /**
  * Where an indexed context came from. `bundled-example` records ship with the
  * repository as worked examples of institutional pattern; `imported` records
@@ -100,7 +100,7 @@ export class ContextIndexService {
  * API, the UI, and the audit report can say so. Set `FACTORY_SEED_EXAMPLES=false`
  * to start with an empty index.
  */
-export const EXAMPLE_REFERENCE_CONTEXTS: Array<Omit<RepositoryContext, 'id' | 'importedAt'>> = [
+const EXAMPLE_REFERENCE_CONTEXTS: Array<Omit<RepositoryContext, 'id' | 'importedAt'>> = [
   { repository: 'Hermes-Forge', commit: 'def6f40', provenance: 'bundled-example', mission: 'Offline-first local AI engineering workspace with context-aware agents and explicit command approval.', kinds: ['architecture', 'security', 'knowledge', 'operations'], patterns: ['local-first inference', 'AST-driven context indexing', 'AbortController cancellation', 'human approval membrane for shell commands', 'offline privacy boundary'], qualityPractices: ['lint and typecheck', 'unit and integration tests', 'local release checklist', 'performance benchmarking'], risks: ['cloud fallback must remain opt-in', 'local model availability is an operational dependency'], adapters: ['context export', 'local model routing', 'approval gate', 'codebase oracle'], qualityScore: 76, qualityDimensions: { verification: 17, security: 18, evidence: 13, operability: 15, productDiscipline: 13 } },
   { repository: 'Forge', commit: 'cc19a56', provenance: 'bundled-example', mission: 'Portable decision and orchestration core for building and maintaining the ecosystem with planner, reviewer, evaluations, and sandbox.', kinds: ['architecture', 'quality', 'operations', 'knowledge'], patterns: ['planner-reviewer separation', 'evaluation-driven changes', 'sandboxed execution', 'SOP-driven operations', 'portable decision core'], qualityPractices: ['CI workflow', 'review gates', 'evaluation suites', 'sandbox boundary'], risks: ['transport and production integration remain separate concerns'], adapters: ['planner', 'reviewer', 'evaluation runner', 'sandbox executor', 'SOP importer'], qualityScore: 72, qualityDimensions: { verification: 18, security: 15, evidence: 13, operability: 14, productDiscipline: 12 } },
   { repository: 'Portable-UI-Engine', commit: 'a3677b8', provenance: 'bundled-example', mission: 'Framework-agnostic UI asset library with native web components, Shadow DOM isolation, and stable data/event contracts.', kinds: ['product', 'architecture', 'quality'], patterns: ['framework-agnostic UI', 'Shadow DOM isolation', 'JSON payload contracts', 'defensive parsing', 'composed DOM events', 'design tokens'], qualityPractices: ['build pipeline', 'browser QA pressure test', 'component contract documentation'], risks: ['browser/device matrix and CI coverage should expand'], adapters: ['UI component generator', 'design-token importer', 'contract fixture generator'], qualityScore: 68, qualityDimensions: { verification: 13, security: 13, evidence: 12, operability: 12, productDiscipline: 18 } },

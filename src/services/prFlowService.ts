@@ -16,10 +16,10 @@ import { DurableStore } from './durableStore';
 import { egressJson, resolveSecretRef } from '../utils/egressGuard';
 import type { LoopRunRecord } from './loopTypes';
 
-export type PrFlowMode = 'local' | 'github';
-export type PullRequestStatus = 'DRAFTED' | 'OPENED';
+type PrFlowMode = 'local' | 'github';
+type PullRequestStatus = 'DRAFTED' | 'OPENED';
 
-export interface PullRequestRecord {
+interface PullRequestRecord {
   id: string;
   tenantId: string;
   runId: string;
@@ -40,7 +40,7 @@ export interface PullRequestRecord {
   openedAt?: string;
 }
 
-export interface PrDraftOptions {
+interface PrDraftOptions {
   tenantId: string;
   run: LoopRunRecord;
   repo: string;
@@ -49,7 +49,7 @@ export interface PrDraftOptions {
   baseBranch?: string;
 }
 
-export interface PrGithubOpenOptions extends PrDraftOptions {
+interface PrGithubOpenOptions extends PrDraftOptions {
   mode: 'github';
   owner: string;
   repoName: string;
@@ -62,7 +62,7 @@ const GITHUB_API = 'https://api.github.com';
 
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
-export const PR_DETAIL = Object.freeze({
+const PR_DETAIL = Object.freeze({
   DRAFTED: 'drafted locally as a reviewable branch and manifest; merge remains an operator action',
   OPENED: 'opened on the remote; merge remains an operator action',
 });
@@ -96,7 +96,7 @@ function tail(value: string, max = 240): string {
  * Renders the pull-request body from a finished run. Every fact comes from the run record; a run
  * that reached no stage cannot claim a stage it never entered.
  */
-export function renderManifest(run: LoopRunRecord, repo: string): string {
+function renderManifest(run: LoopRunRecord, repo: string): string {
   const title = `Automated change: ${path.basename(repo)}/${run.runId}`;
   const lines: string[] = [];
 
@@ -195,7 +195,7 @@ function upsertRecord(tenantId: string, runId: string, record: Omit<PullRequestR
  * manifest, and a branch ref that points at the run's head. `local` (the default) and `github`
  * behave identically here — in both flows the record is DRAFTED and nothing touches the network.
  */
-export function draft(input: PrDraftOptions): PullRequestRecord {
+function draft(input: PrDraftOptions): PullRequestRecord {
   const mode: PrFlowMode = input.mode ?? 'local';
   if (mode !== 'local' && mode !== 'github') throw new Error('PR_MODE_UNSUPPORTED');
   const repo = path.resolve(input.repo);
@@ -238,7 +238,7 @@ export function draft(input: PrDraftOptions): PullRequestRecord {
  * head branch must be named and already pushed; the base URL is re-validated at the socket. Opening
  * a pull request never merges anything.
  */
-export async function openGithub(input: PrGithubOpenOptions): Promise<PullRequestRecord> {
+async function openGithub(input: PrGithubOpenOptions): Promise<PullRequestRecord> {
   const token = resolveSecretRef(input.tokenSecretRef);
   if (!token) throw new Error('PR_GITHUB_TOKEN_REQUIRED');
   if (!input.owner.trim() || !input.repoName.trim()) throw new Error('PR_GITHUB_REPO_REQUIRED');
@@ -300,7 +300,7 @@ export async function openGithub(input: PrGithubOpenOptions): Promise<PullReques
  * Returns `undefined` rather than guessing — a repository with no GitHub remote is a refusal the
  * caller must handle, not a name invented here.
  */
-export function githubTarget(repo: string): { owner: string; repoName: string } | undefined {
+function githubTarget(repo: string): { owner: string; repoName: string } | undefined {
   let url = '';
   try {
     url = execFileSync('git', ['-C', repo, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 10000 }).trim();
@@ -313,14 +313,14 @@ export function githubTarget(repo: string): { owner: string; repoName: string } 
 }
 
 /** The stored record for a run, when one exists. */
-export function getRecord(tenantId: string, runId: string): PullRequestRecord | undefined {
+function getRecord(tenantId: string, runId: string): PullRequestRecord | undefined {
   const id = prRecordId(tenantId, runId);
   const record = DurableStore.get('pullRequests', id) as unknown as PullRequestRecord | undefined;
   return record?.tenantId === tenantId && record.runId === runId ? record : undefined;
 }
 
 /** A narrowed view of the unmerged units for the caller: a PR is mergeable only if fully merged. */
-export function mergeable(run: LoopRunRecord): { mergeable: boolean; reason?: string } {
+function mergeable(run: LoopRunRecord): { mergeable: boolean; reason?: string } {
   if (run.status !== 'completed') return { mergeable: false, reason: `run is ${run.status}` };
   const open = run.units.filter((unit) => unit.status !== 'done');
   if (open.length) return { mergeable: false, reason: `${open.length} unit(s) not done: ${open.map((unit) => unit.unitId).join(', ')}` };

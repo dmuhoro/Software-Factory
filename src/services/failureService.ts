@@ -3,7 +3,7 @@ import { DurableStore } from './durableStore';
 import { FailureClass } from './verificationProfileService';
 
 export type FailureDomain = FailureClass | 'SPECIFICATION' | 'DEPENDENCY' | 'ENVIRONMENT' | 'DEPLOYMENT' | 'RUNTIME_HEALTH' | 'PRODUCT_ADOPTION';
-export type FailureStatus = 'OPEN' | 'CONTAINED' | 'RESOLVED' | 'ESCALATED';
+type FailureStatus = 'OPEN' | 'CONTAINED' | 'RESOLVED' | 'ESCALATED';
 export interface FailureRecord { id: string; tenantId: string; jobId?: string; domain: FailureDomain; fingerprint: string; message: string; nextAction: string; owner: string; retryBudget: number; retriesUsed: number; occurrences: number; status: FailureStatus; evidence: string[]; createdAt: string; updatedAt: string; }
 const actionFor = (domain: FailureDomain): string => ({ SPECIFICATION: 'Clarify acceptance criteria and update the product brief', DEPENDENCY: 'Pin or repair the dependency and rerun verification', TYPECHECK: 'Repair the type or compile contract within the bounded loop', TEST: 'Fix the failing behavior or update an evidence-backed test', SECURITY: 'Contain the change and complete security review before retrying', ENVIRONMENT: 'Repair the project environment or request missing configuration', BUILD: 'Repair the build profile and rerun the artifact check', FORMAT: 'Apply formatting and rerun the profile', DEPLOYMENT: 'Stop release completion and inspect deployment output', RUNTIME_HEALTH: 'Rollback to the last healthy release and inspect runtime evidence', PRODUCT_ADOPTION: 'Interview the user or client and update the outcome record', UNKNOWN: 'Escalate for human diagnosis before another attempt' } as Record<FailureDomain, string>)[domain];
 export class FailureService {

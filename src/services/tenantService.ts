@@ -23,7 +23,7 @@
  * fine -- that is how a tenant ends up active when nobody provisioned it.
  */
 
-import { IndustryNiche, ScopedCredential, TenantProfile, TenantQuota, TenantSubscriptionTier, TenantStatus, TenantContext } from '../models/tenant';
+import { IndustryNiche, ScopedCredential, TenantProfile, TenantSubscriptionTier, TenantStatus, TenantContext } from '../models/tenant';
 import { SUBSCRIPTION_QUOTAS } from '../configurations/factory.config';
 import { DurableStore } from './durableStore';
 import { emitMalformedContextError, emitSecurityError } from '../utils/validation';
@@ -530,5 +530,4 @@ export class TenantService {
   }
 }
 
-export { DEMO_TENANTS };
-export type { TenantQuota };
+

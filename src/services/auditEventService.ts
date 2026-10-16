@@ -32,7 +32,7 @@ import { allow, enforceDecision, refuse, type EnforcementDecision, type Enforcem
 
 /** The outcome an audit event must carry. A blank one is not an outcome. */
 export const AUDIT_OUTCOMES = ['allowed', 'refused', 'observed', 'failed'] as const;
-export type AuditOutcome = (typeof AUDIT_OUTCOMES)[number];
+type AuditOutcome = (typeof AUDIT_OUTCOMES)[number];
 
 /**
  * An auditable fact.

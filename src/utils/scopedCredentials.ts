@@ -25,7 +25,7 @@
  */
 
 /** The closed set of scopes. An unrecognised value is refused, never ignored. */
-export const SCOPES = ['loop:read', 'loop:write', 'admin'] as const;
+const SCOPES = ['loop:read', 'loop:write', 'admin'] as const;
 export type Scope = (typeof SCOPES)[number];
 
 const SCOPE_SET = new Set<string>(SCOPES);

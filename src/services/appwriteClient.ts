@@ -36,7 +36,7 @@ export type AppwriteServices = {
  * Throws when Appwrite is unconfigured rather than returning a client that fails later with an
  * opaque 401 on the first write. Nothing here reads a file, and no value is defaulted.
  */
-export function createAppwriteServices(env: NodeJS.ProcessEnv = process.env): AppwriteServices {
+function createAppwriteServices(env: NodeJS.ProcessEnv = process.env): AppwriteServices {
   const settings = requireAppwriteConfig(env);
   const client = new Client()
     .setEndpoint(settings.endpoint)

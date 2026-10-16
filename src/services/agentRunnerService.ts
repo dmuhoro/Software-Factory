@@ -1,7 +1,7 @@
 import { DurableStore } from './durableStore';
 import { ParallelWorktreeService, AgentRun } from './parallelWorktreeService';
 
-export type QueueStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+type QueueStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
 export interface QueueJob { id: string; tenantId: string; runId: string; taskId: string; status: QueueStatus; attempts: number; maxAttempts: number; leaseOwner?: string; leaseUntil?: string; lastError?: string; result?: Record<string, unknown>; createdAt: string; updatedAt: string; }
 export interface RunnerResult { taskId: string; passed: boolean; output: string; evidence: string[]; error?: string; }
 

@@ -100,7 +100,7 @@ function safeSlug(value: string): string {
  * the loop only ever changes what the criteria require. Trailing *blank lines* (`\n\n`) are real
  * corruption the whitespace gate flags and are never normalized away.
  */
-export function preserveEofNewline(existing: string | undefined, content: string): string {
+function preserveEofNewline(existing: string | undefined, content: string): string {
   if (existing === undefined) return content;
   const existingEndsNl = existing.endsWith('\n');
   const contentEndsNl = content.endsWith('\n');

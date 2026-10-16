@@ -61,7 +61,7 @@ export interface GateContext {
   unrelatedWrites?: { enforce: boolean; allow: string[] };
 }
 
-export interface GateOutcome {
+interface GateOutcome {
   passed: boolean;
   detail: string;
 }
@@ -363,16 +363,6 @@ export function runStageGates(stage: LoopStage, timing: 'before' | 'after', ctx:
   const results = hooks.map((id) => runGate(id, { ...ctx, stage, timing }));
   const refusals = results.filter((result) => !result.passed && result.blocking);
   return { stage, timing, results, ok: refusals.length === 0, refusals };
-}
-
-/** Runs the hooks and throws a single refusal naming every gate that failed. */
-export function assertStageGates(stage: LoopStage, timing: 'before' | 'after', ctx: Omit<GateContext, 'stage' | 'timing'>): GateResult[] {
-  const outcome = runStageGates(stage, timing, ctx);
-  if (!outcome.ok) {
-    const detail = outcome.refusals.map((item) => `${item.id}: ${item.detail}`).join(' | ');
-    throw new Error(`GATE_REFUSED:${stage}:${outcome.refusals.map((item) => item.id).join(',')}:${detail}`);
-  }
-  return outcome.results;
 }
 
 export function registeredGateIds(): GateId[] {

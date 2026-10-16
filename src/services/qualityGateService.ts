@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { DurableStore } from './durableStore';
 import { isGitRepository, resolveWithin } from '../utils/pathGuard';
 
-export type AdapterKind = 'node' | 'python' | 'rust' | 'android' | 'static' | 'unknown';
+type AdapterKind = 'node' | 'python' | 'rust' | 'android' | 'static' | 'unknown';
 export interface ProjectAdapter { id: string; tenantId: string; projectId: string; kind: AdapterKind; checks: string[]; artifactPath?: string; createdAt: string; }
 export interface SecurityScan { id: string; tenantId: string; projectId?: string; status: 'PASSED' | 'BLOCKED'; findings: Array<{ rule: string; severity: 'HIGH' | 'MEDIUM' | 'LOW'; file: string; detail: string }>; scannedAt: string; }
 

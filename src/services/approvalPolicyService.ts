@@ -1,7 +1,7 @@
 import { DurableStore } from './durableStore';
 
 export type HarnessAction = 'READ_REPOSITORY' | 'MODIFY_BRANCH' | 'RUN_VERIFICATION' | 'CREATE_PREVIEW' | 'PUSH_BRANCH' | 'DEPLOY_PRODUCTION' | 'CHANGE_CREDENTIALS' | 'DELETE_DATA' | 'SEND_EXTERNAL_MESSAGE';
-export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export interface ApprovalRequest { id: string; tenantId: string; jobId?: string; action: HarnessAction; rationale: string; status: ApprovalStatus; requestedBy: string; decidedBy?: string; decisionNote?: string; requestedAt: string; decidedAt?: string; }
 
 const automatic = new Set<HarnessAction>(['READ_REPOSITORY', 'MODIFY_BRANCH', 'RUN_VERIFICATION', 'CREATE_PREVIEW']);

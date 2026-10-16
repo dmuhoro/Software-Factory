@@ -27,7 +27,7 @@ import { ExecutionLoopService } from './executionLoopService';
 import type { LoopRunRecord } from './loopTypes';
 import type { LoopFailureClass } from './loopFailureClass';
 
-export const DIGEST_VERSION = 1 as const;
+const DIGEST_VERSION = 1 as const;
 
 /** Below this many completed runs the digest is `insufficient-data`, not a conclusion (ADR-012 §5). */
 export const MINIMUM_COMPLETED_RUNS = 5;
@@ -35,10 +35,10 @@ export const MINIMUM_COMPLETED_RUNS = 5;
 /** The hard caps of ADR-012 §3. Truncation is reported, never silent. */
 export const MAX_ENTRIES_PER_SECTION = 20;
 export const MAX_TOTAL_ENTRIES = 30;
-export const MAX_KEY_LENGTH = 120;
+const MAX_KEY_LENGTH = 120;
 export const MAX_SERIALIZED_BYTES = 4096;
 
-export interface DigestEntry {
+interface DigestEntry {
   key: string;
   count: number;
 }

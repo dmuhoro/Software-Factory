@@ -15,7 +15,7 @@ import { authorizeProviderEndpoint, resolveOptionalSecretRef } from './egressGua
 import { GeminiConfig } from '../configurations/gemini.config';
 
 /** The environment variable name the Gemini key is mounted under. */
-export const GEMINI_SECRET_REF = 'GEMINI_API_KEY';
+const GEMINI_SECRET_REF = 'GEMINI_API_KEY';
 
 /** A placeholder shipped in `.env.example`; treated as "not mounted" rather than a live key. */
 const PLACEHOLDER_KEY = 'MY_GEMINI_API_KEY';

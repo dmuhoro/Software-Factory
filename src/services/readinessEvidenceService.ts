@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { DurableStore } from './durableStore';
 
 export type ReadinessLevel = 'LEVEL_1_FOUNDER' | 'LEVEL_2_CLIENT' | 'LEVEL_3_PRODUCTION' | 'LEVEL_4_AUTONOMY';
-export type ProofStatus = 'PLANNED' | 'OBSERVED' | 'PASSED' | 'FAILED';
+type ProofStatus = 'PLANNED' | 'OBSERVED' | 'PASSED' | 'FAILED';
 export interface ProofRecord { id: string; tenantId: string; level: ReadinessLevel; criterion: string; runId?: string; status: ProofStatus; observedAt?: string; artifactRefs: string[]; measurements: Record<string, number | string | boolean>; reviewer: string; note?: string; createdAt: string; }
 const criteria: Record<ReadinessLevel, string[]> = { LEVEL_1_FOUNDER: ['five complete founder jobs', 'no lost durable state', 'no hidden unfinished work'], LEVEL_2_CLIENT: ['three client-like dry runs', 'isolated client workspace', 'reproducible handover and acceptance'], LEVEL_3_PRODUCTION: ['hosted deployment succeeds', 'secret isolation verified', 'health failure blocks or rolls back release'], LEVEL_4_AUTONOMY: ['hardened execution boundary', 'parallel agents preserve task order', 'irreversible actions escalate'] };
 function tenantOf(value: Record<string, unknown>): string { return String(value.tenantId ?? ''); }

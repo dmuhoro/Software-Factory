@@ -25,7 +25,7 @@ import { DoctrineService } from './doctrineService';
  * repository missing a file its owner wrote.
  */
 
-export interface QuarantineEntry {
+interface QuarantineEntry {
   relativePath: string;
   sha256: string;
   bytes: number;
@@ -55,7 +55,7 @@ export interface IsolationEvidence {
   quarantine: QuarantineEntry[];
 }
 
-export const TARGET_INSTRUCTION_FILES = [
+const TARGET_INSTRUCTION_FILES = [
   'AGENTS.md',
   'CLAUDE.md',
   'CLAUDE.local.md',
@@ -67,7 +67,7 @@ export const TARGET_INSTRUCTION_FILES = [
   '.github/copilot-instructions.yaml',
 ] as const;
 
-export const TARGET_INSTRUCTION_DIRS = ['.claude', '.opencode', '.agents', '.cursor', '.rules'] as const;
+const TARGET_INSTRUCTION_DIRS = ['.claude', '.opencode', '.agents', '.cursor', '.rules'] as const;
 
 function fail(code: string, detail?: string): Error {
   return new Error(detail ? `${code}:${detail}` : code);
