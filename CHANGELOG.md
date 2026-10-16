@@ -4,6 +4,23 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.5] - 2026-10-16 — WP-7 is named, not stubbed
+
+No code change. The capability surface changed: Sprint 31's WP-7 measurement is recorded as blocked
+rather than guessed.
+
+- **`skills-adoption-evidence` is a blocked capability** (owner: operator). Deciding whether to adopt
+  the vendored skills needs a with/without-skills run over canned tasks; the runs need a model, and
+  none is reachable (hosted is the operator blocker; the local Ollama daemon is not running in the
+  agent shell). The public capabilities route and the evidence page gained the entry; no number is
+  claimed.
+- **No harness was built.** A 12–15-task scaffold that nobody can execute would be capability theater.
+  The measurement is one command per task per condition once a model exists.
+- The sprint records the probe (2026-10-16) and the decision.
+
+Gates: `tsc --noEmit` clean; `npm run knip` 0 findings; `npm test` 502/502; `verify:docs` 6/6;
+`verify-release.sh` 13/13.
+
 ## [4.15.4] - 2026-10-16 — Sprint 31's tail: the executor host, the settlement webhook, and a skill that is reference text
 
 A release consolidating Sprint 31's WP-4, WP-5 and WP-6. WP-5 (`8223ebb`) and WP-4 (`59aac63`) had
