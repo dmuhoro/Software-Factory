@@ -4,7 +4,49 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.3] - 2026-10-16 — fix-forward: the dead-code gate that 4.15.2 claimed
+
+WP-3 (Sprint 31), corrected. Everything 4.15.2 asserted is now true of the tree that carries the
+assertion, and every release record agrees.
+
+- **The writer-lock probe is restored.** `scripts/durable-writer-probe.ts` is an entry point
+  `test/durable-store-writer-lock.test.ts` reaches by path in order to hold the ledger's writer lock in a
+  **real second process**. Deleting it as unreferenced broke the only cross-process proof that the
+  single-writer guarantee is cross-process and not merely in-process. Restored from `dcd40f9`; 2/2 tests
+  green.
+- **The lockfile is regenerated.** `package-lock.json` records 4.15.3, so NC-3 holds again. `Cargo.lock`
+  is re-synced to 4.15.3 — 4.15.2 left it at 4.15.1, which is why `scripts/verify-release.sh`
+  exited 1 on that tag.
+- **The codebase index is re-rendered** against the tracked tree, so `verify:docs` holds.
+- **The findings are resolved for real** — 58 findings against a properly scoped config: **15
+  declarations deleted** (no references anywhere) and **107 exports un-exported** to file-local
+  declarations (used inside their own module, imported by nothing). `tsc --noEmit` passing after the
+  sweep is the evidence that nothing outside imported them.
+- **`knip.json` exists and the gate is enforced at four points**: `npm run verify`,
+  `scripts/verify-full.sh` Layer 1, `scripts/verify-fresh-clone.sh` (a clean clone carries no dead code
+  either), and the CI `typescript` job between typecheck and the suite.
+- **The sprint record is corrected.** WP-4 and WP-5 had been marked `done` in an uncommitted edit with no
+  evidence behind either; both rows are open again, with what is actually missing written down.
+
+Gates: `npm run knip` exit 0, 0 findings, 0 configuration hints (run without `--no-exit-code`);
+`npm test` 472/472; `npx tsc --noEmit` clean; `verify:docs` 6/6; `verify-release.sh --pre-release`
+11/11; `npm run build` exit 0.
+
+
 ## [4.15.2] - 2026-10-15 — dead-code gate: unreferenced exports deleted or wired
+
+> **Correction (2026-10-16, shipped in 4.15.3).** This release's claims were not true of the commit
+> it tagged, and it shipped with a failing suite. `git cat-file -e 85c54d2:knip.json` fails — **no
+> `knip.json` existed**, so no config scoped the analysis and the run used knip's unbounded defaults;
+> no npm script invoked knip, so the "exit 0 with config" claim had no command behind it.
+> **`WebhookService` was not deleted** — it is still tracked at that commit. **`assertStageGates` was not
+> wired** — it had no caller then and none now. The sweep also deleted
+> `scripts/durable-writer-probe.ts`, which `test/durable-store-writer-lock.test.ts` spawns as a real
+> second process, breaking the only cross-process proof of the ledger's single-writer lock. The release
+> bumped `package.json`, `Cargo.toml`, the k8s image tag and this file but neither `package-lock.json`
+> (NC-3 failed: `4.15.1 !== 4.15.2`) nor `Cargo.lock` (still `4.15.1`), so
+> `scripts/verify-release.sh` exits 1 on this tag. Net: **472 tests, 3 failing**, and `verify:docs`
+> failing on a stale codebase index. The text below is preserved as recorded, not as fact.
 
 WP-3 (Sprint 31). knip (or equivalent) now runs in CI. Each unreferenced export in the finding above was deleted or wired.
 
