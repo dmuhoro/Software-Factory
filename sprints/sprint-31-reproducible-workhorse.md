@@ -1,6 +1,6 @@
 # Sprint 31 — The Reproducible Workhorse
 
-**Status:** WP-0 governance (v4.15.x), WP-1 reproducibility (v4.15.0), WP-2 truthful docs (v4.15.1), WP-3 dead-code gate (v4.15.2 — shipped red, corrected v4.15.3), WP-4 executor-host artifacts, WP-5 phone surface and WP-6 skills bridge landed and released together as **v4.15.4**; WP-7 blocked on model access and recorded as such in **v4.15.5** · **Opened:** 2026-10-15 · **Closed:** —
+**Status:** WP-0 governance (v4.15.x), WP-1 reproducibility (v4.15.0), WP-2 truthful docs (v4.15.1), WP-3 dead-code gate (v4.15.2 — shipped red, corrected v4.15.3), WP-4 executor-host artifacts, WP-5 phone surface and WP-6 skills bridge landed and released together as **v4.15.4**; WP-7 blocked on model access and recorded as such in **v4.15.5** · **Opened:** 2026-10-15 · **Closed:** 2026-10-16
 
 **Thesis.** Sprint 30 gave the factory a face and a floor: a declarative capability manifest, a
 skills registry, a fleet read surface, a fail-closed deploy preflight, and an evidence page rendered
@@ -67,7 +67,7 @@ delete, then host, then face, then skills, then measure.
 | WP-3 | Dead-code gate: unreferenced exports deleted or wired per finding | `npm run knip` → exit 0, 0 findings, 0 hints, enforced in `verify`, `verify:full`, the fresh-clone gate and CI | **done — v4.15.3** (v4.15.2 shipped the claim without the config) |
 | WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | **repo-side done** — provisioning script, unit, `verify:host` and the bind policy landed; the host drill is blocked (owner: operator) |
 | WP-5 | Phone surface: mobile-first Loop tab (goal/issue submit, run list, live events, two-phase cancel) + signed outbound notifications via `WebhookService` | delivery test + the operator's recorded on-device check | **repo-side done** — UI calls the issue/cancel routes, `WebhookService` has a production caller and a signed-delivery test; on-device check blocked (owner: operator) |
-| WP-6 | Skills bridge: vendor a starter set with provenance + sha256, refuse unpinned/modified, wire by role, default OFF (implements ADR-013) | an unpinned skill refuses; a modified one refuses | **repo-side done** — the pin gate, fenced seam and default-OFF role wiring landed and are proven; adopting external Pocock/Ondrej content is blocked (owner: engineering + Pocock/Ondrej) |
+| WP-6 | Skills bridge: vendor a starter set with provenance + sha256, refuse unpinned/modified, wire by role, default OFF (implements ADR-013) | an unpinned skill refuses; a modified one refuses | **repo-side done** — the pin gate, fenced seam and default-OFF role wiring landed and are proven; adopting external Pocock/Ondrej content is blocked by source coordinates, not by the third party (owner: engineering — corrected in Sprint 33, WP-0) |
 | WP-7 | Measurement: 12–15 canned tasks across ≥3 repos, with and without skills | a table of first-attempt rate, STUCK rate, wall time, cost per verified commit | **blocked — no model reachable** (hosted: owner operator; the local Ollama daemon is not running in the agent shell). No harness was built, because a 12–15-task scaffold that cannot be run would be capability theater, not evidence. |
 
 ### Scope limits (hard — do not implement in this sprint)
@@ -370,10 +370,12 @@ the flag off. **Negative proof:** with `loadPinnedSkills` neutralised, 6 of the 
 modified, unlicensed, missing-lock, shipped-tamper and inspection cases) — the gate is what makes them
 pass.
 
-**Still blocked (owner: engineering + Pocock/Ondrej).** Vendoring the Pocock or Ondrej *content*: each
+**Still blocked (owner: engineering).** Vendoring the Pocock or Ondrej *content*: each
 source needs its licence and source commit confirmed before its bytes may be recorded in the lock, and
 ADR-013 §7 says adoption into the run path waits on WP-7 showing a measured effect. The bridge is proven
-against the in-repo skill; the external set is named, not stubbed.
+against the in-repo skill; the external set is named, not stubbed. (The owner is engineering, not the
+skill authors: their content is public and MIT, so nothing external gates the work — Sprint 33, WP-0
+corrects this.)
 
 ## WP-7 — Measurement (blocked — no model reachable; named, not stubbed)
 

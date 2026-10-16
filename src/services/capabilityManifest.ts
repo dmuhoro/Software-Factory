@@ -129,14 +129,14 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
     title: 'Adopting external skill content',
     status: 'blocked',
     summary: 'Vendoring the Pocock or Ondrej skill sets needs each source licence and commit confirmed before the bytes may be pinned; preference is not evidence, so adoption also waits on WP-7 measurement.',
-    owner: 'engineering + Pocock/Ondrej',
+    owner: 'engineering',
   },
   {
     id: 'skills-adoption-evidence',
     title: 'Measured effect of the skills',
     status: 'blocked',
     summary: 'Deciding whether to adopt the vendored skills needs a with/without-skills run over canned tasks; the runs need a model, and none is reachable here (hosted is the operator blocker, and the local Ollama daemon is not running in the agent shell). No numbers are claimed.',
-    owner: 'operator',
+    owner: 'harness: engineering; model run: operator',
   },
   {
     id: 'hosted-frontier-model',

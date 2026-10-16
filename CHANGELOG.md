@@ -4,6 +4,16 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **Blocker ownership corrected; the external skill sources recorded (Sprint 33, WP-0).** The
+  `external-skill-adoption` capability named `engineering + Pocock/Ondrej` as its owner
+  (`capabilityManifest.ts:132`, rendered to `README.md:181`). That was false: the content is public and
+  MIT, so no third party gates it — the repository does. The owner is now `engineering`, and
+  `skills-adoption-evidence` now reads `harness: engineering; model run: operator` (only the model run
+  is operator-only). The Pocock source (`github.com/mattpocock/skills`) and the Ondrej source
+  (`github.com/davidondrej/skills`, MIT) are recorded in `sprints/sprint-33-closing-sprint.md`. Sprint 31
+  is closed (2026-10-16).
+
 ## [4.15.6] - 2026-10-16 — The documents match the code
 
 ### Added

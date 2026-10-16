@@ -178,8 +178,8 @@ surfaces — jobs, approvals, releases, outcomes — are described under **Opera
 | Capability manifest | live | `GET /api/factory/capabilities` |
 | Declarative skills registry | live | `GET /api/factory/skills` |
 | Vendored, hash-pinned advisory skills | live | `npm test -- test/skills-bridge.test.ts` |
-| Adopting external skill content | blocked | blocked — owner: engineering + Pocock/Ondrej |
-| Measured effect of the skills | blocked | blocked — owner: operator |
+| Adopting external skill content | blocked | blocked — owner: engineering |
+| Measured effect of the skills | blocked | blocked — owner: harness: engineering; model run: operator |
 | Hosted frontier model | blocked | blocked — owner: operator |
 | Live GitHub pull request | blocked | blocked — owner: operator |
 | Sandboxed execution in the shipped image | blocked | blocked — owner: operator |
