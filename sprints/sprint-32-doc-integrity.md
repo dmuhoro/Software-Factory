@@ -1,6 +1,6 @@
 # Sprint 32 — The Documents Match the Code
 
-**Status:** WP-0 governance, WP-1 (known-limits gate), WP-2 (doc-vs-code sweep), WP-3 (NC-2 ADR + Wave 4 memo) and WP-4 (WP-7 harness: decided, not built) landed · **Opened:** 2026-10-16 · **Closed:** —
+**Status:** WP-0 governance, WP-1 (known-limits gate), WP-2 (doc-vs-code sweep), WP-3 (NC-2 ADR + Wave 4 memo), WP-4 (WP-7 harness: decided, not built) and WP-5 (release v4.15.6) landed · **Opened:** 2026-10-16 · **Closed:** 2026-10-16
 
 **Thesis.** Sprint 31 made the product reproducible and told the truth about the *capability* surface:
 the capabilities table is generated from the manifest, so it cannot claim a capability the code lacks.
@@ -46,7 +46,7 @@ image has never been built and run" — stale counts and the same resolved image
 | **WP-2** | Task 2 — doc-vs-code sweep: every remaining stale figure or claim in a live doc corrected against the code, or listed as a lead | each corrected figure reproduced by a named command | **done** |
 | **WP-3** | Task 3 — `docs/adr/ADR-015` (Proposed): NC-2's shared-store path — options, tradeoffs, cost, migration, recommendation; plus a Wave 4 decision memo | ADR-015 Proposed; a memo, not an implementation | **done** |
 | **WP-4** | Task 4 — decide whether the WP-7 benchmark harness is net-positive without a model; build it only if it is, else record why not | a named judgement with its reasoning | **done — decided not to build** |
-| **WP-5** | Task 5 — release: bump the five places + k8s, CHANGELOG, tag, push | `verify-release.sh` 13/13; `main == HEAD == tag^{commit}` | **pending** |
+| **WP-5** | Task 5 — release: bump the five places + k8s, CHANGELOG, tag, push | `verify-release.sh` 13/13; `main == HEAD == tag^{commit}` | **done — v4.15.6** |
 
 ### Scope limits (hard)
 
@@ -220,6 +220,20 @@ repository is input work that should be done against each target's real state, n
 
 **Status: decided, not stubbed.** The blocked capability `skills-adoption-evidence` (owner: operator)
 is unchanged and remains the public record.
+
+## WP-5 — Release (Task 5, done): v4.15.6
+
+Sprint 32 shipped as one patch release, **`v4.15.6` — "The documents match the code"**. No
+production behaviour changed: a documentation gate was added, the live docs were reconciled with
+the code, and two decisions (NC-2's shared store, Wave 4) were written down.
+
+Bumped together across the five records plus the deployment: `package.json`, `package-lock.json`,
+`software_factory/Cargo.toml`, `software_factory/Cargo.lock`, `CHANGELOG.md`, and the k8s image tag
+(`software_factory/k8s/deployment.yaml`).
+
+**Evidence:** `bash scripts/verify-release.sh` **13/13**; `npm run verify:docs` 7/7; `npm test`
+502/502. Tag `v4.15.6` points at the release commit; after push `main == HEAD == v4.15.6^{commit}`.
+
 
 
 

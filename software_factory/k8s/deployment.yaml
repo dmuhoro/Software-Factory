@@ -68,7 +68,7 @@ spec:
           # worked" true, and what makes the running image auditable against the commit that
           # built it. No digest is written here today because none has been published yet, and
           # inventing one would be a claim nothing could check.
-          image: ghcr.io/dmuhoro/software-factory/runtime:v4.15.5
+          image: ghcr.io/dmuhoro/software-factory/runtime:v4.15.6
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

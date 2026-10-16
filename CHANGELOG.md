@@ -4,6 +4,8 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.6] - 2026-10-16 — The documents match the code
+
 ### Added
 - **`docs/adr/ADR-015` (Proposed): NC-2's shared-store decision.** Records the two blockers (single-writer
   ledger, in-memory registry), the guarantee a shared store must preserve (storage-boundary idempotency,
@@ -28,6 +30,9 @@ All notable architectural and code modifications are documented here.
   rehydrates from the ledger before the server listens), the image (NC-4 resolved — `npm run verify:image`),
   the NetworkPolicy egress wildcard (NC-5 resolved — `npm run render:egress`), and the Rust metrics endpoint
   (NC-9 resolved). Only NC-2 (horizontal scale) remains, now stated as such.
+
+Gates: `tsc --noEmit` clean; `npm run knip` 0 findings; `npm test` 502/502; `verify:docs` 7/7;
+`verify-k8s.py` 58/58; `verify-release.sh` 13/13.
 
 ## [4.15.5] - 2026-10-16 — WP-7 is named, not stubbed
 
