@@ -1,6 +1,6 @@
 # Sprint 31 — The Reproducible Workhorse
 
-**Status:** WP-0 governance, WP-1 reproducibility (v4.15.0) and WP-2 truthful docs (v4.15.1) and WP-3 dead-code gate (v4.15.2) landed; WP-4…WP-7 pending · **Opened:** 2026-10-15 · **Closed:** —
+**Status:** WP-0 governance (v4.15.x), WP-1 reproducibility (v4.15.0), WP-2 truthful docs (v4.15.1) and WP-3 dead-code gate (v4.15.2 — shipped red, corrected v4.15.3) landed; WP-4, WP-5, WP-6, WP-7 open · **Opened:** 2026-10-15 · **Closed:** —
 
 **Thesis.** Sprint 30 gave the factory a face and a floor: a declarative capability manifest, a
 skills registry, a fleet read surface, a fail-closed deploy preflight, and an evidence page rendered
@@ -64,9 +64,9 @@ delete, then host, then face, then skills, then measure.
 | **WP-0** | Governance: this sprint file + ADR-013 + ADR-014 | `npm run verify:docs` green; no production code | **done** |
 | WP-1 | Reproducibility: a fresh clone runs green anywhere (hermetic tests, a loud sandbox preflight, `bubblewrap` in CI, a tracked contributor `AGENTS.md`) | `verify:fresh-clone` red on the pre-fix tree, green after | **done** |
 | WP-2 | Truthful docs: README counts and the capability list generated from the manifest; stale claims removed; the Manus audit archived | no README figure that a command does not reproduce | **done** |
-| WP-3 | Dead-code gate: unreferenced exports deleted or wired per finding | knip exit 0 with config; four finding items deleted/wired | **done** |
-| WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | pending |
-| WP-5 | Phone surface: mobile-first Loop tab (goal/issue submit, run list, live events, two-phase cancel) + signed outbound notifications via `WebhookService` | delivery test + the operator's recorded on-device check | pending |
+| WP-3 | Dead-code gate: unreferenced exports deleted or wired per finding | `npm run knip` → exit 0, 0 findings, 0 hints, enforced in `verify`, `verify:full`, the fresh-clone gate and CI | **done — v4.15.3** (v4.15.2 shipped the claim without the config) |
+| WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | **open** — repo-side artifacts only; the host drill is blocked (owner: operator) |
+| WP-5 | Phone surface: mobile-first Loop tab (goal/issue submit, run list, live events, two-phase cancel) + signed outbound notifications via `WebhookService` | delivery test + the operator's recorded on-device check | **open** — API routes exist, UI and webhook wiring do not; on-device check blocked (owner: operator) |
 | WP-6 | Skills bridge: vendor a starter set with provenance + sha256, refuse unpinned/modified, wire by role, default OFF (implements ADR-013) | an unpinned skill refuses; a modified one refuses | pending |
 | WP-7 | Measurement: 12–15 canned tasks across ≥3 repos, with and without skills | a table of first-attempt rate, STUCK rate, wall time, cost per verified commit | pending |
 
@@ -223,24 +223,72 @@ the figures that had drifted are gone.
 `test/readme-truth.test.ts` **4/4**, failing-first recorded — a drifted README block fails 1 test, and a
 stale index exits 1; both green when restored.
 
-## WP-3 — Dead-code gate (planned)
+## WP-3 — Dead-code gate (done, v4.15.3)
 
-`knip` (or equivalent) runs in CI. Each unreferenced export in the finding above is deleted or wired.
-If `WebhookService` stays, WP-5 is its production caller.
+`knip` runs in CI and in every local verification chain. Each unreferenced export in the finding
+above was deleted or un-exported at its declaration.
 
-## WP-4 — Executor host (planned, implements ADR-014 as approved)
+The first attempt at this WP is itself the sprint's strongest cautionary example, so it is recorded
+rather than rewritten:
+
+- **v4.15.2 shipped a claim the repository could not reproduce.** Its release message stated
+  `knip.json (new)`, `knip exit 0 with config`, and `WebhookService deleted`. At that commit
+  `git cat-file -e HEAD:knip.json` fails — **no config existed**, no npm script ran knip, the run
+  therefore used knip's unbounded defaults, and 58 findings remained. `WebhookService` was still
+  tracked. This is precisely the defect the Constitution's "no fabricated claims" rule names, and it
+  reached a tag.
+- **v4.15.2 was also red.** The release bumped `package.json`, `Cargo.toml`, the k8s image tag and the
+  changelog but not `package-lock.json`, so `test/l6-dependency-policy.test.ts` NC-3 failed
+  (`4.15.1 !== 4.15.2`); `verify:docs` failed on a stale `docs/audit/CODEBASE-INDEX.md`; and the dead-code
+  sweep had deleted `scripts/durable-writer-probe.ts`, which `test/durable-store-writer-lock.test.ts`
+  spawns as a real second process, breaking the only cross-process proof of the ledger's single-writer
+  lock. **472 tests, 3 failing** — on a tag.
+- **v4.15.3 is the correction.** The probe is restored (it is an entry point a test reaches by path, not
+  dead code), the lockfile is regenerated, the codebase index is re-rendered, and the findings are
+  resolved for real: **15 declarations deleted outright**, **107 exports un-exported** to file-local
+  declarations. `tsc --noEmit` passing after the sweep is the evidence that nothing outside imported
+  them — a symbol another file reaches through the module boundary stops compiling the moment `export`
+  goes away.
+- **The gate is enforced at four points**, so it cannot quietly stop running again: `npm run verify`,
+  `verify-full.sh` Layer 1, `scripts/verify-fresh-clone.sh` (a clean clone carries no dead code either),
+  and the CI `typescript` job between typecheck and the suite, where a bad sweep fails next to the sweep
+  rather than nine steps later.
+
+**New files:** `knip.json`.
+
+**Evidence:** `npm run knip` **exit 0, 0 findings, 0 configuration hints** (run without
+`--no-exit-code`, because a gate that masks its own exit code is not a gate); `npm test` **472/472**;
+`npx tsc --noEmit` clean; `verify:docs` **6/6**; `npm run build` exit 0.
+
+## WP-4 — Executor host (open, implements ADR-014 as approved)
 
 An Ubuntu 24.04 provisioning script: a dedicated unprivileged runner user, `bubblewrap`, a hardened
 `systemd` unit with restart-on-failure, a bind on `localhost` and the tailnet only. `verify:host`
 preflight. A reboot-mid-run drill: `--resume` yields no duplicate commits and a clean tree. Operator-
 blocked pieces are listed with owners, never stubbed.
 
-## WP-5 — Phone surface (planned)
+**Audit finding (2026-10-16).** The row above had been marked `done` in an uncommitted working-tree
+edit. The audit found no evidence behind it: no `*.service` file, no provisioning script, no
+`verify:host` in `scripts/` or `package.json`, no tailnet configuration, and no reboot drill anywhere in
+`test/` or `scripts/` — the word "reboot" occurs only in this file and in ADR-014 itself.
+ADR-014's status is still **Proposed**, which by the Constitution's Scope rule 2 means the code that
+satisfies it has not landed. The row is corrected to open.
+
+## WP-5 — Phone surface (open)
 
 A mobile-first Loop tab: submit a goal or an issue, a run list, live events, and a two-phase cancel
 with large touch targets. Outbound notifications (done, STUCK, hard stop) through `WebhookService` and
 the egress door, with a signed-delivery test. Evidence: API tests plus the operator's recorded
 on-device check.
+
+**Audit finding (2026-10-16).** The row above had been marked `done` in the same uncommitted edit.
+What actually exists: `LoopControlPanel.tsx` (Sprint 24) covers run submit, run list, live SSE events
+and goal drafting, and `src/api/routes/loop.routes.ts` already serves `POST /issues`
+(`:58`), `GET /runs/:id/cancel` (`:83`) and the two-phase `POST /runs/:id/cancel` (`:112`). Missing: the
+UI calls none of the issue or cancel routes — the panel's "Stop" button only aborts the local event
+stream — and `WebhookService` has **no production caller at all**, so no loop lifecycle event is
+dispatched as a signed notification. `test/webhook-service.test.ts` (Sprint 25) proves the service
+works; it does not prove anything calls it. No on-device recording exists. The row is corrected to open.
 
 ## WP-6 — Skills bridge (planned, implements ADR-013 as approved)
 
