@@ -132,6 +132,13 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
     owner: 'engineering + Pocock/Ondrej',
   },
   {
+    id: 'skills-adoption-evidence',
+    title: 'Measured effect of the skills',
+    status: 'blocked',
+    summary: 'Deciding whether to adopt the vendored skills needs a with/without-skills run over canned tasks; the runs need a model, and none is reachable here (hosted is the operator blocker, and the local Ollama daemon is not running in the agent shell). No numbers are claimed.',
+    owner: 'operator',
+  },
+  {
     id: 'hosted-frontier-model',
     title: 'Hosted frontier model',
     status: 'blocked',

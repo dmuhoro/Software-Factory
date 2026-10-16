@@ -151,6 +151,13 @@
     "owner": "engineering + Pocock/Ondrej"
   },
   {
+    "id": "skills-adoption-evidence",
+    "title": "Measured effect of the skills",
+    "status": "blocked",
+    "summary": "Deciding whether to adopt the vendored skills needs a with/without-skills run over canned tasks; the runs need a model, and none is reachable here (hosted is the operator blocker, and the local Ollama daemon is not running in the agent shell). No numbers are claimed.",
+    "owner": "operator"
+  },
+  {
     "id": "hosted-frontier-model",
     "title": "Hosted frontier model",
     "status": "blocked",
@@ -193,6 +200,7 @@
     <tr><td>Declarative skills registry</td><td><span class="ok">live</span></td><td><code>GET /api/factory/skills</code></td></tr>
     <tr><td>Vendored, hash-pinned advisory skills</td><td><span class="ok">live</span></td><td><code>npm test -- test/skills-bridge.test.ts</code></td></tr>
     <tr><td>Adopting external skill content</td><td><span class="no">blocked</span></td><td>blocked — owner: engineering + Pocock/Ondrej</td></tr>
+    <tr><td>Measured effect of the skills</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
     <tr><td>Hosted frontier model</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
     <tr><td>Live GitHub pull request</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
     <tr><td>Sandboxed execution in the shipped image</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>

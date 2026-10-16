@@ -68,7 +68,7 @@ delete, then host, then face, then skills, then measure.
 | WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | **repo-side done** — provisioning script, unit, `verify:host` and the bind policy landed; the host drill is blocked (owner: operator) |
 | WP-5 | Phone surface: mobile-first Loop tab (goal/issue submit, run list, live events, two-phase cancel) + signed outbound notifications via `WebhookService` | delivery test + the operator's recorded on-device check | **repo-side done** — UI calls the issue/cancel routes, `WebhookService` has a production caller and a signed-delivery test; on-device check blocked (owner: operator) |
 | WP-6 | Skills bridge: vendor a starter set with provenance + sha256, refuse unpinned/modified, wire by role, default OFF (implements ADR-013) | an unpinned skill refuses; a modified one refuses | **repo-side done** — the pin gate, fenced seam and default-OFF role wiring landed and are proven; adopting external Pocock/Ondrej content is blocked (owner: engineering + Pocock/Ondrej) |
-| WP-7 | Measurement: 12–15 canned tasks across ≥3 repos, with and without skills | a table of first-attempt rate, STUCK rate, wall time, cost per verified commit | pending |
+| WP-7 | Measurement: 12–15 canned tasks across ≥3 repos, with and without skills | a table of first-attempt rate, STUCK rate, wall time, cost per verified commit | **blocked — no model reachable** (hosted: owner operator; the local Ollama daemon is not running in the agent shell). No harness was built, because a 12–15-task scaffold that cannot be run would be capability theater, not evidence. |
 
 ### Scope limits (hard — do not implement in this sprint)
 
@@ -375,12 +375,25 @@ source needs its licence and source commit confirmed before its bytes may be rec
 ADR-013 §7 says adoption into the run path waits on WP-7 showing a measured effect. The bridge is proven
 against the in-repo skill; the external set is named, not stubbed.
 
-## WP-7 — Measurement (planned)
+## WP-7 — Measurement (blocked — no model reachable; named, not stubbed)
 
 A benchmark of 12–15 canned tasks across at least three repositories, run with and without skills.
 Recorded: first-attempt rate, STUCK rate, failure classes, wall time, and cost per verified commit,
 labelled by model. Skill adoption is decided from the data. If the hosted path is operator-blocked,
 run local, label the results, and state what was not measured.
+
+**Blocked, and not worked around.** Neither path is reachable from this environment: the hosted
+frontier model is the operator blocker (an allowlisted secret reference, a permitted host, and spend
+cap — `hosted-frontier-model`), and the local fallback the sprint expected is not running here — no
+Ollama process, nothing listening on `:11434`, and the binary is not executable from the agent shell.
+Probed 2026-10-16.
+
+**No harness was built.** A 12–15-task with/without-skills scaffold that nobody can execute would be
+capability theater: it would add a runner, a task set and a table, and prove nothing about skills. The
+measurement is one command once a model exists (`npm run factory:run` per task per condition, then
+read the durable run records). Land that when the operator provides model access; until then the
+ecosystem is coherent without it — the skills bridge ships **OFF**, and adopting the vendored skills
+is a blocked capability (`external-skill-adoption`) whose stated precondition is exactly this data.
 
 ## Parked (named, not worked)
 
