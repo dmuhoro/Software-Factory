@@ -45,7 +45,7 @@ Run the checks that cover what you touched:
     npm run lint          # tsc --noEmit
     npm test              # unit and source-invariant tests
     npm run verify:docs   # the documentation gates
-    npm run verify        # lint, test, build, and the Layer 4 harness
+    npm run verify        # lint, dead code (knip), test, build, and the Layer 4 harness
 
 Wider gates: `npm run verify:full`, `verify:loop`, `verify:deploy`, `verify:evidence`,
 `verify:fresh-clone`, and `verify:release`. The sandbox tests run inside `bwrap`; a host

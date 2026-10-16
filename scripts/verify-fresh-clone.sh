@@ -45,7 +45,10 @@ bwrap --unshare-user-try --unshare-pid --unshare-ipc --unshare-uts --unshare-cgr
 echo "typecheck"
 npx tsc --noEmit
 
+echo "dead code"
+npm run --silent knip
+
 echo "suite"
 npm test
 
-echo "PASS a fresh clone installs and verifies (typecheck + suite)"
+echo "PASS a fresh clone installs and verifies (typecheck + dead code + suite)"

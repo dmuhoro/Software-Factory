@@ -106,6 +106,13 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      # Dead code is a defect class that typechecking cannot see: an exported symbol nobody
+      # imports still typechecks perfectly. knip is the only gate here that notices it, and it
+      # runs before the tests because a dead-code sweep that breaks a test should fail where
+      # the sweep happened rather than nine steps later.
+      - name: Dead code
+        run: npm run knip
+
       - name: Unit and source-invariant tests
         run: npm test
 

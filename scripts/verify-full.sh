@@ -9,7 +9,7 @@
 # It loads `.env` so the live layers work without an undocumented `set -a && . ./.env` incantation.
 #
 # Layers, in order:
-#   1  static   lint, types, docs, secrets, workflow definitions, scope split, image references
+#   1  static   lint, types, dead code, docs, secrets, workflow definitions, scope split, image references
 #   2  tests    the unit and integration suite
 #   3  contract the storage contract, exercised on the local backend
 #   4  live     Appwrite: reachability, tenant round-trip, storage differential
@@ -88,6 +88,7 @@ printf '%sone command, in dependency order. live layer runs only if Appwrite is 
 
 printf '%sLayer 1 -- static%s\n' "$BOLD" "$RESET"
 run "typecheck"            "lint"
+run "dead code"            "knip"
 run "documentation"        "verify:docs"
 run "no committed secrets" "verify:secrets"
 run "workflow definitions" "verify:integrations"
