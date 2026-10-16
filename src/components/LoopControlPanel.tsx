@@ -11,7 +11,7 @@
  * `x-api-key` header this API requires.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Play, RefreshCw, Sparkles, SquareTerminal, X } from 'lucide-react';
+import { Play, RefreshCw, Sparkles, Square, SquareTerminal, X } from 'lucide-react';
 
 interface RunSummary {
   runId: string;
@@ -49,6 +49,16 @@ interface Posture {
   enforcementMode: string;
 }
 
+/** Phase one of a two-phase cancel, as the server reports it. */
+interface CancelEligibility {
+  eligible: boolean;
+  runId: string;
+  runStatus: string;
+  reason: string;
+  confirmationToken?: string;
+  effect?: string;
+}
+
 function headers(creds: Credentials, contentType = false): Record<string, string> {
   const out: Record<string, string> = { 'x-api-key': creds.apiKey, 'x-tenant-id': creds.tenantId };
   if (contentType) out['content-type'] = 'application/json';
@@ -77,6 +87,9 @@ export function LoopControlPanel(): React.ReactElement {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [posture, setPosture] = useState<Posture | null>(null);
+  const [issueSource, setIssueSource] = useState('');
+  const [pendingCancel, setPendingCancel] = useState<{ runId: string; effect: string; confirmationToken: string } | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const creds: Credentials = { tenantId, apiKey };
@@ -212,6 +225,72 @@ export function LoopControlPanel(): React.ReactElement {
     }
   }, [ready, tenantId, apiKey, repo, goal, providerId, model]);
 
+  const draftFromIssue = useCallback(async () => {
+    if (!ready) return;
+    setBusy(true);
+    setError('');
+    try {
+      const body = await callApi('/api/loop/issues', creds, {
+        method: 'POST',
+        body: JSON.stringify({ tenantId, repo, source: issueSource, providerId, model }),
+      });
+      setTaskDocument(body.taskDocument);
+      if (body.issue?.title) setGoal(body.issue.title);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }, [ready, tenantId, apiKey, repo, issueSource, providerId, model]);
+
+  /**
+   * Cancelling is two phases, because it is irreversible: work already committed stays
+   * committed and unrun units never run. Phase one asks the server what would happen and
+   * receives a single-use token; nothing stops. Phase two redeems the token. The dialog
+   * between them shows the server's own effect string, so the operator confirms what the
+   * server said, not what the button implied.
+   */
+  const requestCancel = useCallback(async (runId: string) => {
+    if (!ready) return;
+    setCancelling(runId);
+    setError('');
+    try {
+      // The eligibility read first, so a run that settled a second ago is reported as
+      // settled rather than producing a confusing token error.
+      const eligibility: CancelEligibility = await callApi(`/api/loop/runs/${runId}/cancel`, creds);
+      if (!eligibility.eligible) {
+        setError(eligibility.reason);
+        await refresh();
+        return;
+      }
+      const issued = await callApi(`/api/loop/runs/${runId}/cancel`, creds, { method: 'POST', body: JSON.stringify({ tenantId }) });
+      setPendingCancel({ runId, effect: issued.effect ?? 'Stops the run at its next unit boundary.', confirmationToken: issued.confirmationToken });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      await refresh();
+    } finally {
+      setCancelling(null);
+    }
+  }, [ready, tenantId, apiKey, refresh]);
+
+  const confirmCancel = useCallback(async () => {
+    if (!ready || !pendingCancel) return;
+    setBusy(true);
+    setError('');
+    try {
+      await callApi(`/api/loop/runs/${pendingCancel.runId}/cancel`, creds, {
+        method: 'POST',
+        body: JSON.stringify({ tenantId, confirmationToken: pendingCancel.confirmationToken }),
+      });
+      setPendingCancel(null);
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }, [ready, tenantId, apiKey, pendingCancel, refresh]);
+
   const field = 'w-full rounded-lg bg-slate-950/60 border border-slate-700/70 px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/50';
   const label = 'block text-[11px] font-medium uppercase tracking-wide text-slate-400 mb-1';
   const card = 'rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur-sm p-5 space-y-4';
@@ -281,6 +360,14 @@ export function LoopControlPanel(): React.ReactElement {
             <Sparkles className="w-3.5 h-3.5" /> Draft task document
           </button>
           <p className="text-[11px] text-slate-500">The draft is written into the workspace and filled into the field above. The loop refuses any draft its parser rejects.</p>
+          <div className="pt-3 border-t border-slate-800">
+            <label className={label}>Draft from a tracker issue (local file path or GitHub issue URL)</label>
+            <input className={field} value={issueSource} placeholder="https://github.com/owner/repo/issues/12" onChange={(event) => setIssueSource(event.target.value)} />
+            <button onClick={() => void draftFromIssue()} disabled={!ready || busy || !can('loop:submit') || !issueSource.trim() || !repo.trim() || !providerId.trim() || !model.trim()}
+              className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 px-4 py-2 text-xs font-medium text-white">
+              <Sparkles className="w-3.5 h-3.5" /> Draft from issue
+            </button>
+          </div>
         </div>
       </div>
 
@@ -303,6 +390,23 @@ export function LoopControlPanel(): React.ReactElement {
       )}
       {error && (
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-300">{error}</div>
+      )}
+
+      {pendingCancel && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-200 space-y-2">
+          <p className="font-semibold text-red-100">Stop run <span className="font-mono">{pendingCancel.runId}</span>?</p>
+          <p className="text-red-300">{pendingCancel.effect}</p>
+          <div className="flex gap-2">
+            <button onClick={() => void confirmCancel()} disabled={busy}
+              className="rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-40 px-4 py-2 text-xs font-medium text-white">
+              {busy ? 'Stopping…' : 'Yes, stop the run'}
+            </button>
+            <button onClick={() => setPendingCancel(null)} disabled={busy}
+              className="rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 px-4 py-2 text-xs font-medium text-slate-200">
+              Keep it running
+            </button>
+          </div>
+        </div>
       )}
 
       <div className={card}>
@@ -333,12 +437,18 @@ export function LoopControlPanel(): React.ReactElement {
                     <td className="py-2 pr-3">{run.units.done}/{run.units.total}{run.units.stuck ? ` (${run.units.stuck} stuck)` : ''}</td>
                     <td className="py-2 pr-3">{run.commits}</td>
                     <td className="py-2 pr-3 text-slate-400">{new Date(run.startedAt).toLocaleTimeString()}</td>
-                    <td className="py-2 text-right">
+                    <td className="py-2 text-right whitespace-nowrap">
                       <button onClick={() => (watched === run.runId ? stopWatch() : void watch(run.runId))} disabled={!ready}
-                        className="inline-flex items-center gap-1 rounded px-2 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40">
+                        className="inline-flex items-center gap-1 rounded px-2 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40">
                         {watched === run.runId ? <X className="w-3 h-3" /> : <SquareTerminal className="w-3 h-3" />}
-                        {watched === run.runId ? 'Stop' : 'Watch'}
+                        {watched === run.runId ? 'Hide' : 'Watch'}
                       </button>
+                      {run.active && (
+                        <button onClick={() => void requestCancel(run.runId)} disabled={!ready || cancelling === run.runId || !can('loop:cancel')}
+                          className="ml-2 inline-flex items-center gap-1 rounded px-2 py-1.5 bg-red-900/60 hover:bg-red-800 disabled:opacity-40 text-red-200">
+                          <Square className="w-3 h-3" /> {cancelling === run.runId ? 'Asking…' : 'Stop run'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -165,6 +165,22 @@ export interface DispatchResult {
 export class WebhookService {
   private static subscriptions = new Map<string, WebhookSubscription>();
   private static deliveries = new Map<string, WebhookDelivery>();
+  private static transportOverride: WebhookTransport | null = null;
+
+  /**
+   * Swaps the socket, and only the socket, for a test that needs to observe a delivery
+   * fired by production code elsewhere in this codebase.
+   *
+   * The seam exists so a real settlement path (the loop driver, below) can be proven to
+   * dispatch a signed event without the test opening a network socket. It swaps the
+   * transport and nothing else: the signature, the headers, the SSRF re-check and the
+   * subscription filter all still run, because they are the parts under test everywhere
+   * else. Passing `null` restores the real transport; `resetForTests` also restores it,
+   * so a leaked override cannot outlive the test that set it.
+   */
+  public static setTransportForTests(transport: WebhookTransport | null): void {
+    this.transportOverride = transport;
+  }
 
   /** Registers a destination, refusing any URL that is not a public https endpoint. */
   public static subscribe(options: { tenantId: string; url: string; events?: string[] }): WebhookSubscription {
@@ -201,6 +217,11 @@ export class WebhookService {
     if (found) found.active = false;
   }
 
+  /** The effective transport: an explicit argument wins, then a test override, then the socket. */
+  private static resolveTransport(explicit?: WebhookTransport): WebhookTransport {
+    return explicit ?? this.transportOverride ?? defaultTransport;
+  }
+
   /**
    * Signs and sends one event to every matching active destination.
    *
@@ -208,7 +229,8 @@ export class WebhookService {
    * its host was public can resolve to a private address later; checking once at
    * registration would be a check that was true once.
    */
-  public static async dispatch(tenantId: string, event: string, payload: Record<string, unknown>, transport = defaultTransport): Promise<DispatchResult[]> {
+  public static async dispatch(tenantId: string, event: string, payload: Record<string, unknown>, transport?: WebhookTransport): Promise<DispatchResult[]> {
+    const send = this.resolveTransport(transport);
     const results: DispatchResult[] = [];
     for (const subscription of this.subscriptions.values()) {
       if (!subscription.active || subscription.tenantId !== tenantId) continue;
@@ -235,7 +257,7 @@ export class WebhookService {
       this.deliveries.set(delivery.id, delivery);
 
       try {
-        const status = await transport(recheck.url, body, { signature, timestamp, event, deliveryId: delivery.id });
+        const status = await send(recheck.url, body, { signature, timestamp, event, deliveryId: delivery.id });
         delivery.responseStatus = status;
         results.push({ delivery, ok: status >= 200 && status < 300 });
       } catch (error) {
@@ -253,7 +275,8 @@ export class WebhookService {
    * events flow to it, without the test event being confused for a real one: it is
    * labelled `webhook.test` and carries nothing but the fact that it is a test.
    */
-  public static async testSend(subscriptionId: string, transport = defaultTransport): Promise<DispatchResult> {
+  public static async testSend(subscriptionId: string, transport?: WebhookTransport): Promise<DispatchResult> {
+    const send = this.resolveTransport(transport);
     const subscription = this.subscriptions.get(subscriptionId);
     if (!subscription) throw new Error(`No webhook subscription '${subscriptionId}'`);
     const recheck = validateWebhookUrl(subscription.url);
@@ -273,7 +296,7 @@ export class WebhookService {
     };
     this.deliveries.set(delivery.id, delivery);
     try {
-      const status = await transport(recheck.url, body, { signature, timestamp, event: 'webhook.test', deliveryId: delivery.id });
+      const status = await send(recheck.url, body, { signature, timestamp, event: 'webhook.test', deliveryId: delivery.id });
       delivery.responseStatus = status;
       return { delivery, ok: status >= 200 && status < 300 };
     } catch (error) {
@@ -290,7 +313,8 @@ export class WebhookService {
    * the timestamp window would reject a byte-identical re-send — which is the correct
    * behaviour for an attacker and the wrong one for an operator.
    */
-  public static async replay(deliveryId: string, transport = defaultTransport): Promise<DispatchResult> {
+  public static async replay(deliveryId: string, transport?: WebhookTransport): Promise<DispatchResult> {
+    const send = this.resolveTransport(transport);
     const recorded = this.deliveries.get(deliveryId);
     if (!recorded) throw new Error(`No webhook delivery '${deliveryId}'`);
     const subscription = this.subscriptions.get(recorded.subscriptionId);
@@ -303,7 +327,7 @@ export class WebhookService {
     const delivery: WebhookDelivery = { ...recorded, id: `whd_${randomBytes(8).toString('hex')}`, signature, attemptedAt: timestamp };
     this.deliveries.set(delivery.id, delivery);
     try {
-      const status = await transport(recheck.url, recorded.body, { signature, timestamp, event: recorded.event, deliveryId: delivery.id });
+      const status = await send(recheck.url, recorded.body, { signature, timestamp, event: recorded.event, deliveryId: delivery.id });
       delivery.responseStatus = status;
       return { delivery, ok: status >= 200 && status < 300 };
     } catch (error) {
@@ -324,6 +348,7 @@ export class WebhookService {
   public static resetForTests(): void {
     this.subscriptions.clear();
     this.deliveries.clear();
+    this.transportOverride = null;
   }
 }
 

@@ -27,8 +27,10 @@ import { randomUUID } from 'node:crypto';
 import { ConfirmationService, type IssuedConfirmation } from './confirmationService';
 import { ExecutionLoopService, type LoopRunOutcome } from './executionLoopService';
 import { TenantQueueService } from './tenantQueueService';
+import { WebhookService } from './webhookService';
 import type { LoopRunRecord, LoopStatus } from './loopTypes';
 import { resolveWithin, isGitRepository } from '../utils/pathGuard';
+import { TelemetryLogger } from '../utils/telemetryLogger';
 
 /** The operation a confirmation token is bound to. Kept out of the token's visible shape. */
 const CANCEL_OPERATION = 'loop.run.cancel';
@@ -115,6 +117,35 @@ export class LoopControlService {
       TenantQueueService.release(leaseId);
     };
     void runPromise.then(release, release);
+
+    // The settlement webhook fires here, on the same promise the run slot is released on, so it
+    // is the run's real settlement and not a re-derived second opinion. It is deliberately
+    // fire-and-forget: a receiver that is down must never turn a finished run into a failed one.
+    // `WebhookService.dispatch` already records the attempt (and its failure) per subscription,
+    // so nothing is lost by not awaiting it here — the operator can replay from the record.
+    void runPromise.then(
+      (outcome) => {
+        const record = outcome.record;
+        void WebhookService.dispatch(input.tenantId, 'loop.run.settled', {
+          runId: record.runId,
+          status: record.status,
+          repo: record.repo,
+          taskDocument: record.taskDocument,
+          startedAt: record.startedAt,
+          finishedAt: record.finishedAt,
+          units: { total: record.units.length, done: record.units.filter((u) => u.status === 'done').length, stuck: record.units.filter((u) => u.status === 'stuck').length, blocked: record.units.filter((u) => u.status === 'blocked').length },
+          commits: record.commits.length,
+          refusedGates: record.gates.filter((g) => !g.passed).length,
+          ...(record.hardStop ? { hardStop: record.hardStop } : {}),
+          ...(record.refusal ? { refusal: record.refusal } : {}),
+        }).catch((error) => {
+          TelemetryLogger.warn('loop.run.settled webhook dispatch failed', { metadata: { runId: record.runId, error: error instanceof Error ? error.message : String(error) } });
+        });
+      },
+      (error) => {
+        TelemetryLogger.warn('loop.run.settled webhook skipped: run rejected', { metadata: { runId, error: error instanceof Error ? error.message : String(error) } });
+      },
+    );
 
     return { runId, repo, taskDocument, status: 'running' };
   }
