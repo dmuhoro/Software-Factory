@@ -1,6 +1,6 @@
 # Sprint 32 — The Documents Match the Code
 
-**Status:** WP-0 governance + Task 1 (known-limits gate) landed · **Opened:** 2026-10-16 · **Closed:** —
+**Status:** WP-0 governance, WP-1 (known-limits gate) and WP-2 (doc-vs-code sweep) landed · **Opened:** 2026-10-16 · **Closed:** —
 
 **Thesis.** Sprint 31 made the product reproducible and told the truth about the *capability* surface:
 the capabilities table is generated from the manifest, so it cannot claim a capability the code lacks.
@@ -43,7 +43,7 @@ image has never been built and run" — stale counts and the same resolved image
 |---|---|---|---|
 | **WP-0** | Governance: this sprint file | `npm run verify:docs` green; no production code | **done** |
 | **WP-1** | Task 1 — reconcile README "Known limits" and add a gate that fails when a limit contradicts a resolved non-conformance | gate observed red on the old text (`uncited=5 NC-2-not-named`) and red on a planted `nc: NC-4` (`NC-4-claimed-open`), green after | **done** |
-| **WP-2** | Task 2 — doc-vs-code sweep: every remaining stale figure or claim in a live doc corrected against the code, or listed as a lead | each corrected figure reproduced by a named command | **pending** |
+| **WP-2** | Task 2 — doc-vs-code sweep: every remaining stale figure or claim in a live doc corrected against the code, or listed as a lead | each corrected figure reproduced by a named command | **done** |
 | **WP-3** | Task 3 — `docs/adr/ADR-015` (Proposed): NC-2's shared-store path — options, tradeoffs, cost, migration, recommendation; plus a Wave 4 decision memo | ADR-015 Proposed; a memo, not an implementation | **pending** |
 | **WP-4** | Task 4 — decide whether the WP-7 benchmark harness is net-positive without a model; build it only if it is, else record why not | a named judgement with its reasoning | **pending** |
 | **WP-5** | Task 5 — release: bump the five places + k8s, CHANGELOG, tag, push | `verify-release.sh` 13/13; `main == HEAD == tag^{commit}` | **pending** |
@@ -117,3 +117,32 @@ prose and the constitution's table together.
 
 **Evidence:** `npm run verify:docs` **7/7** (was 6/6; the new section is the seventh). Negative results
 recorded above.
+
+## WP-2 — Doc-vs-code sweep (Task 2, done)
+
+`docs/OPERATIONS.md` carried the same rot as the README, in other rows. Each corrected figure is
+reproducible by a command named in its own cell.
+
+| Where | Was | Is (reproduced by) |
+|---|---|---|
+| `OPERATIONS.md` §1 | "97 API routes" | **117** (`grep -cE '\b(router\|apiRouter\|v1)\.(get\|post\|put\|patch\|delete)\(' src/api/routes/*.ts`) |
+| `OPERATIONS.md` §1 | "137 tests across 20 files, six defence layers" | **502 tests across 73 files**, plus the L1–L4 harnesses (`npm test`; `ls test/*.test.ts \| wc -l`; `npm run verify:layer1..4`) |
+| `OPERATIONS.md` §3 Testing | "176 unit/integration … 7 end-to-end loop scenarios … a live run against a real local model (qwen2.5-coder:3b)" | **502 unit/integration across 73 files**, including the end-to-end loop suite (real git repos, stub model port). The unnumbered model-run claim was **dropped**: no command reproduces a historical run, and an unreproducible claim is not evidence |
+| `OPERATIONS.md` §3 Deployment | "image never published … no published image and no digest pin" | Both images are **built and run as non-root** by `npm run verify:image`; never pushed to a registry and never deployed end to end; the manifest pins a **tag, not a digest** (`software_factory/k8s/deployment.yaml:71`) |
+| `OPERATIONS.md` §3 Appwrite live | "key currently rejected (401)" | Scope split gated by `npm run verify:scopes`; probe is `npm run appwrite:check`; the live key state is an **operator fact**, not something the repo can assert |
+| `OPERATIONS.md` §6 | "a production image has never been built and run. None has." | False: built and run by `npm run verify:image`. Reworded to the true residual — never **published or deployed** |
+| `CONSTITUTION.md` NC-5 | "verify-k8s.py (57 checks)" | **58 checks** (`python3 software_factory/scripts/verify-k8s.py` → `58/58`) |
+
+**Leads (named, not corrected — no command contradicts them, or they are citation drift):**
+
+- `README.md` Verifying block claims `verify:layer1` **34**, `verify:layer2` **26**, `verify:layer3`
+  **24** checks, and `cargo test` **15 tests**. Not reproduced in this sweep; a lead.
+- Line-number citations drift by 1–2 lines: `OPERATIONS.md` cites `factoryJobService.ts:87` (the write
+  loop is `:89`) and `telemetryStore.ts:1` (line 1 is a doc comment). Citation precision, not a false
+  claim.
+- `README.md` two-runtimes table says the registry "is in-memory": true, and now correctly qualified —
+  it is rebuilt from the durable ledger on boot (NC-1, see WP-1).
+
+**Evidence:** `npm run verify:docs` 7/7; `python3 software_factory/scripts/verify-k8s.py` 58/58;
+`grep`/`ls` figures above reproducible.
+

@@ -11,6 +11,11 @@ All notable architectural and code modifications are documented here.
   non-conformance is named. Shown red on the old text and red on a planted `nc: NC-4`, green after.
 
 ### Fixed
+- **`docs/OPERATIONS.md` figures reconciled with the code.** "97 API routes" → 117; "137 tests across
+  20 files" and "176 unit/integration" → 502 tests across 73 files; the Deployment row now states that
+  both images are built and run by `npm run verify:image` and pins a tag not a digest; the Appwrite row
+  no longer asserts a transient key state; §6 no longer says a production image has never been built and
+  run. `docs/CONSTITUTION.md` NC-5's `verify-k8s.py` count corrected 57 → 58.
 - **`README.md` "Known limits" no longer describes a system four waves old.** Four of its five claims were
   false, each falsified by a gate that already existed: restart durability (NC-1 resolved — the registry
   rehydrates from the ledger before the server listens), the image (NC-4 resolved — `npm run verify:image`),

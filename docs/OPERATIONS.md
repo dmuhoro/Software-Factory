@@ -16,7 +16,7 @@ It is genuinely built:
 
 | Capability | Evidence |
 |---|---|
-| 97 API routes across runs, approvals, releases, niches, quality | `src/api/routes/` |
+| 117 API routes across runs, approvals, releases, niches, quality | `src/api/routes/` |
 | Multi-tenant durable storage with a real read path | `src/services/telemetryStore.ts:1` |
 | One explicit storage backend, no silent fallback | `ADR-009` |
 | A model-backed agent runner with leases, retries and worktrees | `src/services/agentRunnerService.ts:19` |
@@ -24,7 +24,7 @@ It is genuinely built:
 | Niche adapters carrying real compliance guardrails | `src/configurations/factory.config.ts:39` |
 | Path-traversal guards on all file writes | `src/services/factoryJobService.ts:87` |
 | Isolated execution boundary: verification commands run in bwrap, never bare | `ADR-010`; `test/loop-sandbox.test.ts`, `test/wp7-execution-boundary.test.ts` |
-| 137 tests across 20 files, six defence layers | `test/` |
+| 502 tests across 73 files, plus four harness layers (L1–L4) driven against the built server | `test/`; `npm test`; `npm run verify:layer1..4` |
 
 What is real, in one line: **the governance, tenancy, evidence and release machinery is real and
 tested. The part that makes it a factory rather than a control plane is not.**
@@ -94,12 +94,12 @@ which is how the system learns and how you see why. Fail closed, and fail loudly
 |---|---|---|
 | **Agent execution** | The unattended loop applies: guarded file writes, verification commands, one commit per unit (`npm run factory:run`). The inbox/agent-run API still proposes only. | **A hardened executor** for untrusted code (container/microVM). Everything else is downstream of this. |
 | **Storage** | Local + Appwrite, one backend, tested | `NC-2` multi-replica writes unresolved. Appwrite adapter needs a consistency ADR before it carries money. |
-| **Appwrite live** | Probe works; key currently rejected (401) | **Blocked on one console action:** grant scopes to the key. Nothing in code. |
+| **Appwrite live** | The scope split is gated (`npm run verify:scopes`); the live probe is `npm run appwrite:check` | **Blocked on one console action:** grant the key its scopes. Nothing in code. Whether the key is currently accepted is an operator fact, not something this repository can assert. |
 | **Auth** | Tenant IDs carried through services | No real identity provider. Anyone with a tenant ID has that tenant's access. **This blocks any external user.** |
 | **Observability** | `/metrics` Prometheus series exist | No dashboards, no alerts, no on-call. You would not know it broke. |
-| **Deployment** | GHCR workflow written, image never published | Never run end to end. Kubernetes manifest has no published image and no digest pin. |
+| **Deployment** | Both images are built and run as non-root by `npm run verify:image`; the publish workflow is written | Never pushed to a registry and never deployed end to end. The manifest pins a tag, not a digest (`software_factory/k8s/deployment.yaml:71`). |
 | **Dependency supply chain** | The lockfile is committed; the skills lock gates vendored skill content (ADR-013: an unpinned or modified skill is refused) | No SLSA/provenance for npm dependencies; the package registry remains the trust root for installed packages. |
-| **Testing** | 176 unit/integration, including 7 end-to-end loop scenarios that drive real git repositories and a stub model port, plus a live run against a real local model (qwen2.5-coder:3b) that produced two verified commits | No end-to-end coverage of the inbox/agent-run API, and no fault-injection of the loop against a hostile target repository. |
+| **Testing** | 502 unit/integration tests across 73 files, including an end-to-end loop suite that drives real git repositories and a stub model port | No end-to-end coverage of the inbox/agent-run API, and no fault-injection of the loop against a hostile target repository. |
 | **Niches** | 3 operational, rest refuse honestly | Adding niches is gated on ADRs, correctly. `CustomB2B` should stay refusing. |
 | **Recovery** | Rollback with health check | No backup/restore drill, no disaster recovery runbook, no RPO/RTO target. |
 
@@ -120,7 +120,7 @@ Not a workspace. Concretely, four capabilities that follow from the applier exis
 
 1. **It becomes the thing that actually ships.** You describe an outcome; it opens a worktree,
    writes the code, runs the full verification chain, and brings you a diff with evidence
-   attached. The 97 routes, the quality gates and the approvals stop being infrastructure around
+   attached. The 117 routes, the quality gates and the approvals stop being infrastructure around
    a manual step and become infrastructure around *an autonomous step*.
 
 2. **It becomes a durable record of engineering.** Every run, every applied edit, every
@@ -179,7 +179,9 @@ Dependency-ordered, because the earlier items make the later ones cheap.
 
 - That the agent builds working software yet. It does not.
 - That the platform is safe for external users. There is no identity provider.
-- That a production image has ever been built and run. None has.
+- That a production image has ever been **published or deployed end to end**. Both images are built
+  and run as non-root by `npm run verify:image`, but nothing has been pushed to a registry and the
+  manifest pins a tag rather than a digest (`software_factory/k8s/deployment.yaml:71`).
 - That three niches are implemented as compliance systems. They are adapters with guardrails
   declared and enforced in code paths; the compliance regimes named have not been independently
   certified by anyone.
