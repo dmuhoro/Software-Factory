@@ -133,7 +133,8 @@ non-conformance table in `docs/CONSTITUTION.md`.
 - **The TypeScript service runs as exactly one replica.** A single-writer JSON ledger and an
   in-memory tenant registry mean a second process against the same data directory would
   corrupt the ledger, so it exits 75 rather than starting. Horizontal scale needs a shared
-  store and is the one open non-conformance, `NC-2` (`docs/CONSTITUTION.md`). A restart is
+  store and is the one open non-conformance, `NC-2` (`docs/CONSTITUTION.md`; `docs/adr/ADR-015`
+  records the shared-store decision, Proposed). A restart is
   *not* a limit: the registry is rebuilt from the durable ledger on boot, and provisioned and
   scoped credentials survive it (`npm test -- test/l4-durable-tenancy.test.ts`). <!-- nc: NC-2 -->
 - **Plaintext tenant credentials are held in process memory** for the process lifetime and are

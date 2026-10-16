@@ -160,9 +160,10 @@ Carried forward so they are not silently dropped between sprints.
   value is not yet established. It also has the weakest case: the two paused projects are
   both blocked on owner-held credentials, not on missing adapter capability, and a payments
   adapter without a payments rail is a well-typed placeholder. Decide it explicitly, on the
-  evidence, rather than by momentum.
+  evidence, rather than by momentum. The memo is `Software-Factory/docs/WAVE-4-DECISION-MEMO.md`.
 - **Horizontal scalability (NC-2).** Requires a shared store and is a platform decision with
-  a real cost, not a task to absorb quietly.
+  a real cost, not a task to absorb quietly. `Software-Factory/docs/adr/ADR-015` (Proposed)
+  records the options, the cost and the recommendation; it is the operator's to accept.
 - **Canonical package manager (NC-3).** Two lockfiles until the CI-verified one is declared
   canonical and the other is removed.
 - **Docker build verification (NC-4)** and **egress restriction (NC-5)**.

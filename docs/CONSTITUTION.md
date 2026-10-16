@@ -112,7 +112,7 @@ Open entries:
 
 | ID | Article | Non-conformance | Recorded | Resolves in |
 |---|---|---|---|---|
-| NC-2 | III.3 | The TypeScript service is not horizontally scalable: a single-writer JSON ledger and an in-memory registry. It MUST run exactly one replica. | 2026-09-29 | Not scheduled — requires a shared store, tracked as a platform decision |
+| NC-2 | III.3 | The TypeScript service is not horizontally scalable: a single-writer JSON ledger and an in-memory registry. It MUST run exactly one replica. | 2026-09-29 | `ADR-015` (Proposed) records the shared-store decision and its cost; not scheduled until the operator accepts it |
 
 ### Resolved
 

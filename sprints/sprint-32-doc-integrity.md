@@ -1,6 +1,6 @@
 # Sprint 32 — The Documents Match the Code
 
-**Status:** WP-0 governance, WP-1 (known-limits gate) and WP-2 (doc-vs-code sweep) landed · **Opened:** 2026-10-16 · **Closed:** —
+**Status:** WP-0 governance, WP-1 (known-limits gate), WP-2 (doc-vs-code sweep) and WP-3 (NC-2 ADR + Wave 4 memo) landed · **Opened:** 2026-10-16 · **Closed:** —
 
 **Thesis.** Sprint 31 made the product reproducible and told the truth about the *capability* surface:
 the capabilities table is generated from the manifest, so it cannot claim a capability the code lacks.
@@ -44,7 +44,7 @@ image has never been built and run" — stale counts and the same resolved image
 | **WP-0** | Governance: this sprint file | `npm run verify:docs` green; no production code | **done** |
 | **WP-1** | Task 1 — reconcile README "Known limits" and add a gate that fails when a limit contradicts a resolved non-conformance | gate observed red on the old text (`uncited=5 NC-2-not-named`) and red on a planted `nc: NC-4` (`NC-4-claimed-open`), green after | **done** |
 | **WP-2** | Task 2 — doc-vs-code sweep: every remaining stale figure or claim in a live doc corrected against the code, or listed as a lead | each corrected figure reproduced by a named command | **done** |
-| **WP-3** | Task 3 — `docs/adr/ADR-015` (Proposed): NC-2's shared-store path — options, tradeoffs, cost, migration, recommendation; plus a Wave 4 decision memo | ADR-015 Proposed; a memo, not an implementation | **pending** |
+| **WP-3** | Task 3 — `docs/adr/ADR-015` (Proposed): NC-2's shared-store path — options, tradeoffs, cost, migration, recommendation; plus a Wave 4 decision memo | ADR-015 Proposed; a memo, not an implementation | **done** |
 | **WP-4** | Task 4 — decide whether the WP-7 benchmark harness is net-positive without a model; build it only if it is, else record why not | a named judgement with its reasoning | **pending** |
 | **WP-5** | Task 5 — release: bump the five places + k8s, CHANGELOG, tag, push | `verify-release.sh` 13/13; `main == HEAD == tag^{commit}` | **pending** |
 
@@ -145,4 +145,30 @@ reproducible by a command named in its own cell.
 
 **Evidence:** `npm run verify:docs` 7/7; `python3 software_factory/scripts/verify-k8s.py` 58/58;
 `grep`/`ls` figures above reproducible.
+
+## WP-3 — NC-2 decision and the Wave 4 memo (Task 3, done)
+
+Two decisions the code cannot make for itself are now written down as reviewable records, and
+neither is implemented.
+
+- **`docs/adr/ADR-015` (Proposed): horizontal scale requires a shared store, selected explicitly.**
+  It states the two independent blockers (the single-writer JSON ledger and the in-memory registry),
+  the guarantee any shared store must preserve (storage-boundary idempotency per Art. VI.4, atomic
+  multi-record writes, fail-closed readiness per Art. III.4), four options with cost and risk
+  (Postgres adapter — recommended; promote Appwrite, which reopens ADR-009 and needs evidence the
+  cross-row-transaction gap closed; read-only replicas, which does not satisfy Art. III.3; a Redis
+  lock, rejected), a migration outline (backfill, then cut over through `STORAGE_BACKEND`, no dual
+  writes), and how it would be enforced (a `verify:storage` differential; a store-level `409` under
+  concurrent writers). **Status Proposed; NC-2 stays open and the one-replica rule is unchanged.**
+- **`docs/WAVE-4-DECISION-MEMO.md`: payments and a generic `CustomB2B` adapter.** Held, with the
+  reason (weakest case; the paused projects are credential-blocked, not capability-blocked; a payments
+  adapter without a rail is a placeholder), the three ways to decide (accept / reject / defer with a
+  named trigger), and the preconditions (a rail; integer minor units per Art. VI.3; storage-boundary
+  idempotency; ADR-015 accepted first; a niche ADR before `CustomB2B` stops refusing).
+
+Both are linked from the canonical homes: the README NC-2 bullet, the constitution's NC-2 row, and
+`docs/portfolio/SOP.md`'s standing decisions.
+
+**Evidence:** `npm run verify:docs` 7/7; ADR-015 is Proposed, so no code claims to satisfy it.
+
 

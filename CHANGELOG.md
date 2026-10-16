@@ -5,6 +5,13 @@ All notable architectural and code modifications are documented here.
 ## [Unreleased]
 
 ### Added
+- **`docs/adr/ADR-015` (Proposed): NC-2's shared-store decision.** Records the two blockers (single-writer
+  ledger, in-memory registry), the guarantee a shared store must preserve (storage-boundary idempotency,
+  atomic multi-record writes, fail-closed readiness), four options with cost and risk (a Postgres adapter
+  — recommended), a migration outline, and the recommendation. **Proposed**: NC-2 stays open and the
+  one-replica rule is unchanged until an adapter lands.
+- **`docs/WAVE-4-DECISION-MEMO.md`: payments and a generic `CustomB2B` adapter — held.** The reason it is
+  held, the three ways to decide, and the preconditions. Builds nothing.
 - **A gate that reads the README's known limits against the non-conformance table.** `scripts/verify-docs.sh`
   now asserts that every limit bullet cites its record (`<!-- nc: NC-x -->`, `<!-- residual: NC-x -->`, or
   `<!-- owner: name -->`), that no **resolved** non-conformance is presented as open, and that every open
