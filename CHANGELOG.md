@@ -4,6 +4,19 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+### Added
+- **A gate that reads the README's known limits against the non-conformance table.** `scripts/verify-docs.sh`
+  now asserts that every limit bullet cites its record (`<!-- nc: NC-x -->`, `<!-- residual: NC-x -->`, or
+  `<!-- owner: name -->`), that no **resolved** non-conformance is presented as open, and that every open
+  non-conformance is named. Shown red on the old text and red on a planted `nc: NC-4`, green after.
+
+### Fixed
+- **`README.md` "Known limits" no longer describes a system four waves old.** Four of its five claims were
+  false, each falsified by a gate that already existed: restart durability (NC-1 resolved — the registry
+  rehydrates from the ledger before the server listens), the image (NC-4 resolved — `npm run verify:image`),
+  the NetworkPolicy egress wildcard (NC-5 resolved — `npm run render:egress`), and the Rust metrics endpoint
+  (NC-9 resolved). Only NC-2 (horizontal scale) remains, now stated as such.
+
 ## [4.15.5] - 2026-10-16 — WP-7 is named, not stubbed
 
 No code change. The capability surface changed: Sprint 31's WP-7 measurement is recorded as blocked

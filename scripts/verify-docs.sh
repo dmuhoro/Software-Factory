@@ -123,6 +123,53 @@ else
   fi
 fi
 
+section "The README's known limits agree with the constitution"
+# The recurring lapse has a second site. NC-1, NC-4, NC-5 and NC-9 were each resolved by code
+# and each was still described as an open limit under README.md "## Known limits" -- the section
+# a first-time reader trusts most. The constitution gate above cannot see README; this one can.
+# Every limit bullet carries a machine-readable provenance marker, and this gate asserts each
+# marker agrees with the constitution's table:
+#   <!-- nc: NC-x -->        this bullet names an OPEN non-conformance
+#   <!-- residual: NC-x -->  this bullet is what remains after NC-x was RESOLVED
+#   <!-- owner: <name> -->   a limit that is not (yet) a recorded non-conformance
+# A resolved non-conformance may be named as a residual; it may never be presented as open.
+README=README.md
+if [ ! -f "$README" ]; then
+  fail "$README is missing; the known-limits record is required"
+elif ! grep -qE '^## Known limits[[:space:]]*$' "$README"; then
+  fail "$README has no '## Known limits' section; the limits are not recorded"
+else
+  LIMITS="$(awk '/^## Known limits[[:space:]]*$/{f=1;next} f&&/^## /{exit} f' "$README")"
+  OPEN_IDS="$(awk '/^## Known non-conformances/,/^### Resolved/' "$CONSTITUTION" | grep -E '^\|\s*NC-[0-9]+\s*\|' | grep -oE 'NC-[0-9]+' | sort -u)"
+  RESOLVED_IDS="$(awk '/^### Resolved/,0' "$CONSTITUTION" | grep -E '^\|\s*NC-[0-9]+\s*\|' | grep -oE 'NC-[0-9]+' | sort -u)"
+  NC_MARKERS="$(printf '%s\n' "$LIMITS" | grep -oE '<!-- nc: NC-[0-9]+ -->' | grep -oE 'NC-[0-9]+' | sort -u)"
+  RES_MARKERS="$(printf '%s\n' "$LIMITS" | grep -oE '<!-- residual: NC-[0-9]+ -->' | grep -oE 'NC-[0-9]+' | sort -u)"
+  BULLETS="$(printf '%s\n' "$LIMITS" | grep -cE '^- ')"
+  MARKERS="$(printf '%s\n' "$LIMITS" | grep -cE '<!-- (nc|residual|owner): ')"
+  PROBLEMS=""
+  # Every bullet states its provenance; an uncited claim is refused.
+  if [ "$BULLETS" -ne "$MARKERS" ]; then
+    PROBLEMS="$PROBLEMS uncited=$((BULLETS - MARKERS))"
+  fi
+  # A resolved non-conformance must never be presented as an open limit.
+  for id in $NC_MARKERS; do
+    printf '%s\n' "$RESOLVED_IDS" | grep -qx "$id" && PROBLEMS="$PROBLEMS $id-claimed-open"
+  done
+  # A residue belongs to a resolved non-conformance, never an open one.
+  for id in $RES_MARKERS; do
+    printf '%s\n' "$OPEN_IDS" | grep -qx "$id" && PROBLEMS="$PROBLEMS $id-mislabeled-residual"
+  done
+  # An open non-conformance must be named; dropping one silently is a defect.
+  for id in $OPEN_IDS; do
+    printf '%s\n' "$NC_MARKERS" | grep -qx "$id" || PROBLEMS="$PROBLEMS $id-not-named"
+  done
+  if [ -z "$PROBLEMS" ]; then
+    pass "every known limit cites its record; no resolved NC is claimed open; every open NC is named"
+  else
+    fail "README known limits and the constitution disagree:$PROBLEMS"
+  fi
+fi
+
 printf '\n'
 if [ "$FAIL" -eq 0 ]; then
   printf '\033[32m════ DOCS GATE: %d passed, 0 failed ════\033[0m\n' "$PASS"
