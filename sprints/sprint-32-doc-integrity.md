@@ -1,6 +1,6 @@
 # Sprint 32 — The Documents Match the Code
 
-**Status:** WP-0 governance, WP-1 (known-limits gate), WP-2 (doc-vs-code sweep) and WP-3 (NC-2 ADR + Wave 4 memo) landed · **Opened:** 2026-10-16 · **Closed:** —
+**Status:** WP-0 governance, WP-1 (known-limits gate), WP-2 (doc-vs-code sweep), WP-3 (NC-2 ADR + Wave 4 memo) and WP-4 (WP-7 harness: decided, not built) landed · **Opened:** 2026-10-16 · **Closed:** —
 
 **Thesis.** Sprint 31 made the product reproducible and told the truth about the *capability* surface:
 the capabilities table is generated from the manifest, so it cannot claim a capability the code lacks.
@@ -45,7 +45,7 @@ image has never been built and run" — stale counts and the same resolved image
 | **WP-1** | Task 1 — reconcile README "Known limits" and add a gate that fails when a limit contradicts a resolved non-conformance | gate observed red on the old text (`uncited=5 NC-2-not-named`) and red on a planted `nc: NC-4` (`NC-4-claimed-open`), green after | **done** |
 | **WP-2** | Task 2 — doc-vs-code sweep: every remaining stale figure or claim in a live doc corrected against the code, or listed as a lead | each corrected figure reproduced by a named command | **done** |
 | **WP-3** | Task 3 — `docs/adr/ADR-015` (Proposed): NC-2's shared-store path — options, tradeoffs, cost, migration, recommendation; plus a Wave 4 decision memo | ADR-015 Proposed; a memo, not an implementation | **done** |
-| **WP-4** | Task 4 — decide whether the WP-7 benchmark harness is net-positive without a model; build it only if it is, else record why not | a named judgement with its reasoning | **pending** |
+| **WP-4** | Task 4 — decide whether the WP-7 benchmark harness is net-positive without a model; build it only if it is, else record why not | a named judgement with its reasoning | **done — decided not to build** |
 | **WP-5** | Task 5 — release: bump the five places + k8s, CHANGELOG, tag, push | `verify-release.sh` 13/13; `main == HEAD == tag^{commit}` | **pending** |
 
 ### Scope limits (hard)
@@ -170,5 +170,56 @@ Both are linked from the canonical homes: the README NC-2 bullet, the constituti
 `docs/portfolio/SOP.md`'s standing decisions.
 
 **Evidence:** `npm run verify:docs` 7/7; ADR-015 is Proposed, so no code claims to satisfy it.
+
+## WP-4 — WP-7 harness judged (Task 4, decided: not built)
+
+**Decision: the benchmark harness is *not* net-positive to build without a model, and it is not
+built.** The judgement, the existing asset, the trigger, and the exact procedure when unblocked:
+
+**What already exists.** `tasks/` holds five grounded task documents — four Daftari i18n fixes and
+one Software Factory provider task — each with the real target, the real verification command and
+milestones. The Sprint 31 spec wanted 12–15 across ≥3 repositories; the durable, reusable part of
+WP-7 (the task set) is therefore partially built and committed. What does **not** exist is a runner,
+a reporter, or any measurement.
+
+**Why no harness is built now.** Four reasons, each sufficient:
+
+1. **The only question WP-7 exists to answer — does an advisory skill raise the first-attempt rate? —
+   needs a real model.** No model is reachable (hosted: owner operator; local Ollama not running).
+   Unchanged evidence gives the same decision Sprint 31 recorded; rebuilding the same WP without new
+   information would be churn.
+2. **A stub-model pass measures the stub.** The stub port returns a canned file manifest; a table of
+   its numbers is a labelled simulation of a simulation, and Article V.1's rule — a number that is
+   not known is absent, not plausible — is best honoured by producing no number at all.
+3. **A fixture-tested reporter is false confidence.** A reporter is only trustworthy against the
+   *real* durable run-record shape. Testing it on a hand-built fixture while no real run has ever
+   produced a record is the "unit test of a standalone service does not prove wiring" trap
+   (Constitution Article VII; Execution-Safety I.4). Done honestly it needs a real dry run; done
+   cheaply it is a tool that has never seen a real record.
+4. **The plumbing a dry pass would exercise is already proven.** The loop's own tests
+   (`test/loop-execution.test.ts`, `test/loop-die-resume.test.ts`, and the other `loop-*` suites)
+   drive a task document to verified commits through a stub model port. A second stub pass adds no
+   proof.
+
+**Trigger (owner: operator).** Model access — an allowlisted hosted frontier secret with a spend cap,
+or a running local Ollama with a resolvable model — moves this WP from decided to executable.
+
+**The exact procedure when unblocked** (no new harness required; the loop already is the runner):
+
+```
+# per task (tasks/*.md), per condition (skills OFF then ON), per target repo
+npm run factory:run -- --repo <target> --task tasks/<task>.md
+# then read the durable records the run wrote:
+#   .data/loop-runs/<runId>/checkpoint.json  (per-unit status, attempts, wall time)
+#   the commit each unit produced            (cost per verified commit)
+```
+
+The table columns are `first-attempt rate`, `STUCK rate`, `failure classes`, `wall time`, and `cost
+per verified commit`, labelled by model. Extending the task set toward 12–15 across a third
+repository is input work that should be done against each target's real state, not fabricated here.
+
+**Status: decided, not stubbed.** The blocked capability `skills-adoption-evidence` (owner: operator)
+is unchanged and remains the public record.
+
 
 
