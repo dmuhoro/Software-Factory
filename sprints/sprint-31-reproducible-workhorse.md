@@ -1,6 +1,6 @@
 # Sprint 31 — The Reproducible Workhorse
 
-**Status:** WP-0 governance (v4.15.x), WP-1 reproducibility (v4.15.0), WP-2 truthful docs (v4.15.1) and WP-3 dead-code gate (v4.15.2 — shipped red, corrected v4.15.3) landed; WP-4, WP-5, WP-6, WP-7 open · **Opened:** 2026-10-15 · **Closed:** —
+**Status:** WP-0 governance (v4.15.x), WP-1 reproducibility (v4.15.0), WP-2 truthful docs (v4.15.1), WP-3 dead-code gate (v4.15.2 — shipped red, corrected v4.15.3), WP-4 executor-host artifacts and WP-5 phone surface landed; WP-6, WP-7 open · **Opened:** 2026-10-15 · **Closed:** —
 
 **Thesis.** Sprint 30 gave the factory a face and a floor: a declarative capability manifest, a
 skills registry, a fleet read surface, a fail-closed deploy preflight, and an evidence page rendered
@@ -65,8 +65,8 @@ delete, then host, then face, then skills, then measure.
 | WP-1 | Reproducibility: a fresh clone runs green anywhere (hermetic tests, a loud sandbox preflight, `bubblewrap` in CI, a tracked contributor `AGENTS.md`) | `verify:fresh-clone` red on the pre-fix tree, green after | **done** |
 | WP-2 | Truthful docs: README counts and the capability list generated from the manifest; stale claims removed; the Manus audit archived | no README figure that a command does not reproduce | **done** |
 | WP-3 | Dead-code gate: unreferenced exports deleted or wired per finding | `npm run knip` → exit 0, 0 findings, 0 hints, enforced in `verify`, `verify:full`, the fresh-clone gate and CI | **done — v4.15.3** (v4.15.2 shipped the claim without the config) |
-| WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | **open** — repo-side artifacts only; the host drill is blocked (owner: operator) |
-| WP-5 | Phone surface: mobile-first Loop tab (goal/issue submit, run list, live events, two-phase cancel) + signed outbound notifications via `WebhookService` | delivery test + the operator's recorded on-device check | **open** — API routes exist, UI and webhook wiring do not; on-device check blocked (owner: operator) |
+| WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | **repo-side done** — provisioning script, unit, `verify:host` and the bind policy landed; the host drill is blocked (owner: operator) |
+| WP-5 | Phone surface: mobile-first Loop tab (goal/issue submit, run list, live events, two-phase cancel) + signed outbound notifications via `WebhookService` | delivery test + the operator's recorded on-device check | **repo-side done** — UI calls the issue/cancel routes, `WebhookService` has a production caller and a signed-delivery test; on-device check blocked (owner: operator) |
 | WP-6 | Skills bridge: vendor a starter set with provenance + sha256, refuse unpinned/modified, wire by role, default OFF (implements ADR-013) | an unpinned skill refuses; a modified one refuses | pending |
 | WP-7 | Measurement: 12–15 canned tasks across ≥3 repos, with and without skills | a table of first-attempt rate, STUCK rate, wall time, cost per verified commit | pending |
 
@@ -260,7 +260,7 @@ rather than rewritten:
 `--no-exit-code`, because a gate that masks its own exit code is not a gate); `npm test` **472/472**;
 `npx tsc --noEmit` clean; `verify:docs` **6/6**; `npm run build` exit 0.
 
-## WP-4 — Executor host (open, implements ADR-014 as approved)
+## WP-4 — Executor host (repo-side done, implements ADR-014)
 
 An Ubuntu 24.04 provisioning script: a dedicated unprivileged runner user, `bubblewrap`, a hardened
 `systemd` unit with restart-on-failure, a bind on `localhost` and the tailnet only. `verify:host`
@@ -274,7 +274,33 @@ edit. The audit found no evidence behind it: no `*.service` file, no provisionin
 ADR-014's status is still **Proposed**, which by the Constitution's Scope rule 2 means the code that
 satisfies it has not landed. The row is corrected to open.
 
-## WP-5 — Phone surface (open)
+**Landed (repo-side).** The audit's list is now closed item by item:
+
+- `software_factory/host/software-factory-executor.service` — a hardened unit (`User=runner`,
+  `NoNewPrivileges=yes`, `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `Restart=on-failure`).
+- `software_factory/host/provision-executor-host.sh` — an idempotent provisioning script; it installs the
+  unit, creates the runner + directories, leaves an empty mode-600 credential file, and names the
+  operator-only actions (VPS, tailnet, deploy keys) instead of doing them.
+- `scripts/verify-host.ts` + `npm run verify:host` — the preflight. It refuses a public bind, a runner
+  that can `sudo`, a credential file that is not mode-600 root, a missing unit, a unit missing its
+  hardening directives, or a `bubblewrap` that cannot create a container.
+- `FACTORY_BIND_HOST` in `src/configurations/runtimeConfig.ts`, wired into `server.listen` — the bind
+  setting the policy reads. Syntax is the parser's job; the private-only *policy* is
+  `evaluateBindHost`, exercised by `test/executor-host-bind.test.ts` (8 cases).
+- ADR-014 flipped to **Accepted** for the decisions enforceable in this repository.
+
+**Negative proof.** On this dev machine `npm run verify:host` exits 1 with three real failures — the
+runner is in the `sudo` group, there is no credential file, and the unit is not installed — and
+`npm run verify:host -- --bind-only` exits 1 for an unset/public `FACTORY_BIND_HOST`. The preflight
+does not pass on a machine that is not the executor host.
+
+**Still blocked (owner: operator).** The host itself: a VPS, tailnet membership, and scoped deploy
+keys. The reboot-mid-run drill on that host, and the tailnet-unreachability check from a non-tailnet
+address. The repo-side half of the drill is `test/loop-die-resume.test.ts` (SIGKILL mid-verification →
+`--resume` → one commit, clean tree), which is not a substitute for the on-host drill and is not
+recorded as one.
+
+## WP-5 — Phone surface (repo-side done)
 
 A mobile-first Loop tab: submit a goal or an issue, a run list, live events, and a two-phase cancel
 with large touch targets. Outbound notifications (done, STUCK, hard stop) through `WebhookService` and
@@ -289,6 +315,26 @@ UI calls none of the issue or cancel routes — the panel's "Stop" button only a
 stream — and `WebhookService` has **no production caller at all**, so no loop lifecycle event is
 dispatched as a signed notification. `test/webhook-service.test.ts` (Sprint 25) proves the service
 works; it does not prove anything calls it. No on-device recording exists. The row is corrected to open.
+
+**Landed (repo-side).**
+
+- `src/components/LoopControlPanel.tsx` now calls the real routes: an issue-submit field with a
+  "Draft from issue" action (`POST /issues`), and a runs-table "Stop run" button whose two-phase
+  confirmation (`GET` then `POST /runs/:id/cancel`) shows the server's effect string and is gated on
+  the real `loop:cancel` permission (`rbacService.ts:47`). The old "Stop" button, which only aborted
+  the local SSE stream, is renamed "Hide" so it no longer reads as a cancel.
+- `src/services/loopControlService.ts` dispatches `loop.run.settled` through `WebhookService` at the
+  settlement boundary — the exact point the run reaches a terminal state — reading the durable record
+  so the payload survives a restart. Fire-and-forget: a delivery failure is logged and never fails the
+  run.
+- `test/loop-webhook-delivery.test.ts` drives a real settled run and asserts exactly one signed
+  delivery to the subscribed tenant, none to another, and that a failing receiver is recorded without
+  failing the run. **Negative proof:** with the `loopControlService` wiring stashed, the first case
+  fails ("exactly one delivery must be attempted").
+
+**Still blocked (owner: operator).** The recorded on-device check: the operator opens the Loop tab on
+the phone over the tailnet and records the on-device run. The API and UI behaviour is proven; the
+phone-in-hand frame is not.
 
 ## WP-6 — Skills bridge (planned, implements ADR-013 as approved)
 

@@ -98,6 +98,7 @@ npm test                    # unit + source-invariant tests
 npm run verify:docs         # documentation gates
 npm run verify:fresh-clone  # a clean clone installs and verifies (needs bubblewrap)
 npx tsc --noEmit            # types
+npm run verify:host         # the executor host is the one ADR-014 describes
 npm run verify:layer1       # 34 checks against the built server
 npm run verify:layer2       # 26 checks: tenant isolation
 npm run verify:layer3       # 24 checks: error contract, writer lock
@@ -116,6 +117,12 @@ commands inside `bubblewrap`: a run whose doctrine enables the sandbox refuses t
 `bwrap` is present and can actually unshare, so a host without it fails loudly rather than
 running verification commands unsandboxed. `npm run verify:fresh-clone` proves the same suite
 passes from a clone that has none of the working tree's gitignored files.
+
+`npm run verify:host` is the executor-host preflight (ADR-014). It is not part of `npm test`
+because it inspects the machine it runs on, not the code: it refuses a host whose bind is public,
+whose runner can `sudo`, whose credential file is not mode-600 root, whose hardened unit is
+missing, or whose `bubblewrap` cannot create a container. `npm run verify:host -- --bind-only`
+checks just the bind policy, which is what CI can check without a provisioned host.
 
 ## Known limits
 
@@ -367,6 +374,25 @@ unrelated-file change are recorded in
 npm run verify:loop        # doctrine manifest, gate wiring, 7 end-to-end scenarios, CLI contract
 npm run doctrine:manifest  # re-pin after editing doctrine/ (then re-review the diff)
 ```
+
+### Run it unattended on the executor host
+
+Running the loop unattended means running it where it can be reached from a phone without opening
+a port to the internet. ADR-014 fixes that host: a private address (loopback or tailnet), a
+dedicated unprivileged runner, credentials owned by `root` and mode `600`, and a hardened
+`systemd` unit. The repository ships the pieces the operator needs and refuses to run on a host
+that does not match.
+
+```bash
+sudo software_factory/host/provision-executor-host.sh   # idempotent; prepares the host
+npm run verify:host                                     # refuses if the host does not match ADR-014
+npm run verify:host -- --bind-only                      # the bind policy alone (CI-safe)
+```
+
+`provision-executor-host.sh` creates the runner user and directories, installs the unit, and
+leaves an empty mode-600 credential file for the operator to fill. It does not create the VPS,
+join the tailnet, or mint the deploy keys — those are operator actions, named in its output. The
+unit binds only what `FACTORY_BIND_HOST` says; on the executor host that must be private.
 
 ## Supported verification profiles
 

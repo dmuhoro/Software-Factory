@@ -1,0 +1,84 @@
+# The unattended loop's executor service (ADR-014, Sprint 31 WP-4).
+#
+# This unit is the enforcement of ADR-014's host decisions, not a description of them.
+# Every directive below pins one clause:
+#
+#   §2  User=runner            the loop runs as a dedicated unprivileged account
+#   §3  EnvironmentFile=...    credentials are granted by systemd, mode 600 root-owned;
+#                              the runner cannot read the file, only the process that
+#                              was granted the variables can use them
+#   §4  (FACTORY_BIND_HOST=127.0.0.1 in the environment file) the listener is loopback;
+#                              the operator reaches it over Tailscale, never the open internet
+#   §6  NoNewPrivileges=...    a process that gains no privileges cannot escalate out of
+#       ProtectSystem=strict   the sandbox or rewrite the host
+#       ProtectHome=yes
+#       PrivateTmp=yes
+#   §6  Restart=on-failure     a crash restarts; a clean exit does not loop
+#   §7  the ledger is a single writer (NC-2): one instance, no clustering, and the
+#       writable paths below are the only places this service may write
+#
+# Installed by software_factory/host/provision-executor-host.sh. The preflight
+# (scripts/verify-host.ts) re-reads this file and refuses to bless a host whose unit has
+# lost any of these directives, so the hardening cannot silently rot.
+
+[Unit]
+Description=Software Factory executor (unattended delivery loop, single writer)
+Documentation=https://github.com/dmuhoro/Software-Factory ADR-014
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=runner
+Group=runner
+
+# §3 — credentials are granted, not readable. systemd (root) reads this file and puts the
+# variables in this process's environment; the runner account cannot open the file itself.
+# The file must be mode 600, owner root. The bind host is set here too: the service is
+# loopback-only, and the operator reaches it over the tailnet.
+EnvironmentFile=/etc/software-factory/secrets.env
+Environment=NODE_ENV=production
+Environment=FACTORY_STORAGE_BACKEND=local
+
+# The approved workspace and ledger live under the runner's home; nothing else on the host
+# is writable. ProtectSystem=strict makes the rest of the filesystem read-only, and
+# ProtectHome would normally hide /home entirely — it is relaxed to "private" so the runner
+# can reach its own workspace while remaining invisible to other users' homes.
+WorkingDirectory=/home/runner/software-factory
+ReadWritePaths=/home/runner/software-factory /home/runner/workspace /home/runner/.factory-data
+ProtectHome=private
+
+# §6 — the hardening set. These are not best-practice decoration: each one closes a path
+# out of the sandbox that ADR-010's isolation exists to keep closed.
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+
+# §6 — one writer, one instance. A second instance would be a second ledger writer, which
+# silently drops the first's records (NC-2). There is no clustering and no scale-out here;
+# ADR-014 makes no horizontal-scale claim.
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+# The loop runs long; give it room to finish a unit rather than being killed mid-commit.
+TimeoutStopSec=120
+KillMode=mixed
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=software-factory-executor
+
+[Install]
+WantedBy=multi-user.target

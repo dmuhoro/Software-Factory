@@ -1,12 +1,16 @@
 # ADR-014: The executor runs on an operator-owned Linux host, privately
 
-- **Status**: Proposed (Sprint 31, WP-0 — implemented by the executor-host provisioning in WP-4)
+- **Status**: Accepted (Sprint 31, WP-4 — the provisioning script, hardened unit and `verify:host`
+  preflight are implemented and proven repo-side; the host/tailnet/deploy-key provisioning and the
+  reboot-mid-run drill on a real host are operator-owned and named in the sprint record, not claimed)
 - **Date**: 2026-10-15
 - **Resolves**: where the unattended loop runs and who can reach it, so it can be driven from a phone
   without exposing a public service
 - **Supersedes**: nothing (works with ADR-009 storage selection and ADR-010 isolated execution)
-- **Implementation**: a provisioning script (WP-4), a hardened `systemd` unit, a `verify:host`
-  preflight, and the existing single-writer ledger (NC-2)
+- **Implementation**: `software_factory/host/provision-executor-host.sh` (provisioning),
+  `software_factory/host/software-factory-executor.service` (hardened unit), `scripts/verify-host.ts`
+  (`npm run verify:host`), the `FACTORY_BIND_HOST` setting in `runtimeConfig`, and the existing
+  single-writer ledger (NC-2). The die-and-resume drill is `test/loop-die-resume.test.ts`.
 
 ## Context
 
@@ -67,13 +71,20 @@ provision what it cannot.
 ## Consequences
 
 - WP-4 (Sprint 31) implements the provisioning script, the `systemd` unit, and `verify:host`, and flips
-  this ADR's status to **Accepted** in the same change (Constitution Scope rule 2).
+  this ADR's status to **Accepted** (Constitution Scope rule 2). The host, the tailnet and the scoped
+  deploy keys remain operator actions (§8); the ADR is Accepted for the decisions that are enforceable
+  in this repository, not as a claim that a specific host has been drilled.
 - The phone surface (WP-5) depends on this ADR: it assumes a private bind, not a public one. Notifications
   leave through the single egress door (ADR-011), not through an inbound webhook the host would have to
   expose.
-- Definition of done for WP-4: the preflight refuses on a host with no `bubblewrap`; the service starts
-  under `systemd` and is unreachable from a non-tailnet address; the reboot-mid-run drill yields no
-  duplicate commits and a clean tree.
+- Definition of done for WP-4, split by owner:
+  - **repo-side, proven**: `verify:host` refuses a host whose bind is public, whose runner can sudo, whose
+    credential file is not mode 600 root, whose unit is missing, or whose bubblewrap cannot create a
+    container; the `FACTORY_BIND_HOST` policy is asserted in `test/executor-host-bind.test.ts`; the
+    die-and-resume drill (no duplicate commits, clean tree) is `test/loop-die-resume.test.ts`.
+  - **operator-side, named not claimed**: the reboot-mid-run drill on the real host, and the
+    tailnet-unreachability check from a non-tailnet address, are performed by the operator on the host
+    the provisioning script prepares. They are recorded in the sprint file with their owner, not stubbed.
 - The shipped container image remains a separate concern; `bubblewrap`-in-image is a named operator
   decision (ADR-010), not silently worked around here.
 

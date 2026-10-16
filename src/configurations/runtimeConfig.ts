@@ -21,6 +21,15 @@ export interface RuntimeConfig {
   storageBackend: 'local' | 'appwrite';
   nodeEnv: 'production' | 'development' | 'test';
   port: number;
+  /**
+   * The address the HTTP listener binds. Defaults to `0.0.0.0` so a container keeps working
+   * unchanged. On the executor host (ADR-014 §4) this is set to `127.0.0.1` so the service is
+   * reachable only over the operator's private network (Tailscale), never the open internet.
+   * A bind address that cannot be parsed is a startup error, not a silent fallback: a service
+   * that bound wider than the operator intended is the exact failure this setting exists to
+   * prevent.
+   */
+  bindHost: string;
   isProduction: boolean;
   /** True when the local loopback bypass is genuinely active. */
   insecureLocalBypass: boolean;
@@ -79,6 +88,7 @@ export const FACTORY_SETTING_NAMES: ReadonlySet<string> = new Set([
   'FACTORY_ENFORCEMENT_MODE',
   'FACTORY_DOCTRINE_ROOT',
   'FACTORY_LOOP_REPORT_DIR',
+  'FACTORY_BIND_HOST',
 ]);
 
 const MIN_PRODUCTION_KEY_LENGTH = 24;
@@ -125,6 +135,46 @@ function parsePort(raw: string | undefined): number {
   const parsed = Number(trimmed(raw) || '3000');
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) return 3000;
   return parsed;
+}
+
+/**
+ * Parses the listener's bind address.
+ *
+ * The default is `0.0.0.0` so the container path is unchanged. A value that is not a bare
+ * IPv4/IPv6 literal or `localhost` is refused at startup: an unparseable address would be
+ * handed to `server.listen` and fail there with a socket error that names nothing the
+ * operator configured, or worse, bind somewhere unexpected.
+ *
+ * This validates *syntax*, not *policy*. Whether a given address is private enough is
+ * decided where the deployment is known — `verify:host` for the executor host (ADR-014 §4),
+ * the NetworkPolicy for the cluster — because the same literal means different things: a
+ * pod binding 0.0.0.0 is normal, an executor host binding 0.0.0.0 is the open internet.
+ */
+function parseBindHost(raw: string | undefined, issues: ConfigIssue[]): string {
+  if (raw === undefined) return '0.0.0.0';
+  const value = trimmed(raw);
+  if (value === '') {
+    issues.push({
+      variable: 'FACTORY_BIND_HOST',
+      severity: 'error',
+      message: 'FACTORY_BIND_HOST is set but empty. Set it to an address (for example 127.0.0.1 on the executor host), '
+        + 'or unset it entirely to take the default. An empty value is a knob turned to nothing.',
+    });
+    return '0.0.0.0';
+  }
+  const isIpv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(value) && value.split('.').every((octet) => Number(octet) <= 255);
+  const isIpv6 = /^[0-9a-fA-F:]+$/.test(value) && value.includes(':');
+  const isLocalhost = value === 'localhost';
+  if (!isIpv4 && !isIpv6 && !isLocalhost) {
+    issues.push({
+      variable: 'FACTORY_BIND_HOST',
+      severity: 'error',
+      message: `FACTORY_BIND_HOST must be an IPv4 literal, an IPv6 literal, or "localhost"; got ${JSON.stringify(raw)}. `
+        + 'The service refuses to guess which address to bind, because binding wider than intended exposes it.',
+    });
+    return '0.0.0.0';
+  }
+  return value;
 }
 
 export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
@@ -273,6 +323,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
     storageBackend,
     isProduction,
     port: parsePort(env.PORT),
+    bindHost: parseBindHost(env.FACTORY_BIND_HOST, issues),
     insecureLocalBypass: !isProduction && env.ALLOW_INSECURE_LOCAL === 'true' && apiKey === '',
     dataDir,
     workspaceRoot,

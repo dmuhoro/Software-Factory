@@ -152,9 +152,10 @@ async function startServer() {
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 70_000;
   server.requestTimeout = 120_000;
-  server.listen(port, '0.0.0.0', () => {
+  const bindHost = config.bindHost;
+  server.listen(port, bindHost, () => {
     // eslint-disable-next-line no-console
-    console.log(`[Software Factory] listening on 0.0.0.0:${port} (${config.nodeEnv}) readiness=${readiness.status}`);
+    console.log(`[Software Factory] listening on ${bindHost}:${port} (${config.nodeEnv}) readiness=${readiness.status}`);
   });
   const shutdown = (signal: string) => {
     // eslint-disable-next-line no-console
