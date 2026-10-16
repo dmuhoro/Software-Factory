@@ -4,6 +4,8 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.7] - 2026-10-16 — The skills are in the tree and pinned
+
 ### Added
 - **External skill adoption is live (Sprint 33, WP-1).** Eight skills from the public MIT
   `github.com/mattpocock/skills` repository are vendored at commit `49dd158d1076134a641b33efb035946536778336`
