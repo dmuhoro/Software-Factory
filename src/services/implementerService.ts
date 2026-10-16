@@ -4,6 +4,7 @@ import { FrontierModelService, ModelProviderKind } from './frontierModelService'
 import { ModelAssignment } from './doctrineService';
 import { TaskDocument, WorkUnit } from './taskDocumentService';
 import { IsolationManifest } from './doctrineIsolationService';
+import { injectSkills } from './skillInjectionService';
 
 /**
  * The implementer port.
@@ -138,7 +139,7 @@ export function fileInventory(repo: string, limit = 400): string[] {
   return out.sort();
 }
 
-export function buildPrompts(request: ImplementRequest): { system: string; task: string } {
+export function buildPrompts(request: ImplementRequest, advisory: { enabled: boolean; block: string } = { enabled: false, block: '' }): { system: string; task: string } {
   const { unit, document } = request;
   const criteria = unit.criteria.map((criterion) => `- ${criterion.id}: ${criterion.text}${criterion.check ? ` (check: ${criterion.check})` : ''}`).join('\n');
   const inventory = fileInventory(request.repo).slice(0, 400);
@@ -183,7 +184,7 @@ export function buildPrompts(request: ImplementRequest): { system: string; task:
     'Return the JSON file manifest now.',
   ].filter(Boolean).join('\n');
 
-  return { system, task };
+  return { system, task: injectSkills(task, advisory.block, advisory.enabled) };
 }
 
 /** Parses the model's reply. Anything that is not the contracted shape is a hard failure. */

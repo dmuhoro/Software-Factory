@@ -377,6 +377,12 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   SKILL_INVALID_NAME: { status: 422, message: 'A skill name must be lowercase letters, digits and hyphens.' },
   SKILL_INVALID_VERSION: { status: 422, message: 'A skill version must be semver, x.y.z.' },
   SKILL_EMPTY_BODY: { status: 422, message: 'A skill file must have a non-empty body.' },
+  // Sprint 31 (WP-6, ADR-013): the vendored, pinned skills bridge. A skill whose bytes are not the
+  // reviewed bytes, or which names an egress endpoint, may not influence a run — a refusal, not a note.
+  SKILL_UNPINNED: { status: 422, message: 'A skill has no pin in the skills lock, so its bytes were never reviewed; it may not influence a run.' },
+  SKILL_PIN_MISMATCH: { status: 422, message: 'A skill\'s bytes do not match its pin; the reviewed file is not the file on disk.' },
+  SKILL_LOCK_INVALID: { status: 422, message: 'The skills lock is malformed, or a pin records no licence.' },
+  SKILL_NAMES_EGRESS: { status: 422, message: 'A skill body names a network endpoint; a skill may not introduce egress.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */

@@ -7,7 +7,7 @@ This directory is Software Factory's own configuration for unattended execution.
 doctrine/
   README.md            this file: precedence, integrity, amendment
   DOCTRINE.md          human rendering of every rule (dual-mode: a person can run it)
-  loop.json            stage order, attempt cap, hard stops, commit policy, budgets
+  loop.json            stage order, attempt cap, hard stops, commit policy, budgets, advisory skills
   agents/models.json   role → tier → `<providerId>/<model>`
   rules/rules.json     rule id → statement → the gate that enforces it
   hooks/hooks.json     stage → hooks executed before/after entering it

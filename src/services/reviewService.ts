@@ -6,6 +6,7 @@ import { ModelAssignment } from './doctrineService';
 import { TaskDocument, WorkUnit } from './taskDocumentService';
 import { IsolationManifest } from './doctrineIsolationService';
 import { GroundTruthProof } from './groundTruthService';
+import { injectSkills } from './skillInjectionService';
 
 /**
  * The review port. A judgement-tier model reads the working-tree diff and the verification
@@ -261,7 +262,7 @@ const REVIEW_SYSTEM = (doctrineLines: string[], axis: ReviewAxis): string => {
   return lines.join('\n');
 };
 
-export function buildReviewPrompts(request: ReviewRequest, axis: ReviewAxis = 'standards'): { system: string; task: string } {
+export function buildReviewPrompts(request: ReviewRequest, axis: ReviewAxis = 'standards', advisory: { enabled: boolean; block: string } = { enabled: false, block: '' }): { system: string; task: string } {
   const { unit, document } = request;
   const criteria = unit.criteria.map((criterion) => `- ${criterion.id}: ${criterion.text}${criterion.check ? ` (check: ${criterion.check})` : ''}`).join('\n');
   const diff = attemptDiff(request.repo);
@@ -293,7 +294,7 @@ export function buildReviewPrompts(request: ReviewRequest, axis: ReviewAxis = 's
     'Return the JSON verdict now.',
   ].filter(Boolean).join('\n');
 
-  return { system: REVIEW_SYSTEM(request.doctrineLines, axis), task };
+  return { system: REVIEW_SYSTEM(request.doctrineLines, axis), task: injectSkills(task, advisory.block, advisory.enabled) };
 }
 
 /** Parses the reviewer's reply. Anything that is not the contracted shape is a refusal. */

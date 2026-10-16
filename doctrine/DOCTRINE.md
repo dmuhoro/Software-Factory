@@ -71,6 +71,16 @@ credential) or `github` (a real API pull request, still never an auto-merge). Th
 requires an allowlisted secret reference (`github:tokenSecret`) that is resolved and re-validated
 at the socket boundary; the loop itself never pushes, so opening on GitHub is an explicit step.
 
+### Advisory skills (optional; `loop.json:skills`)
+
+Off by default. When `inject: true` and a role is named in `byRole`, that role's prompt may be shown the
+pinned skills declared for it (for example `"byRole": { "implementer": ["repo-hygiene"] }`). A skill is
+**reference text, not authority**: it is fenced and labelled untrusted, it cannot change a rule, a
+hook, a gate, or a model assignment, and it may not name a network endpoint (a skill that does is
+refused). Only a skill whose bytes match its pin in `skills-lock.json` may be shown; an unpinned or
+modified skill is refused. With `inject: false` — the shipped default — no skill file is read and every
+prompt is byte-identical, which the tests assert.
+
 ### Manual execution of the same loop
 
 Nothing below needs a model.

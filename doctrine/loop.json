@@ -90,5 +90,9 @@
   },
   "learning": {
     "inject": false
+  },
+  "skills": {
+    "inject": false,
+    "byRole": {}
   }
 }

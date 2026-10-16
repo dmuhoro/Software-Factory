@@ -137,6 +137,20 @@
     "proves": "GET /api/factory/skills"
   },
   {
+    "id": "skills-bridge",
+    "title": "Vendored, hash-pinned advisory skills",
+    "status": "live",
+    "summary": "A skill may be shown to a role only when its bytes match a recorded pin and the doctrine flag is on; an unpinned or modified skill is refused, injection OFF is a byte-identical prompt, and a skill cannot alter a rule, a gate, or a model assignment. Wired roles: drafter, implementer, reviewer.",
+    "proves": "npm test -- test/skills-bridge.test.ts"
+  },
+  {
+    "id": "external-skill-adoption",
+    "title": "Adopting external skill content",
+    "status": "blocked",
+    "summary": "Vendoring the Pocock or Ondrej skill sets needs each source licence and commit confirmed before the bytes may be pinned; preference is not evidence, so adoption also waits on WP-7 measurement.",
+    "owner": "engineering + Pocock/Ondrej"
+  },
+  {
     "id": "hosted-frontier-model",
     "title": "Hosted frontier model",
     "status": "blocked",
@@ -177,6 +191,8 @@
     <tr><td>Fail-closed readiness</td><td><span class="ok">live</span></td><td><code>GET /api/factory/health</code></td></tr>
     <tr><td>Capability manifest</td><td><span class="ok">live</span></td><td><code>GET /api/factory/capabilities</code></td></tr>
     <tr><td>Declarative skills registry</td><td><span class="ok">live</span></td><td><code>GET /api/factory/skills</code></td></tr>
+    <tr><td>Vendored, hash-pinned advisory skills</td><td><span class="ok">live</span></td><td><code>npm test -- test/skills-bridge.test.ts</code></td></tr>
+    <tr><td>Adopting external skill content</td><td><span class="no">blocked</span></td><td>blocked — owner: engineering + Pocock/Ondrej</td></tr>
     <tr><td>Hosted frontier model</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
     <tr><td>Live GitHub pull request</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
     <tr><td>Sandboxed execution in the shipped image</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>

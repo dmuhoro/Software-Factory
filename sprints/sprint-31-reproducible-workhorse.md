@@ -1,6 +1,6 @@
 # Sprint 31 — The Reproducible Workhorse
 
-**Status:** WP-0 governance (v4.15.x), WP-1 reproducibility (v4.15.0), WP-2 truthful docs (v4.15.1), WP-3 dead-code gate (v4.15.2 — shipped red, corrected v4.15.3), WP-4 executor-host artifacts and WP-5 phone surface landed; WP-6, WP-7 open · **Opened:** 2026-10-15 · **Closed:** —
+**Status:** WP-0 governance (v4.15.x), WP-1 reproducibility (v4.15.0), WP-2 truthful docs (v4.15.1), WP-3 dead-code gate (v4.15.2 — shipped red, corrected v4.15.3), WP-4 executor-host artifacts, WP-5 phone surface and WP-6 skills bridge landed; WP-7 open · **Opened:** 2026-10-15 · **Closed:** —
 
 **Thesis.** Sprint 30 gave the factory a face and a floor: a declarative capability manifest, a
 skills registry, a fleet read surface, a fail-closed deploy preflight, and an evidence page rendered
@@ -67,7 +67,7 @@ delete, then host, then face, then skills, then measure.
 | WP-3 | Dead-code gate: unreferenced exports deleted or wired per finding | `npm run knip` → exit 0, 0 findings, 0 hints, enforced in `verify`, `verify:full`, the fresh-clone gate and CI | **done — v4.15.3** (v4.15.2 shipped the claim without the config) |
 | WP-4 | Executor host: an operator-owned Linux host, unprivileged runner, `bubblewrap`, hardened `systemd`, tailnet-only bind (implements ADR-014) | reboot-mid-run drill passes on a real host | **repo-side done** — provisioning script, unit, `verify:host` and the bind policy landed; the host drill is blocked (owner: operator) |
 | WP-5 | Phone surface: mobile-first Loop tab (goal/issue submit, run list, live events, two-phase cancel) + signed outbound notifications via `WebhookService` | delivery test + the operator's recorded on-device check | **repo-side done** — UI calls the issue/cancel routes, `WebhookService` has a production caller and a signed-delivery test; on-device check blocked (owner: operator) |
-| WP-6 | Skills bridge: vendor a starter set with provenance + sha256, refuse unpinned/modified, wire by role, default OFF (implements ADR-013) | an unpinned skill refuses; a modified one refuses | pending |
+| WP-6 | Skills bridge: vendor a starter set with provenance + sha256, refuse unpinned/modified, wire by role, default OFF (implements ADR-013) | an unpinned skill refuses; a modified one refuses | **repo-side done** — the pin gate, fenced seam and default-OFF role wiring landed and are proven; adopting external Pocock/Ondrej content is blocked (owner: engineering + Pocock/Ondrej) |
 | WP-7 | Measurement: 12–15 canned tasks across ≥3 repos, with and without skills | a table of first-attempt rate, STUCK rate, wall time, cost per verified commit | pending |
 
 ### Scope limits (hard — do not implement in this sprint)
@@ -111,8 +111,9 @@ The repository's discipline, with two corrections this sprint earned:
 - **VPS provisioning and Tailscale (owner: operator).** A host, `bubblewrap`, a scoped deploy key per
   repository, and the phone on the tailnet. WP-4 supplies the provisioning script; the operator runs
   it. Tailscale is already on the phone.
-- **Skill sources and licences (owner: operator + engineering).** WP-6 vendors a starter set; the
-  exact files, their commits, licences, and sha256 pins are a reviewed decision.
+- **Skill sources and licences (owner: operator + engineering).** WP-6's bridge is landed and proven
+  against the in-repo skill; vendoring the Pocock/Ondrej content still needs each source's exact files,
+  commits, licences and sha256 pins as a reviewed decision, and WP-7 data before adoption (ADR-013 §7).
 - **`bubblewrap` in the shipped container image (owner: operator).** The runtime image installs none;
   sandboxed execution fails closed there (ADR-010). WP-4's host installs it; the image is separate.
 
@@ -145,9 +146,9 @@ because ADR-014 fixes a trust boundary (who may run the loop, where secrets live
 supply-chain stance (what an adopted skill is allowed to be), and both are decisions the founder owns,
 not defaults an implementation should assume.
 
-**Sign-off:** ADR-013 and ADR-014 were approved 2026-10-15, so WP-1 may begin. Both ADRs remain
-**Proposed** in status until the code that satisfies them lands (WP-6 and WP-4), per the Constitution's
-scope rule.
+**Sign-off:** ADR-013 and ADR-014 were approved 2026-10-15, so WP-1 may begin. Both ADRs were
+**Proposed** in status until the code that satisfies them landed (WP-6 and WP-4); both are now
+**Accepted**, per the Constitution's scope rule.
 
 ## WP-1 — Reproducibility (done, v4.15.0)
 
@@ -336,13 +337,43 @@ works; it does not prove anything calls it. No on-device recording exists. The r
 the phone over the tailnet and records the on-device run. The API and UI behaviour is proven; the
 phone-in-hand frame is not.
 
-## WP-6 — Skills bridge (planned, implements ADR-013 as approved)
+## WP-6 — Skills bridge (repo-side done, implements ADR-013)
 
 A starter set vendored into `skills/` with provenance and sha256 pins; unpinned or modified files are
 refused. Proposed set: `grill-me`, `to-prd`, `to-issues`, `tdd`, `diagnose`, `handoff`,
 `improve-codebase-architecture` (Pocock); `agent-orchestration`, `ops-and-setup` (Ondrej). Wired by
 role and stage in doctrine (manifest-pinned): intake, implementer, STUCK escalation, reviewer. Default
 **OFF** behind a flag.
+
+**Landed (repo-side).**
+
+- **The pin gate** — `skillRegistryService.ts`: `loadPinnedSkills` refuses a skill with no pin
+  (`SKILL_UNPINNED`), whose bytes differ from the pin (`SKILL_PIN_MISMATCH`), or whose pin records no
+  licence (`SKILL_LOCK_INVALID`). `loadSkills` stays the inspection surface; influence and inspection
+  are separate switches. `skills-lock.json` gained a `repo-hygiene` entry with its licence (MIT) and
+  sha256; the opencode tooling entries are carried unchanged rather than given a fabricated licence.
+- **The fenced seam** — `skillInjectionService.ts`: `fencedSkillBlock` labels the block untrusted
+  reference text, delimits it, and refuses a skill whose body names a network endpoint
+  (`SKILL_NAMES_EGRESS`, ADR-013 §6). `injectSkills` returns the prompt byte-for-byte when off.
+- **The doctrine flag** — a `skills: { inject, byRole }` block in `doctrine/loop.json`, default
+  `{ inject: false, byRole: {} }`, parsed fail-closed. OFF reads no skill file at all.
+- **The role wiring** — `SkillInjectionService.advisoryForRole(role)` is called at the four real
+  prompt builders: `buildPrompts` (implementer), `buildReviewPrompts` (reviewer), and the drafter path
+  in `goalIntakeService`/`issueIntakeService`.
+- ADR-013 flipped to **Accepted**.
+
+**Proof (`test/skills-bridge.test.ts`, 17 cases).** An unpinned skill refuses; a modified skill
+refuses; a pin with no licence refuses; the shipped `repo-hygiene` is pinned and a tamper with it is
+refused; OFF is byte-identical to never wiring the seam; ON appends the fenced block to the task only,
+leaving the system prompt and the unit's criteria/verify command untouched; the shipped doctrine leaves
+the flag off. **Negative proof:** with `loadPinnedSkills` neutralised, 6 of the 17 fail (the unpinned,
+modified, unlicensed, missing-lock, shipped-tamper and inspection cases) — the gate is what makes them
+pass.
+
+**Still blocked (owner: engineering + Pocock/Ondrej).** Vendoring the Pocock or Ondrej *content*: each
+source needs its licence and source commit confirmed before its bytes may be recorded in the lock, and
+ADR-013 §7 says adoption into the run path waits on WP-7 showing a measured effect. The bridge is proven
+against the in-repo skill; the external set is named, not stubbed.
 
 ## WP-7 — Measurement (planned)
 

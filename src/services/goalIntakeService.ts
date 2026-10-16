@@ -23,6 +23,7 @@ import { parseTaskDocument } from './taskDocumentService';
 import { resolveLoopRepo } from './loopControlService';
 import { DoctrineService } from './doctrineService';
 import { LearningDigestService, injectLearningDigest, type LearningDigest } from './learningDigestService';
+import { injectSkills, SkillInjectionService } from './skillInjectionService';
 import { workspaceRoot } from '../utils/pathGuard';
 
 export interface GoalDraftInput {
@@ -103,7 +104,7 @@ export function taskDocumentSystem(providerId: string, model: string): string {
   ].join('\n');
 }
 
-export function buildGoalPrompt(repo: string, goal: string, providerId: string, model: string, learning: { digest?: LearningDigest; enabled: boolean } = { enabled: false }): { system: string; task: string } {
+export function buildGoalPrompt(repo: string, goal: string, providerId: string, model: string, learning: { digest?: LearningDigest; enabled: boolean } = { enabled: false }, advisory: { enabled: boolean; block: string } = { enabled: false, block: '' }): { system: string; task: string } {
   const inventory = fileInventory(repo).slice(0, 200);
   const task = [
     `Goal: ${goal}`,
@@ -114,7 +115,7 @@ export function buildGoalPrompt(repo: string, goal: string, providerId: string, 
     '',
     'Write the task document now.',
   ].join('\n');
-  return { system: taskDocumentSystem(providerId, model), task: injectLearningDigest(task, learning.digest, learning.enabled) };
+  return { system: taskDocumentSystem(providerId, model), task: injectSkills(injectLearningDigest(task, learning.digest, learning.enabled), advisory.block, advisory.enabled) };
 }
 
 /**
@@ -176,7 +177,7 @@ export class GoalIntakeService {
     }
     const repo = resolveLoopRepo(input.repo);
 
-    const { system, task } = buildGoalPrompt(repo, input.goal.trim(), input.providerId, input.model, resolveLearning(input.tenantId));
+    const { system, task } = buildGoalPrompt(repo, input.goal.trim(), input.providerId, input.model, resolveLearning(input.tenantId), SkillInjectionService.advisoryForRole('drafter'));
     return draftTaskDocument({ tenantId: input.tenantId, system, task, providerId: input.providerId, model: input.model, maxOutputTokens: input.maxOutputTokens });
   }
 }

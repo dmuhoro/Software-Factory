@@ -98,7 +98,7 @@ which is how the system learns and how you see why. Fail closed, and fail loudly
 | **Auth** | Tenant IDs carried through services | No real identity provider. Anyone with a tenant ID has that tenant's access. **This blocks any external user.** |
 | **Observability** | `/metrics` Prometheus series exist | No dashboards, no alerts, no on-call. You would not know it broke. |
 | **Deployment** | GHCR workflow written, image never published | Never run end to end. Kubernetes manifest has no published image and no digest pin. |
-| **Dependency supply chain** | Policy gate exists | `skills-lock.json` not committed. Installs are not reproducible yet. |
+| **Dependency supply chain** | The lockfile is committed; the skills lock gates vendored skill content (ADR-013: an unpinned or modified skill is refused) | No SLSA/provenance for npm dependencies; the package registry remains the trust root for installed packages. |
 | **Testing** | 176 unit/integration, including 7 end-to-end loop scenarios that drive real git repositories and a stub model port, plus a live run against a real local model (qwen2.5-coder:3b) that produced two verified commits | No end-to-end coverage of the inbox/agent-run API, and no fault-injection of the loop against a hostile target repository. |
 | **Niches** | 3 operational, rest refuse honestly | Adding niches is gated on ADRs, correctly. `CustomB2B` should stay refusing. |
 | **Recovery** | Rollback with health check | No backup/restore drill, no disaster recovery runbook, no RPO/RTO target. |
@@ -166,8 +166,8 @@ Dependency-ordered, because the earlier items make the later ones cheap.
 - Dashboards and alerts on the metrics that already exist.
 
 **Layer 5 — Reproducibility and assurance**
-- Commit `skills-lock.json`.
 - Independent security review. The gates are assertions; someone else has to try to break them.
+- Vendor and pin any external skill content the operator adopts (ADR-013); the lock and pin gate ship, the content is a reviewed decision.
 
 **Layer 6 — Widening**
 - Niche ADRs, one per niche, each with schema, adapter and acceptance tests. Only then does a

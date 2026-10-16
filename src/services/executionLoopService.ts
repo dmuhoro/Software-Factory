@@ -20,6 +20,7 @@ import { resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
 import { slimProof, widenProof, type AttemptRecord, type GateResult, type LoopEvent, type LoopRunRecord, type LoopStage, type UnitRecord } from './loopTypes';
 import { classifyLoopFailure, runFailureClass, summariseFailureClasses } from './loopFailureClass';
 import { prFlowService } from './prFlowService';
+import { SkillInjectionService } from './skillInjectionService';
 
 /**
  * The driver: PLAN → IMPLEMENT → VERIFY → COMMIT → REPORT, one unit at a time, unattended.
@@ -582,7 +583,7 @@ export class ExecutionLoopService {
         // A quarantined instruction file is recorded and never read — so prove its content did not
         // enter this payload before the payload leaves the process. Done here, before the model
         // call, so a leak is refused before any socket is opened. (Sprint 29, WP-1; ADR-008.)
-        const implementerPrompts = buildPrompts(implementRequest);
+        const implementerPrompts = buildPrompts(implementRequest, SkillInjectionService.advisoryForRole('implementer'));
         DoctrineIsolationService.assertNoTargetInstructionContent(isolation, {
           'implementer.system': implementerPrompts.system,
           'implementer.task': implementerPrompts.task,
@@ -649,7 +650,7 @@ export class ExecutionLoopService {
         const reviewPrompts: Partial<Record<ReviewAxis, { system: string; task: string }>> = {};
         const reviewPayloads: Record<string, string> = {};
         for (const axis of REVIEW_AXES) {
-          const built = buildReviewPrompts(reviewRequest, axis);
+          const built = buildReviewPrompts(reviewRequest, axis, SkillInjectionService.advisoryForRole('reviewer'));
           reviewPrompts[axis] = built;
           reviewPayloads[`reviewer.${axis}.system`] = built.system;
           reviewPayloads[`reviewer.${axis}.task`] = built.task;

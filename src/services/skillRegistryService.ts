@@ -28,6 +28,7 @@
  * `FACTORY_SKILLS_DIR` (tests use a temp directory).
  */
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 export interface SkillDefinition {
@@ -49,7 +50,11 @@ export type SkillErrorCode =
   | 'SKILL_MISSING_FIELD'
   | 'SKILL_INVALID_NAME'
   | 'SKILL_INVALID_VERSION'
-  | 'SKILL_EMPTY_BODY';
+  | 'SKILL_EMPTY_BODY'
+  | 'SKILL_UNPINNED'
+  | 'SKILL_PIN_MISMATCH'
+  | 'SKILL_LOCK_INVALID'
+  | 'SKILL_NAMES_EGRESS';
 
 export class SkillError extends Error {
   public readonly code: SkillErrorCode;
@@ -146,4 +151,111 @@ export class SkillRegistryService {
   public static list(dir: string = resolveSkillsDir()): { skills: SkillDefinition[]; refusals: SkillRefusal[] } {
     return loadSkills(dir);
   }
+}
+
+/** A pin for one vendored skill: where it came from, under what licence, and the bytes reviewed. */
+export interface SkillPin {
+  source: string;
+  sourceType: string;
+  skillPath: string;
+  licence: string;
+  sourceCommit?: string;
+  computedHash: string;
+}
+
+/** The lock skills are pinned against. Overridable so a deployment (or a test) can point elsewhere. */
+function resolveSkillsLockPath(): string {
+  const configured = process.env.FACTORY_SKILLS_LOCK;
+  if (configured && configured.trim()) return path.resolve(configured.trim());
+  return path.resolve(process.cwd(), 'skills-lock.json');
+}
+
+/** The sha256 of a skill file's exact bytes, the same digest `sha256sum` produces. */
+export function computeSkillHash(raw: string): string {
+  return createHash('sha256').update(raw, 'utf8').digest('hex');
+}
+
+/**
+ * Parses the lock. Fail-closed and pure like the skill parser: a lock that is not an object with a
+ * `skills` map, or whose entries lack a `computedHash`, refuses the whole load rather than silently
+ * treating every skill as unpinned one by one. Entries for skills this registry does not load (for
+ * example the opencode tooling pins) are carried but not required to name a licence.
+ */
+export function parseSkillsLock(raw: string, source: string): Record<string, SkillPin> {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(raw);
+  } catch (error) {
+    throw new SkillError('SKILL_LOCK_INVALID', `${source}: not JSON (${(error as Error).message})`);
+  }
+  if (typeof doc !== 'object' || doc === null) throw new SkillError('SKILL_LOCK_INVALID', `${source}: the lock must be an object`);
+  const skills = (doc as { skills?: unknown }).skills;
+  if (typeof skills !== 'object' || skills === null || Array.isArray(skills)) {
+    throw new SkillError('SKILL_LOCK_INVALID', `${source}: the lock must have a 'skills' object`);
+  }
+  const pins: Record<string, SkillPin> = {};
+  for (const [name, value] of Object.entries(skills as Record<string, unknown>)) {
+    if (typeof value !== 'object' || value === null) throw new SkillError('SKILL_LOCK_INVALID', `${source}: pin '${name}' is not an object`);
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.computedHash !== 'string' || !/^[0-9a-f]{64}$/.test(entry.computedHash)) {
+      throw new SkillError('SKILL_LOCK_INVALID', `${source}: pin '${name}' has no sha256 computedHash`);
+    }
+    pins[name] = {
+      source: typeof entry.source === 'string' ? entry.source : '',
+      sourceType: typeof entry.sourceType === 'string' ? entry.sourceType : '',
+      skillPath: typeof entry.skillPath === 'string' ? entry.skillPath : '',
+      licence: typeof entry.licence === 'string' ? entry.licence : '',
+      sourceCommit: typeof entry.sourceCommit === 'string' ? entry.sourceCommit : undefined,
+      computedHash: entry.computedHash,
+    };
+  }
+  return pins;
+}
+
+/**
+ * Loads the skills a model may be *shown*, refusing any whose bytes are not the reviewed bytes.
+ *
+ * `loadSkills` is inspection: it says what parsed. This is influence: it says what may reach a run,
+ * and it is fail-closed. A skill with no pin refuses (`SKILL_UNPINNED`); a skill whose bytes differ
+ * from its pin refuses (`SKILL_PIN_MISMATCH`); a pin with no licence refuses (`SKILL_LOCK_INVALID`),
+ * because a licence that was never recorded is a licence that was never reviewed. A refusal is
+ * reported, never silently dropped.
+ */
+export function loadPinnedSkills(
+  dir: string = resolveSkillsDir(),
+  lockPath: string = resolveSkillsLockPath(),
+): { skills: SkillDefinition[]; refusals: SkillRefusal[] } {
+  const { skills, refusals } = loadSkills(dir);
+  if (!fs.existsSync(lockPath)) {
+    return {
+      skills: [],
+      refusals: [...refusals, { source: lockPath, code: 'SKILL_UNPINNED', detail: `${lockPath}: no skills lock; every skill is unpinned and none may influence a run` }],
+    };
+  }
+  let pins: Record<string, SkillPin>;
+  try {
+    pins = parseSkillsLock(fs.readFileSync(lockPath, 'utf8'), lockPath);
+  } catch (error) {
+    if (error instanceof SkillError) return { skills: [], refusals: [...refusals, { source: lockPath, code: error.code, detail: error.message }] };
+    throw error;
+  }
+  const pinned: SkillDefinition[] = [];
+  for (const skill of skills) {
+    const pin = pins[skill.name];
+    if (!pin) {
+      refusals.push({ source: skill.source, code: 'SKILL_UNPINNED', detail: `${skill.source}: '${skill.name}' has no pin in ${path.basename(lockPath)}` });
+      continue;
+    }
+    if (!pin.licence) {
+      refusals.push({ source: skill.source, code: 'SKILL_LOCK_INVALID', detail: `${skill.source}: pin '${skill.name}' records no licence; a licence that was never recorded is a licence that was never reviewed` });
+      continue;
+    }
+    const actual = computeSkillHash(fs.readFileSync(path.join(dir, skill.source), 'utf8'));
+    if (actual !== pin.computedHash) {
+      refusals.push({ source: skill.source, code: 'SKILL_PIN_MISMATCH', detail: `${skill.source}: '${skill.name}' is ${actual}, not the pinned ${pin.computedHash}; the reviewed bytes are not the bytes on disk` });
+      continue;
+    }
+    pinned.push(skill);
+  }
+  return { skills: pinned, refusals };
 }

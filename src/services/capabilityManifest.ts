@@ -118,6 +118,20 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
     proves: 'GET /api/factory/skills',
   },
   {
+    id: 'skills-bridge',
+    title: 'Vendored, hash-pinned advisory skills',
+    status: 'live',
+    summary: 'A skill may be shown to a role only when its bytes match a recorded pin and the doctrine flag is on; an unpinned or modified skill is refused, injection OFF is a byte-identical prompt, and a skill cannot alter a rule, a gate, or a model assignment. Wired roles: drafter, implementer, reviewer.',
+    proves: 'npm test -- test/skills-bridge.test.ts',
+  },
+  {
+    id: 'external-skill-adoption',
+    title: 'Adopting external skill content',
+    status: 'blocked',
+    summary: 'Vendoring the Pocock or Ondrej skill sets needs each source licence and commit confirmed before the bytes may be pinned; preference is not evidence, so adoption also waits on WP-7 measurement.',
+    owner: 'engineering + Pocock/Ondrej',
+  },
+  {
     id: 'hosted-frontier-model',
     title: 'Hosted frontier model',
     status: 'blocked',

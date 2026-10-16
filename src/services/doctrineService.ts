@@ -56,6 +56,13 @@ interface UnrelatedWritesConfig { enforce: boolean; allow: string[] }
  * prompt is byte-identical, asserted in tests. Enabling it is a later sprint, gated on real data.
  */
 interface LearningConfig { inject: boolean }
+/**
+ * The skills advisory wiring (ADR-013 §4). `inject` decides whether a pinned, advisory skill body may
+ * be shown to a role. It defaults to `false`, and OFF is provably a no-op: the prompt is byte-identical
+ * and no skill file is read, asserted in tests. `byRole` declares which skills a role may be shown, and
+ * is empty by default. A skill can never relax a rule, a hook, a gate, or a model assignment.
+ */
+interface SkillsConfig { inject: boolean; byRole: Record<string, string[]> }
 export interface LoopConfig {
   version: number;
   stages: string[];
@@ -68,6 +75,7 @@ export interface LoopConfig {
   sandbox: LoopSandboxConfig;
   unrelatedWrites: UnrelatedWritesConfig;
   learning: LearningConfig;
+  skills: SkillsConfig;
   /** Optional. When enabled, a finished run drafts a reviewable PR (local by default). */
   pullRequest?: PullRequestConfig;
 }
@@ -230,9 +238,37 @@ function parseLearningBlock(raw: unknown): LearningConfig {
   return { inject: reqBoolean(file, raw, 'inject') };
 }
 
+/**
+ * The optional skills block. Absent, it resolves to `{ inject: false, byRole: {} }` — no skill reaches a
+ * prompt, and no skill file is read, until an operator turns it on and declares a role (ADR-013 §4).
+ * Present, both keys are required: `inject` is the flag, `byRole` names which skills each role may be
+ * shown. Role and skill names must be lowercase identifiers; a role no caller queries is inert, and a
+ * skill named here but not pinned is refused at resolve time (`SKILL_UNPINNED`), not silently ignored.
+ */
+function parseSkillsBlock(raw: unknown): SkillsConfig {
+  if (raw === undefined || raw === null) return { inject: false, byRole: {} };
+  if (!isPlainObject(raw)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:skills must be an object');
+  const file = 'loop.json:skills';
+  requireKeys(file, raw, ['inject', 'byRole'], ['inject', 'byRole']);
+  const inject = reqBoolean(file, raw, 'inject');
+  const byRoleRaw = raw.byRole;
+  if (!isPlainObject(byRoleRaw)) throw doctrineError('DOCTRINE_INVALID_VALUE', 'loop.json:skills:byRole must be an object');
+  const byRole: Record<string, string[]> = {};
+  for (const [role, value] of Object.entries(byRoleRaw)) {
+    if (!/^[a-z][a-z0-9-]*$/.test(role)) {
+      throw doctrineError('DOCTRINE_INVALID_VALUE', `loop.json:skills:byRole: role '${role}' must be lowercase letters, digits and hyphens`);
+    }
+    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(item))) {
+      throw doctrineError('DOCTRINE_INVALID_VALUE', `loop.json:skills:byRole:${role} must be an array of skill names`);
+    }
+    byRole[role] = value as string[];
+  }
+  return { inject, byRole };
+}
+
 export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   const file = 'loop.json';
-  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox', 'pullRequest', 'unrelatedWrites', 'learning'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox']);
+  requireKeys(file, raw, ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox', 'pullRequest', 'unrelatedWrites', 'learning', 'skills'], ['version', 'stages', 'attempt', 'unit', 'hardStop', 'commit', 'concurrency', 'verification', 'sandbox']);
   const version = reqNumber(file, raw, 'version', 1, 1_000_000);
   const stages = reqStringArray(file, raw, 'stages', 2, 10);
   if (stages.join(',') !== 'plan,implement,verify,review,commit,report') {
@@ -286,6 +322,7 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
   const pullRequest = parsePullRequestBlock(raw.pullRequest);
   const unrelatedWrites = parseUnrelatedWritesBlock(raw.unrelatedWrites);
   const learning = parseLearningBlock(raw.learning);
+  const skills = parseSkillsBlock(raw.skills);
 
   const config: LoopConfig = {
     version,
@@ -328,6 +365,7 @@ export function parseLoopConfig(raw: Record<string, unknown>): LoopConfig {
     },
     unrelatedWrites,
     learning,
+    skills,
     ...(pullRequest ? { pullRequest } : {}),
   };
   if (config.concurrency.maxParallelCeiling < config.concurrency.maxParallelDefault) {

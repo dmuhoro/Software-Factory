@@ -1,12 +1,17 @@
 # ADR-013: Skills are advisory, vendored, and hash-pinned
 
-- **Status**: Proposed (Sprint 31, WP-0 — implemented as the skills bridge in WP-6)
+- **Status**: Accepted (Sprint 31, WP-6 — the pin gate, the fenced advisory seam and the default-OFF
+  role wiring are implemented and proven; adopting external Pocock/Ondrej *content* is blocked on
+  confirmed licences and source commits, and on WP-7 measurement, and is named as such, not stubbed)
 - **Date**: 2026-10-15
 - **Resolves**: what an adopted external skill is allowed to be, and how it may influence a run
   without relaxing a gate (Sprint 30 built the registry; it never decided the trust stance)
 - **Supersedes**: nothing (narrows the intent of ADR-006; see the tension below)
-- **Implementation**: `src/services/skillRegistryService.ts` (existing parser), a provenance lock
-  (`skills-lock.json`, extended), `DoctrineService` role wiring, and a pin check on load
+- **Implementation**: `src/services/skillRegistryService.ts` (the pin gate: `loadPinnedSkills`,
+  `parseSkillsLock`, `computeSkillHash`), `src/services/skillInjectionService.ts` (the fenced seam and
+  the role resolver), `skills-lock.json` (provenance + licence + sha256 per skill), the `skills` block in
+  `doctrine/loop.json`, and the wiring in `implementerService.ts`, `reviewService.ts`,
+  `goalIntakeService.ts` and `issueIntakeService.ts`
 
 ## Context
 
