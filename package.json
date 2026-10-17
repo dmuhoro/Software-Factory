@@ -46,6 +46,7 @@
     "factory:run": "tsx scripts/run-factory-loop.ts",
     "bench:skills": "tsx scripts/bench-skills.ts",
     "bench:fixtures": "tsx scripts/bench-fixtures.ts",
+    "unrelated-writes:report": "tsx scripts/unrelated-writes-report.ts",
     "verify:loop": "bash scripts/verify-loop.sh",
     "verify:deploy": "npm run build && bash scripts/verify-deploy.sh",
     "verify:fundios": "tsx scripts/verify-fundios-e2e.ts"

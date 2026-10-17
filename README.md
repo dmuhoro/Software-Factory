@@ -361,7 +361,10 @@ What makes it safe to leave alone:
   work. `unrelated-writes` compares the working tree against the implementer's claimed files (and an
   allowlist) and names any file that changed without being claimed. It ships in **shadow mode** —
   `loop.json:unrelatedWrites.enforce` defaults to `false`, so the write is recorded and nothing is
-  refused until an operator turns enforcement on.
+  refused until an operator turns enforcement on. `npm run unrelated-writes:report` reads the
+  recorded runs and lists every file the guard would refuse, by unit; it changes nothing, and the
+  pre-registered rule for when enforcement may be turned on is in
+  [sprints/sprint-33-closing-sprint.md](sprints/sprint-33-closing-sprint.md).
 - **A skill is reference text, not authority.** When `loop.json:skills.inject` is on, a role may be
   shown the skills named for it in `byRole`, each pinned by sha256 in `skills-lock.json`. A skill is
   fenced and labelled untrusted, may not name a network endpoint, and can change no rule, gate, or

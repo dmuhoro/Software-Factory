@@ -1,12 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import path from 'node:path';
 import { GATE_IDS, type GateId } from './gateIds';
 import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsolationService';
 import { ResourceGovernorService } from './resourceGovernorService';
 import type { GroundTruthProof } from './groundTruthService';
 import { extractLocators, runCommand } from './groundTruthService';
-import { stageAndScanSecrets, pathMatchesPattern } from './commitService';
+import { stageAndScanSecrets } from './commitService';
+import { unrelatedWritesIn } from './unrelatedWrites';
 import { detectVerificationProfile } from './verificationProfileService';
 import { isGitRepository } from '../utils/pathGuard';
 import type { GateResult, LoopRunRecord, LoopSandboxConfig, LoopStage, UnitRecord } from './loopTypes';
@@ -198,10 +198,7 @@ const REGISTRY: Record<GateId, GateFn> = {
     const proof = ctx.proof;
     if (!proof) return { passed: true, detail: 'no proof was produced for this stage; there is no observed tree to compare against the claim' };
     const policy = ctx.unrelatedWrites ?? DoctrineService.load().loop.unrelatedWrites;
-    const claimed = new Set(proof.claimedFiles);
-    const allowed = (file: string): boolean =>
-      policy.allow.some((pattern) => pathMatchesPattern(file, pattern) || pathMatchesPattern(path.basename(file), pattern));
-    const unrelated = proof.observedFiles.filter((file) => !claimed.has(file) && !allowed(file));
+    const unrelated = unrelatedWritesIn(proof.claimedFiles, proof.observedFiles, policy.allow);
     if (!unrelated.length) {
       return { passed: true, detail: `${proof.observedFiles.length} observed file(s): every one was claimed or allowlisted` };
     }
