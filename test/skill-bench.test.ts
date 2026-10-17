@@ -1,17 +1,20 @@
 /**
- * Sprint 33, WP-4: the skills benchmark.
+ * Sprint 33, WP-4; rule amended in Sprint 34, WP-2: the skills benchmark.
  *
  * Two layers are proven here:
  *
- *  1. **The arithmetic and the rule.** The Wilson interval, the arm summary, and the
- *     pre-registered adoption rule are pure functions, and they are tested directly — including the
- *     negative clauses, because the interesting question is not "does a good result adopt" but "does
- *     a merely-noisy or guardrail-violating result correctly stay off". A drift guard asserts the
- *     rule text in the code equals the rule recorded in the sprint file before any run.
+ *  1. **The arithmetic and the rule.** The Wilson interval (kept for reporting), the paired
+ *     per-fixture comparison, the exact sign test, the minimum detectable effect, and the amended
+ *     pre-registered adoption rule are pure functions, tested directly — including the negative
+ *     clauses, because the interesting question is not "does a good result adopt" but "does a
+ *     merely-noisy or guardrail-violating or underpowered result correctly stay off". A drift guard
+ *     asserts the rule text in the code equals the amended rule recorded in the sprint file before
+ *     any real run.
  *
  *  2. **The stub dry pass actually runs.** The orchestrator is invoked as a real subprocess against
  *     a reduced matrix; its stdout must be a well-formed report labelled `stub: true` with both
- *     arms and Wilson intervals — and that report must be refused as capability evidence.
+ *     arms, pairings, wall time and Wilson intervals — and that report must be refused as
+ *     capability evidence.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -22,14 +25,20 @@ import test from 'node:test';
 import {
   BENCH_ADOPTION_RULE,
   ADOPTION_MIN_FIRST_ATTEMPT_DELTA,
+  ADOPTION_SIGNIFICANCE,
   wilsonInterval,
   intervalsOverlap,
   summariseArm,
+  pairFixture,
+  summarisePairs,
+  signTestPValue,
+  minimumDetectableEffect,
   evaluateAdoption,
   runSkillBench,
   benchReportEvidence,
   type BenchRunResult,
   type ArmSummary,
+  type PairedSummary,
 } from '../src/services/skillBenchService';
 
 const ROOT = process.cwd();
@@ -73,6 +82,50 @@ test('WP-4: summariseArm counts first-attempts, stuck units and refused attempts
   assert.equal(arm.refusals, 4);
 });
 
+// ── part 1b: the paired comparison and the exact sign test ──────────────────
+
+const run = (pass: boolean): BenchRunResult => ({ firstAttemptSuccess: pass, stuck: false, refusals: 0 });
+
+test('WP-2: pairFixture names the winning arm and calls a tie a tie', () => {
+  assert.equal(pairFixture('a', [run(true), run(true)], [run(true), run(false)]).sign, 'on');
+  assert.equal(pairFixture('b', [run(true), run(false)], [run(true), run(true)]).sign, 'off');
+  assert.equal(pairFixture('c', [run(true), run(false)], [run(true), run(false)]).sign, 'tie');
+  const paired = pairFixture('a', [run(true), run(true), run(true)], [run(false)]);
+  assert.equal(paired.onSuccesses, 3);
+  assert.equal(paired.offSuccesses, 0);
+  assert.equal(paired.repetitions, 3);
+});
+
+test('WP-2: summarisePairs counts on-wins, off-wins and ties', () => {
+  const pairs = summarisePairs([
+    pairFixture('a', [run(true)], [run(false)]),
+    pairFixture('b', [run(true)], [run(false)]),
+    pairFixture('c', [run(false)], [run(true)]),
+    pairFixture('d', [run(true)], [run(true)]),
+  ]);
+  assert.deepEqual(pairs, { fixtures: 4, onWins: 2, offWins: 1, ties: 1 });
+});
+
+test('WP-2: the exact sign test is the binomial tail, not a normal approximation', () => {
+  assert.equal(signTestPValue(0, 5), 1, 'no wins is no evidence');
+  assert.equal(signTestPValue(3, 0), 1, 'no trials is no evidence');
+  // P(X >= 12 | 12, 0.5) = 1/4096
+  assert.ok(Math.abs(signTestPValue(12, 12) - 1 / 4096) < 1e-12);
+  // Symmetric case: P(X >= 6 | 12, 0.5) = 0.5 + 0.5 * C(12,6)/4096
+  assert.ok(Math.abs(signTestPValue(6, 12) - (0.5 + 0.5 * 924 / 4096)) < 1e-9);
+  // Monotone: more wins is stronger evidence.
+  assert.ok(signTestPValue(10, 12) < signTestPValue(9, 12));
+});
+
+test('WP-2: the MDE at n=12 is large, and shrinks as n grows', () => {
+  assert.equal(minimumDetectableEffect(0), 1);
+  const mde12 = minimumDetectableEffect(12);
+  assert.ok(mde12 > 0.5 && mde12 <= 1, `MDE(12) must be in (0.5,1], got ${mde12}`);
+  assert.ok(minimumDetectableEffect(40) < mde12, 'more pairs must detect a smaller effect');
+});
+
+// ── part 1c: the amended rule ───────────────────────────────────────────────
+
 function arm(successes: number, n: number, stuck = 0, refusals = 0): ArmSummary {
   return {
     runs: n,
@@ -82,50 +135,75 @@ function arm(successes: number, n: number, stuck = 0, refusals = 0): ArmSummary 
   };
 }
 
-test('WP-4: a clear, non-overlapping, guardrail-clean improvement adopts', () => {
-  const decision = evaluateAdoption(arm(8, 8), arm(1, 8));
+function pairs(onWins: number, offWins: number, ties = 0): PairedSummary {
+  return { fixtures: onWins + offWins + ties, onWins, offWins, ties };
+}
+
+test('WP-2: a clear, significant, guardrail-clean paired improvement adopts', () => {
+  const decision = evaluateAdoption(arm(8, 8), arm(1, 8), pairs(12, 0));
   assert.equal(decision.adopt, true, `expected adoption, got: ${decision.reasons.join('; ')}`);
   assert.ok(decision.delta >= ADOPTION_MIN_FIRST_ATTEMPT_DELTA);
+  assert.ok(decision.signTestP < ADOPTION_SIGNIFICANCE);
   assert.equal(decision.reasons.length, 0);
 });
 
-test('WP-4: an improvement below 10pp stays off and says why', () => {
-  const decision = evaluateAdoption(arm(5, 10), arm(4, 10));
+test('WP-2: an improvement below 10pp stays off and says why', () => {
+  const decision = evaluateAdoption(arm(4, 10), arm(5, 10), pairs(10, 0));
   assert.equal(decision.adopt, false);
   assert.ok(decision.reasons.some((reason) => reason.includes('below the required 10pp')), decision.reasons.join('; '));
 });
 
-test('WP-4: an improvement whose intervals overlap stays off (noise is not evidence)', () => {
-  const decision = evaluateAdoption(arm(6, 10), arm(4, 10));
+test('WP-2: a paired improvement the sign test cannot call stays off (noise is not evidence)', () => {
+  const decision = evaluateAdoption(arm(8, 8), arm(1, 8), pairs(2, 1));
   assert.equal(decision.adopt, false);
-  assert.ok(decision.reasons.some((reason) => reason.includes('overlap')), decision.reasons.join('; '));
-  assert.equal(intervalsOverlap(wilsonInterval(6, 10), wilsonInterval(4, 10)), true);
+  assert.ok(decision.reasons.some((reason) => reason.includes('sign test is not significant')), decision.reasons.join('; '));
+  assert.ok(decision.signTestP >= ADOPTION_SIGNIFICANCE);
 });
 
-test('WP-4: a worsening STUCK rate keeps the skill off, even with a big improvement', () => {
-  const decision = evaluateAdoption(arm(8, 8, 3), arm(1, 8, 0));
+test('WP-2: every fixture tying stays off — an unseparated bench is not evidence', () => {
+  const decision = evaluateAdoption(arm(8, 8), arm(1, 8), pairs(0, 0, 12));
+  assert.equal(decision.adopt, false);
+  assert.ok(decision.reasons.some((reason) => reason.includes('no fixture separated the arms')), decision.reasons.join('; '));
+});
+
+test('WP-2: a worsening STUCK rate keeps the skill off, even with a big improvement', () => {
+  const decision = evaluateAdoption(arm(8, 8, 3), arm(1, 8, 0), pairs(12, 0));
   assert.equal(decision.adopt, false);
   assert.ok(decision.reasons.some((reason) => reason.includes('STUCK rate rose')), decision.reasons.join('; '));
 });
 
-test('WP-4: a rising refusal count keeps the skill off', () => {
-  const decision = evaluateAdoption(arm(8, 8, 0, 12), arm(1, 8, 0, 2));
+test('WP-2: a rising refusal count keeps the skill off', () => {
+  const decision = evaluateAdoption(arm(8, 8, 0, 12), arm(1, 8, 0, 2), pairs(12, 0));
   assert.equal(decision.adopt, false);
   assert.ok(decision.reasons.some((reason) => reason.includes('refusal count rose')), decision.reasons.join('; '));
 });
 
-test('WP-4: the rule in the code matches the rule recorded in the sprint file before any run', () => {
-  const sprint = fs.readFileSync(path.join(ROOT, 'sprints', 'sprint-33-closing-sprint.md'), 'utf8');
+test('WP-2: the decision records the MDE at the observed n', () => {
+  const decision = evaluateAdoption(arm(8, 8), arm(1, 8), pairs(12, 0));
+  assert.ok(decision.mde > 0.5 && decision.mde <= 1, `MDE must be recorded, got ${decision.mde}`);
+});
+
+test('WP-2: the amended rule in the code matches the rule recorded in the sprint file', () => {
+  const sprint = fs.readFileSync(path.join(ROOT, 'sprints', 'sprint-34-first-orders.md'), 'utf8');
+  // Markdown wraps prose across lines and prefixes a block quote with ">", so compare on text
+  // with block-quote markers and collapsed whitespace.
+  const flat = sprint.replace(/^>\s?/gm, '').replace(/\s+/g, ' ');
   for (const fragment of [
-    'the first-attempt rate improves by **\u2265 10 percentage points**',
-    'the two Wilson intervals do **not** overlap',
+    'exact sign test',
+    '\u2265 10 percentage points',
     'neither the STUCK rate nor the refusal count rises',
+    'MDE',
   ]) {
-    assert.ok(sprint.includes(fragment), `the sprint file must record the pre-registered rule; missing: ${fragment}`);
+    assert.ok(flat.includes(fragment), `the sprint file must record the amended rule; missing: ${fragment}`);
   }
+  assert.ok(
+    !flat.includes('Wilson intervals do not overlap') || flat.indexOf('Dropped') < flat.indexOf('Wilson intervals do not overlap'),
+    'the amended rule must not re-state the dropped interval clause as operative',
+  );
   assert.match(BENCH_ADOPTION_RULE, /improves by >= 10 percentage points/);
-  assert.match(BENCH_ADOPTION_RULE, /Wilson intervals do not overlap/);
+  assert.match(BENCH_ADOPTION_RULE, /exact sign test over the non-tied fixtures/);
   assert.match(BENCH_ADOPTION_RULE, /STUCK rate nor the refusal count rises/);
+  assert.match(BENCH_ADOPTION_RULE, /MDE/);
 });
 
 // ── the orchestrator, with a fake runner ─────────────────────────────────────
@@ -144,7 +222,7 @@ test('WP-4: runSkillBench refuses a comparison missing an arm', async () => {
   );
 });
 
-test('WP-4: runSkillBench runs the full fixture x repetition x arm matrix', async () => {
+test('WP-2: runSkillBench runs the full matrix and builds the paired comparison', async () => {
   const seen: string[] = [];
   const report = await runSkillBench({
     fixtures: ['f1', 'f2'],
@@ -154,7 +232,9 @@ test('WP-4: runSkillBench runs the full fixture x repetition x arm matrix', asyn
     model: 'stub/stub-code',
     runOne: async ({ fixture, arm, repetition }) => {
       seen.push(`${fixture}:${arm}:${repetition}`);
-      return { firstAttemptSuccess: true, stuck: false, refusals: 0 };
+      // f1: on always passes, off never -> an on win. f2: the reverse -> an off win.
+      const pass = fixture === 'f1' ? arm === 'on' : arm === 'off';
+      return { firstAttemptSuccess: pass, stuck: false, refusals: 0, wallTimeMs: 5, tokens: 10 };
     },
     now: () => '2026-10-17T00:00:00.000Z',
   });
@@ -164,6 +244,22 @@ test('WP-4: runSkillBench runs the full fixture x repetition x arm matrix', asyn
   assert.equal(report.model, 'stub/stub-code');
   assert.equal(report.stub, true);
   assert.ok(report.arms.on && report.arms.off);
+  assert.deepEqual(report.pairs, { fixtures: 2, onWins: 1, offWins: 1, ties: 0 });
+  assert.equal(report.wallTimeMs, 12 * 5);
+  assert.equal(report.tokens, 12 * 10);
+});
+
+test('WP-2: runSkillBench reports tokens as null when no run reported any', async () => {
+  const report = await runSkillBench({
+    fixtures: ['f1'],
+    repetitions: 3,
+    arms: ['on', 'off'],
+    stub: true,
+    model: 'stub/stub-code',
+    runOne: async () => ({ firstAttemptSuccess: true, stuck: false, refusals: 0, wallTimeMs: 2 }),
+    now: () => 'x',
+  });
+  assert.equal(report.tokens, null, 'a token count the path did not report must be null, never a guess');
 });
 
 // ── the evidence gate ────────────────────────────────────────────────────────
@@ -192,7 +288,7 @@ test('WP-4: the stub dry pass runs and emits a labelled, paired report', { timeo
     '--dry', '--limit', '1', '--repetitions', '3',
     '--now', '2026-10-17T00:00:00.000Z',
   ], { cwd: ROOT, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-  const report = JSON.parse(output) as { stub: boolean; model: string; fixtures: number; repetitions: number; arms: { on?: { firstAttempt: { n: number; low: number; high: number } }; off?: { firstAttempt: { n: number } } }; generatedAt: string };
+  const report = JSON.parse(output) as { stub: boolean; model: string; fixtures: number; repetitions: number; pairs: PairedSummary; wallTimeMs: number; tokens: number | null; arms: { on?: { firstAttempt: { n: number; low: number; high: number } }; off?: { firstAttempt: { n: number } } }; generatedAt: string };
   assert.equal(report.stub, true, 'the dry pass must be labelled stub: true');
   assert.equal(report.model, 'stub/stub-code');
   assert.equal(report.fixtures, 1);
@@ -201,6 +297,9 @@ test('WP-4: the stub dry pass runs and emits a labelled, paired report', { timeo
   assert.equal(report.arms.on?.firstAttempt.n, 3, 'the on arm must have run every repetition');
   assert.equal(report.arms.off?.firstAttempt.n, 3, 'the off arm must have run every repetition');
   assert.ok(report.arms.on!.firstAttempt.high >= report.arms.on!.firstAttempt.low);
+  assert.equal(report.pairs.fixtures, 1, 'the report must carry the paired comparison');
+  assert.ok(typeof report.wallTimeMs === 'number' && report.wallTimeMs > 0, 'the report must carry wall time');
+  assert.ok(report.tokens === null || typeof report.tokens === 'number', 'tokens must be a number or null, never a guess');
 });
 
 test('WP-4: package.json wires the bench scripts', () => {

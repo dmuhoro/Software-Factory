@@ -1,5 +1,5 @@
 /**
- * The skills benchmark's arithmetic (Sprint 33, WP-4).
+ * The skills benchmark's arithmetic (Sprint 33 WP-4; rule amended in Sprint 34 WP-2).
  *
  * ADR-013 §7 is blunt: a preference for a skill is not evidence that it helps. The only way to
  * decide whether to turn a vendored skill on for a role is to measure it — run the same fixture
@@ -7,10 +7,16 @@
  * rule fixed **before** any data is seen.
  *
  * This module holds the parts that must be beyond argument: the proportions, the Wilson score
- * intervals (the right interval for a small-n proportion, not the normal approximation that
- * misbehaves near 0 or 1), the paired on/off comparison, and the pre-registered adoption rule. It
- * is pure — no clock, no I/O, no model — so the same arm results always yield the same report, and
- * the report can be unit-tested without running a single loop.
+ * intervals (kept for reporting, not used as the decision rule), the paired per-fixture comparison,
+ * and the pre-registered adoption rule. It is pure — no clock, no I/O, no model — so the same arm
+ * results always yield the same report, and the report can be unit-tested without running a loop.
+ *
+ * The rule changed in Sprint 34 (WP-2), before any real run. The original rule compared the two
+ * arms' Wilson intervals as if they were independent samples; the design is **paired** (every
+ * fixture runs under both arms), so that clause was both underpowered and the wrong test. The
+ * amended rule is an **exact sign test** over the per-fixture winners, keeps the ≥10-point
+ * threshold and the no-rise-in-STUCK/refusals guardrails, and records the minimum detectable effect
+ * at the observed n so a null result is read honestly. See `sprints/sprint-34-first-orders.md`.
  *
  * The orchestrator (`scripts/bench-skills.ts`) supplies the `runOne` function that actually executes
  * a fixture; this module never touches a repository.
@@ -24,6 +30,10 @@ export interface BenchRunResult {
   stuck: boolean;
   /** How many attempts were refused (a proxy for wasted model work). */
   refusals: number;
+  /** Wall-clock time for this single run, in ms. Measured by the orchestrator; absent when unknown. */
+  wallTimeMs?: number;
+  /** Tokens the model path reported for this run. Absent when the provider reported none. */
+  tokens?: number;
 }
 
 /** A proportion with its Wilson score interval, all in [0, 1]. */
@@ -37,12 +47,34 @@ export interface Proportion {
 
 export interface ArmSummary {
   runs: number;
-  /** First-attempt success rate and its interval. */
+  /** First-attempt success rate and its Wilson interval (reported for context, not the rule). */
   firstAttempt: Proportion;
   /** STUCK rate (point only; the rule compares points, not intervals, for the guardrail). */
   stuckRate: number;
   /** Total refused attempts across the arm. */
   refusals: number;
+}
+
+/** One fixture's results under both arms, reduced to the winner the sign test counts. */
+export interface PairedFixture {
+  fixture: string;
+  /** First-attempt successes in the on arm (aggregated over repetitions). */
+  onSuccesses: number;
+  /** First-attempt successes in the off arm (aggregated over repetitions). */
+  offSuccesses: number;
+  repetitions: number;
+  /** Which arm had the higher aggregate first-attempt rate; `tie` when equal. */
+  sign: 'on' | 'off' | 'tie';
+}
+
+export interface PairedSummary {
+  fixtures: number;
+  /** Fixtures where the on arm's aggregate first-attempt rate was higher. */
+  onWins: number;
+  /** Fixtures where the off arm's aggregate first-attempt rate was higher. */
+  offWins: number;
+  /** Fixtures where the two arms tied (ignored by the sign test). */
+  ties: number;
 }
 
 export interface AdoptionDecision {
@@ -54,10 +86,17 @@ export interface AdoptionDecision {
   reasons: string[];
   /** The rule, in full, so a report is self-describing. */
   rule: string;
+  /** The one-sided exact-sign-test p-value over the non-tied fixtures (1 when there are none). */
+  signTestP: number;
+  /**
+   * The minimum true on-win rate detectable with 80% power at the observed number of non-tied
+   * fixtures, at α = 0.05. A null result means "below this effect at this n", not "no effect".
+   */
+  mde: number;
 }
 
 export interface BenchReport {
-  version: 1;
+  version: 2;
   /** True when the runs used a stub provider, not a real model. A stub report is never evidence. */
   stub: boolean;
   /** The model spec the arms ran on (or `stub` for the dry pass), for the label the rule requires. */
@@ -66,21 +105,33 @@ export interface BenchReport {
   repetitions: number;
   generatedAt: string;
   arms: Partial<Record<'on' | 'off', ArmSummary>>;
+  /** The paired per-fixture comparison the amended rule is written on. */
+  pairs: PairedSummary;
   adoption: AdoptionDecision;
+  /** Total wall time across every run, in ms. */
+  wallTimeMs: number;
+  /** Total tokens the model path reported; null when no run reported a token count. */
+  tokens: number | null;
 }
 
 /**
- * The pre-registered adoption rule, verbatim from `sprints/sprint-33-closing-sprint.md` (recorded
- * there before any real run). It is reproduced here so the code and the sprint file cannot drift:
- * a test asserts they agree.
+ * The amended pre-registered adoption rule. Sprint 34 (WP-2) reproduces it in
+ * `sprints/sprint-34-first-orders.md`, recorded before any real run; a test asserts they agree.
  */
 export const BENCH_ADOPTION_RULE =
-  'A skill is enabled for a role only if, over the bench (skills on vs off, >=3 repetitions per task): ' +
-  'the first-attempt rate improves by >= 10 percentage points, and the two Wilson intervals do not overlap, ' +
-  'and neither the STUCK rate nor the refusal count rises. Otherwise the skill stays off.';
+  'A skill is enabled for a role only if, over the bench (skills on vs off, >=3 repetitions per task, ' +
+  'paired per fixture): an exact sign test over the non-tied fixtures favours the on arm at alpha = 0.05, ' +
+  'and the aggregate first-attempt rate improves by >= 10 percentage points, and neither the STUCK rate ' +
+  'nor the refusal count rises. Otherwise the skill stays off. The report states the MDE at the observed n.';
 
 /** The improvement threshold the rule demands, as a fraction. */
 export const ADOPTION_MIN_FIRST_ATTEMPT_DELTA = 0.1;
+
+/** The significance level of the exact sign test. */
+export const ADOPTION_SIGNIFICANCE = 0.05;
+
+/** The power the reported minimum detectable effect is computed at. */
+export const ADOPTION_POWER = 0.8;
 
 /** The z for a 95% interval. */
 const Z_95 = 1.959963984540054;
@@ -89,6 +140,9 @@ const Z_95 = 1.959963984540054;
  * The Wilson score interval for a binomial proportion. Preferred over the normal approximation
  * because the sample is small (fixtures × repetitions) and a first-attempt rate sits near 1.0, where
  * the normal interval can exceed [0, 1] and would let a claim look stronger than it is.
+ *
+ * Kept for reporting: the amended rule no longer compares intervals, but the interval is still the
+ * honest way to show a reader how wide an arm's rate is.
  */
 export function wilsonInterval(successes: number, n: number, z: number = Z_95): Proportion {
   if (!Number.isFinite(successes) || !Number.isFinite(n) || n <= 0) return { successes: 0, n: Math.max(0, n | 0), point: 0, low: 0, high: 0 };
@@ -123,22 +177,102 @@ export function summariseArm(results: BenchRunResult[]): ArmSummary {
   };
 }
 
+/** Reduces one fixture's two arms to the winner the sign test counts. */
+export function pairFixture(fixture: string, on: BenchRunResult[], off: BenchRunResult[]): PairedFixture {
+  const onSuccesses = on.filter((result) => result.firstAttemptSuccess).length;
+  const offSuccesses = off.filter((result) => result.firstAttemptSuccess).length;
+  const sign: PairedFixture['sign'] = onSuccesses > offSuccesses ? 'on' : onSuccesses < offSuccesses ? 'off' : 'tie';
+  return { fixture, onSuccesses, offSuccesses, repetitions: on.length, sign };
+}
+
+export function summarisePairs(pairs: PairedFixture[]): PairedSummary {
+  return {
+    fixtures: pairs.length,
+    onWins: pairs.filter((pair) => pair.sign === 'on').length,
+    offWins: pairs.filter((pair) => pair.sign === 'off').length,
+    ties: pairs.filter((pair) => pair.sign === 'tie').length,
+  };
+}
+
+/** `log C(n, k)`, so a binomial tail is computed without overflowing. */
+function logChoose(n: number, k: number): number {
+  if (k < 0 || k > n) return -Infinity;
+  let total = 0;
+  for (let i = 1; i <= k; i += 1) total += Math.log(n - k + i) - Math.log(i);
+  return total;
+}
+
 /**
- * Applies the pre-registered rule to the two arms. The rule is conjunctive: every clause must pass,
- * so a skill with a large but noisy improvement, or one that improves first-attempt rate while
- * making more units get stuck, stays off.
+ * The one-sided exact sign-test p-value, P(X >= wins) for X ~ Binomial(trials, 0.5).
+ *
+ * The exact binomial is used rather than a normal approximation because the number of fixtures is
+ * small; at small n the approximation is exactly where a claim would look stronger than the data.
+ * With no non-tied fixtures there is no evidence, so the p-value is 1 (the skill stays off).
  */
-export function evaluateAdoption(on: ArmSummary, off: ArmSummary): AdoptionDecision {
+export function signTestPValue(wins: number, trials: number): number {
+  if (!Number.isFinite(wins) || !Number.isFinite(trials) || trials <= 0 || wins <= 0) return 1;
+  const k = Math.min(Math.floor(wins), trials);
+  let sum = 0;
+  for (let i = k; i <= trials; i += 1) sum += Math.exp(logChoose(trials, i) - trials * Math.LN2);
+  return Math.min(1, sum);
+}
+
+/** P(X >= k) for X ~ Binomial(n, p), in log space. */
+function upperTail(k: number, n: number, p: number): number {
+  if (k <= 0) return 1;
+  if (k > n) return 0;
+  let sum = 0;
+  for (let i = k; i <= n; i += 1) {
+    sum += Math.exp(logChoose(n, i) + i * Math.log(p) + (n - i) * Math.log(1 - p));
+  }
+  return Math.min(1, sum);
+}
+
+/**
+ * The minimum detectable effect for the exact sign test at `trials` non-tied fixtures: the smallest
+ * true on-win probability `p` for which the critical region {X >= k*} has at least the requested
+ * power, where k* is the smallest k that makes the one-sided test significant at `alpha`.
+ *
+ * Returns 1 when no achievable on-win rate reaches the power at this n — the honest reading of a
+ * bench too small to detect anything short of a near-certain win. This number is what makes a null
+ * result interpretable: at a small n the MDE is large, so "no effect" means "below an effect we
+ * could not have detected anyway".
+ */
+export function minimumDetectableEffect(trials: number, alpha: number = ADOPTION_SIGNIFICANCE, power: number = ADOPTION_POWER): number {
+  if (!Number.isFinite(trials) || trials <= 0) return 1;
+  let critical = -1;
+  for (let k = 1; k <= trials; k += 1) {
+    if (signTestPValue(k, trials) <= alpha) { critical = k; break; }
+  }
+  if (critical < 0) return 1;
+  for (let step = 0; step <= 499; step += 1) {
+    const p = 0.5 + (0.5 * step) / 499;
+    if (upperTail(critical, trials, p) >= power) return p;
+  }
+  return 1;
+}
+
+/**
+ * Applies the amended pre-registered rule. Conjunctive: every clause must pass, so a skill with a
+ * large but noisy improvement, or one that improves the first-attempt rate while making more units
+ * get stuck, stays off.
+ */
+export function evaluateAdoption(on: ArmSummary, off: ArmSummary, pairs: PairedSummary): AdoptionDecision {
   const reasons: string[] = [];
   const delta = on.firstAttempt.point - off.firstAttempt.point;
+  const discordant = pairs.onWins + pairs.offWins;
+  const signTestP = signTestPValue(pairs.onWins, discordant);
+  const mde = minimumDetectableEffect(discordant);
 
   if (delta < ADOPTION_MIN_FIRST_ATTEMPT_DELTA) {
     reasons.push(
       `first-attempt rate improved by ${(delta * 100).toFixed(1)}pp, below the required ${(ADOPTION_MIN_FIRST_ATTEMPT_DELTA * 100).toFixed(0)}pp`,
     );
   }
-  if (intervalsOverlap(on.firstAttempt, off.firstAttempt)) {
-    reasons.push('the two Wilson intervals overlap, so the improvement is not distinguishable from noise');
+  if (discordant === 0) {
+    reasons.push('no fixture separated the arms (every fixture tied), so there is no paired evidence');
+  } else if (signTestP >= ADOPTION_SIGNIFICANCE) {
+    reasons.push(`the exact sign test is not significant (p=${signTestP.toFixed(3)} >= ${ADOPTION_SIGNIFICANCE} over ${discordant} non-tied fixture(s); MDE at this n is ${(mde * 100).toFixed(0)}pp)`);
   }
   if (on.stuckRate > off.stuckRate) {
     reasons.push(`STUCK rate rose from ${(off.stuckRate * 100).toFixed(1)}% to ${(on.stuckRate * 100).toFixed(1)}%`);
@@ -147,7 +281,7 @@ export function evaluateAdoption(on: ArmSummary, off: ArmSummary): AdoptionDecis
     reasons.push(`refusal count rose from ${off.refusals} to ${on.refusals}`);
   }
 
-  return { adopt: reasons.length === 0, delta, reasons, rule: BENCH_ADOPTION_RULE };
+  return { adopt: reasons.length === 0, delta, reasons, rule: BENCH_ADOPTION_RULE, signTestP, mde };
 }
 
 export interface SkillBenchOptions {
@@ -181,25 +315,37 @@ export async function runSkillBench(options: SkillBenchOptions): Promise<BenchRe
   }
 
   const perArm: Record<'on' | 'off', BenchRunResult[]> = { on: [], off: [] };
+  const perFixture: Record<string, { on: BenchRunResult[]; off: BenchRunResult[] }> = {};
+  for (const fixture of options.fixtures) perFixture[fixture] = { on: [], off: [] };
   for (const arm of options.arms) {
     for (const fixture of options.fixtures) {
       for (let repetition = 0; repetition < options.repetitions; repetition += 1) {
-        perArm[arm].push(await options.runOne({ fixture, arm, repetition }));
+        const result = await options.runOne({ fixture, arm, repetition });
+        perArm[arm].push(result);
+        perFixture[fixture][arm].push(result);
       }
     }
   }
 
   const on = summariseArm(perArm.on);
   const off = summariseArm(perArm.off);
+  const pairs = summarisePairs(options.fixtures.map((fixture) => pairFixture(fixture, perFixture[fixture].on, perFixture[fixture].off)));
+  const wallTimeMs = [...perArm.on, ...perArm.off].reduce((total, result) => total + (Number.isFinite(result.wallTimeMs) ? Math.max(0, result.wallTimeMs as number) : 0), 0);
+  const tokenResults = [...perArm.on, ...perArm.off].filter((result) => Number.isFinite(result.tokens));
+  const tokens = tokenResults.length ? tokenResults.reduce((total, result) => total + Math.max(0, result.tokens as number), 0) : null;
+
   return {
-    version: 1,
+    version: 2,
     stub: options.stub,
     model: options.model,
     fixtures: options.fixtures.length,
     repetitions: options.repetitions,
     generatedAt: options.now(),
     arms: { on, off },
-    adoption: evaluateAdoption(on, off),
+    pairs,
+    adoption: evaluateAdoption(on, off, pairs),
+    wallTimeMs,
+    tokens,
   };
 }
 

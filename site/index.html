@@ -161,7 +161,7 @@
     "id": "skills-adoption-evidence",
     "title": "Measured effect of the skills",
     "status": "blocked",
-    "summary": "The bench (`npm run bench:skills`) runs the fixture tasks in `test/fixtures/bench/` on and off and applies the pre-registered adoption rule over Wilson intervals, but a stub dry pass is refused as evidence (`BENCH_STUB_NOT_EVIDENCE`) and a real, paired run needs a model — none is reachable here (hosted is the operator blocker, and the local Ollama daemon is not running in the agent shell). No numbers are claimed.",
+    "summary": "The bench (`npm run bench:skills`) runs the fixture tasks in `test/fixtures/bench/` on and off and applies the pre-registered adoption rule — a paired, per-fixture comparison decided by an exact sign test at α = 0.05 plus a ≥ 10 percentage-point first-attempt gain and no rise in STUCK or refusals, with the MDE reported. A stub dry pass is refused as evidence (`BENCH_STUB_NOT_EVIDENCE`) and a real, paired run needs a model — none is reachable here (hosted is the operator blocker, and the local Ollama daemon is not running in the agent shell). No numbers are claimed.",
     "owner": "harness: engineering; model run: operator"
   },
   {

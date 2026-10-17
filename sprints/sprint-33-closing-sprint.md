@@ -62,6 +62,14 @@ A skill is enabled for a role **only if**, over the bench (skills on vs off, ≥
 Otherwise the skill **stays off**. This rule is written here before any real measurement so the
 decision cannot be moved to fit the data (ADR-013 §7: preference is not evidence).
 
+> **Amended in Sprint 34 (WP-2), before any real run.** The non-overlapping-interval clause above
+> compared the arms as if they were independent samples; the design is paired (every fixture runs
+> under both arms), so that clause was both underpowered and the wrong test. The operative rule is
+> now an **exact sign test** over the per-fixture winners, keeping the ≥10-point threshold and the
+> no-rise-in-STUCK/refusals guardrails, and recording the MDE at the observed n. See
+> `sprints/sprint-34-first-orders.md` for the amended rule in full. No real (non-stub) run had been
+> executed when this amendment was recorded.
+
 ## Pre-registered flip rule (WP-6 — recorded BEFORE `enforce` is turned on)
 
 `unrelatedWrites.enforce` flips from `false` to `true` **only** when all three hold, judged by

@@ -2,10 +2,12 @@
 /**
  * `npm run bench:skills -- [options]`
  *
- * The skills benchmark orchestrator (Sprint 33, WP-4). It runs the fixture tasks under
- * `test/fixtures/bench/` twice — once with skills injection **on**, once **off** — repeats each
- * side, and prints a JSON report carrying the first-attempt rates, their Wilson intervals, and the
- * verdict of the pre-registered adoption rule (`sprints/sprint-33-closing-sprint.md`).
+ * The skills benchmark orchestrator (Sprint 33, WP-4; rule amended in Sprint 34, WP-2). It runs the
+ * fixture tasks under `test/fixtures/bench/` twice — once with skills injection **on**, once
+ * **off** — repeats each side, and prints a JSON report carrying the first-attempt rates, their
+ * Wilson intervals, the paired per-fixture winners, the exact sign-test decision of the amended
+ * pre-registered rule (`sprints/sprint-34-first-orders.md`), the observed wall time, and the tokens
+ * the model path reported (or null when it reported none).
  *
  * The decision this informs is whether a vendored skill helps enough to enable for a role
  * (ADR-013 §7). It is deliberately not a happy path: a stub dry pass proves the plumbing and is
@@ -39,6 +41,7 @@ import { ExecutionLoopService } from '../src/services/executionLoopService';
 import { FrontierModelService } from '../src/services/frontierModelService';
 import { DoctrineService } from '../src/services/doctrineService';
 import { DurableStore } from '../src/services/durableStore';
+import { UsageMeteringService } from '../src/services/usageMeteringService';
 import { runSkillBench, type BenchRunResult, type BenchReport } from '../src/services/skillBenchService';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -196,13 +199,22 @@ async function main(): Promise<number> {
     process.env.FACTORY_DOCTRINE_ROOT = arm === 'on' ? onDoctrine.root : shipppedRoot;
     DoctrineService.clearCache();
     const { repo, task } = materialiseFixture(path.join(args.fixtures, fixture), model, workRoot);
+    // Tokens the model path reported for this run, read from the ledger's usage meter. The loop's
+    // model calls do not currently record usage, so this is usually empty and the report says so
+    // (tokens: null) rather than inventing a count; if the path starts recording, it appears here.
+    const before = new Set(UsageMeteringService.list(args.tenant).map((event) => event.id));
+    const startedAt = Date.now();
     const outcome = await ExecutionLoopService.run({ repo, taskDocument: task, tenantId: args.tenant, reportDir });
+    const wallTimeMs = Date.now() - startedAt;
+    const newEvents = UsageMeteringService.list(args.tenant).filter((event) => !before.has(event.id));
     const unit = outcome.record.units[0];
     const attempts = unit?.attempts ?? [];
     return {
       firstAttemptSuccess: attempts[0]?.passed === true,
       stuck: unit?.status === 'stuck',
       refusals: attempts.filter((attempt) => !attempt.passed).length,
+      wallTimeMs,
+      ...(newEvents.length ? { tokens: newEvents.reduce((total, event) => total + event.tokens, 0) } : {}),
     };
   };
 

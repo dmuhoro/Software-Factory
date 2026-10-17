@@ -4,6 +4,18 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.14] - 2026-10-17 — The skills benchmark can actually decide
+
+### Changed
+- **Skills adoption rule amended to a paired, per-fixture comparison (Sprint 34, WP-2).** The pre-registered rule now makes the decision per fixture (on beats off vs off beats on), uses an **exact sign test** over non-tied fixtures at α = 0.05, keeps the **≥ 10 percentage-point** first-attempt gain and the guardrail that neither the STUCK rate nor the refusal count rises, drops the "two Wilson intervals do not overlap" clause as inapplicable to a paired design, and the report states the **minimum detectable effect (MDE)** at the observed n. `BENCH_ADOPTION_RULE` and the evaluation in `src/services/skillBenchService.ts` match the operative text recorded in `sprints/sprint-34-first-orders.md`.
+
+### Added
+- **≥4 multi-file fixtures (bench-13..16).** `scripts/bench-fixtures.ts` generates four multi-file pipeline fixtures, each **failing first**, with a seed that requires correcting three source files; a dedicated test proves failing-first and the fix for each. The orchestrator picks them up automatically.
+
+### Changed
+- **Orchestrator reports wall time and tokens (Sprint 34, WP-2).** `scripts/bench-skills.ts` measures per run `wallTimeMs`, records total tokens from the ledger when present (else `null`), and passes them through. The report format is version 2.
+
+
 ## [4.15.13] - 2026-10-17 — The release ritual can see a manifest/version drift, and main is green again
 
 ### Fixed

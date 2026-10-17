@@ -377,10 +377,27 @@ What makes it safe to leave alone:
   model is told where to look.
 - **Whether a skill helps is measured, not asserted.** `npm run bench:skills` runs the fixture tasks
   under `test/fixtures/bench/` with injection **on** and **off**, repeats each side, and applies a
-  pre-registered rule — the first-attempt rate must improve by ≥ 10 percentage points, the two Wilson
-  intervals must not overlap, and neither the STUCK rate nor the refusal count may rise. Otherwise the
-  skill stays off. A `--dry` pass runs a stub and is labelled `stub: true`; such a report proves the
-  harness and is refused as capability evidence.
+  pre-registered rule. The design is **paired**: each fixture runs under both arms, so the decision is
+  made per fixture, not by comparing two independent samples. A fixture counts for the skill when its
+  aggregate first-attempt rate is higher with the skill on than off; an **exact sign test** over the
+  non-tied fixtures must reject the null at α = 0.05 in favour of "on" **and** the aggregate
+  first-attempt rate must improve by **≥ 10 percentage points** **and** neither the STUCK rate nor
+  the refusal count may rise; otherwise the skill stays off. The report states the minimum detectable
+  effect (MDE) at the observed fixture count, so a null result can be read as "not enough fixtures to
+  decide" rather than "decided no". A `--dry` pass runs a stub and is labelled `stub: true`; such a
+  report proves the harness and is refused as capability evidence.
+
+  To run it for real, point it at a reachable model — the command is exactly:
+
+      npm run bench:skills -- --model <provider>/<model> --tenant <tenant-id> --repetitions 3 --out artifacts/bench/skills-<date>.json
+
+  Budget the wall time as `≈ 2 × repetitions × fixtures × t`, where `t` is the median `wallTimeMs`
+  the report prints per run: two arms, `repetitions` repeats of each of the `fixtures` tasks
+  (16 at present, 12 single-file and 4 multi-file), each side one full loop run. The report carries
+  `wallTimeMs` per run so the second and later runs can be estimated from the first, and `tokens`
+  only when the model path reported a count (`null` otherwise — the loop's execution path does not
+  yet meter tokens, so a real number will not appear until it does).
+
 
 The format of the input is specified in
 [docs/TASK_DOCUMENT_FORMAT.md](docs/TASK_DOCUMENT_FORMAT.md). The rules the loop enforces are in
