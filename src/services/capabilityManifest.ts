@@ -142,7 +142,7 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
     id: 'skills-adoption-evidence',
     title: 'Measured effect of the skills',
     status: 'blocked',
-    summary: 'Deciding whether to adopt the vendored skills needs a with/without-skills run over canned tasks; the runs need a model, and none is reachable here (hosted is the operator blocker, and the local Ollama daemon is not running in the agent shell). No numbers are claimed.',
+    summary: 'The bench (`npm run bench:skills`) runs the fixture tasks in `test/fixtures/bench/` on and off and applies the pre-registered adoption rule over Wilson intervals, but a stub dry pass is refused as evidence (`BENCH_STUB_NOT_EVIDENCE`) and a real, paired run needs a model — none is reachable here (hosted is the operator blocker, and the local Ollama daemon is not running in the agent shell). No numbers are claimed.',
     owner: 'harness: engineering; model run: operator',
   },
   {

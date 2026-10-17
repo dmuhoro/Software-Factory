@@ -372,6 +372,12 @@ What makes it safe to leave alone:
   never sees it.
 - **A failed command reaches the next attempt with its file:line**, not just an exit code, so the
   model is told where to look.
+- **Whether a skill helps is measured, not asserted.** `npm run bench:skills` runs the fixture tasks
+  under `test/fixtures/bench/` with injection **on** and **off**, repeats each side, and applies a
+  pre-registered rule — the first-attempt rate must improve by ≥ 10 percentage points, the two Wilson
+  intervals must not overlap, and neither the STUCK rate nor the refusal count may rise. Otherwise the
+  skill stays off. A `--dry` pass runs a stub and is labelled `stub: true`; such a report proves the
+  harness and is refused as capability evidence.
 
 The format of the input is specified in
 [docs/TASK_DOCUMENT_FORMAT.md](docs/TASK_DOCUMENT_FORMAT.md). The rules the loop enforces are in

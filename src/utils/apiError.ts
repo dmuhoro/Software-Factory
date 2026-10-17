@@ -393,6 +393,14 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   SKILL_PIN_MISMATCH: { status: 422, message: 'A skill\'s bytes do not match its pin; the reviewed file is not the file on disk.' },
   SKILL_LOCK_INVALID: { status: 422, message: 'The skills lock is malformed, or a pin records no licence.' },
   SKILL_NAMES_EGRESS: { status: 422, message: 'A skill body names a network endpoint; a skill may not introduce egress.' },
+  // Sprint 33 (WP-4): the skills benchmark. These are operator-facing tool refusals, not API
+  // responses, but every code the source can raise is registered here so the L3 contract stays
+  // total: an unregistered code degrades to INTERNAL_ERROR, which is exactly the drift this table
+  // exists to catch.
+  BENCH_REPETITIONS_TOO_FEW: { status: 422, message: 'The benchmark needs at least three repetitions per task to satisfy the pre-registered rule.' },
+  BENCH_ARMS_INCOMPLETE: { status: 422, message: 'The benchmark is a paired comparison; both the on and off arms are required.' },
+  BENCH_STUB_NOT_EVIDENCE: { status: 422, message: 'A stub dry pass proves the harness, not a model, so it cannot evidence a skills-adoption claim.' },
+  BENCH_NO_PAIRED_ARMS: { status: 422, message: 'A skills-adoption claim needs both arms; this report is missing one.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */
