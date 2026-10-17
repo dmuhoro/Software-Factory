@@ -4,6 +4,39 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.11] - 2026-10-17 — The image the loop runs in can sandbox, and we can prove it
+
+### Changed
+- **The executor-host artifacts moved to `deploy/host/` (Sprint 33, WP-5).** They lived under
+  `software_factory/` — the Rust runtime's directory — where an operator would not look for a host
+  script. `provision-executor-host.sh` and `software-factory-executor.service` are now under
+  `deploy/host/`, and every live reference (README, ADR-014, the runbook, `scripts/verify-host.ts`)
+  points there. A test fails if the old path reappears in the live surface.
+
+### Added
+- **The image the loop runs in ships `bubblewrap`.** An image without it builds, boots, serves
+  `/health`, then dies at the sandbox boundary on the first real run — a defect no build or health
+  check can see. `./Dockerfile` installs it in the runtime stage, and
+  `bash scripts/verify-image.sh node` reports the runtime flags the container needs
+  (`--cap-add SYS_ADMIN`, `seccomp=unconfined`, `apparmor=unconfined`), proves the binary can create
+  a container as the unprivileged `factory` user, and fails closed when bubblewrap is absent. An
+  image built without bubblewrap was observed taking the FAIL branch on all three checks.
+- **`docs/RUNBOOK_EXECUTOR_HOST.md`** — the operator procedure end to end: host, tailnet,
+  credentials, proof, and the reboot drill, with a troubleshooting table.
+- **`verify:host --record`** writes `docs/evidence/executor-host-<date>.md`, whether the preflight
+  passes or fails, so "this host passed on this date" is an artifact and not a recollection.
+
+### Fixed
+- **The image-privilege check measured the mechanism, not the outcome.** It looked only for a
+  rootless `USER` and used `docker exec id -u`; the Node image deliberately drops privileges in its
+  entrypoint (a root-owned volume mount cannot be chowned by an unprivileged user) and `docker exec`
+  reports the image user, not the service. So the gate failed the Node image while the service ran
+  as uid 10001 the whole time. Both the `USER` check and the serving-container check now assert the
+  uid the service ends up as; the Node image passes as uid 10001.
+- **`sandbox-in-shipped-image` is now `live`**, proved by `npm run verify:image node`.
+
+AI-Assisted: opencode (big-pickle)
+
 ## [4.15.10] - 2026-10-17 — A benchmark a stub cannot fake
 
 ### Added
