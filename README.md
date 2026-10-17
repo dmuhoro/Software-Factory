@@ -373,6 +373,15 @@ What makes it safe to leave alone:
   `wallTimeMs` per run so the second and later runs can be estimated from the first, and `tokens`
   only when the model path reported a count (`null` otherwise — the loop's execution path does not
   yet meter tokens, so a real number will not appear until it does).
+- **A trial reports itself, and refuses a number it cannot derive.** `npm run trial:report -- --repo
+  <path> --since <YYYY-MM-DD>` derives, from the ledger and git only: runs and their statuses, units
+  attempted/done/stuck/blocked, failure classes (with unclassified failures counted, never guessed),
+  which recorded commits still exist and are contained by HEAD, which were later reverted or
+  repaired, wall time, and tokens when a usage event was actually recorded. A figure with no source
+  is `null` and named under **Not derivable**; cost is always `null` because nothing in this product
+  reports a price per call. The operator's judgement is recorded separately with `npm run trial:note`
+  and printed labelled `source: operator`. The five readiness criteria and the success definition are
+  fixed in advance in [docs/PRODUCTION_TRIAL.md](docs/PRODUCTION_TRIAL.md).
 
 
 The format of the input is specified in
