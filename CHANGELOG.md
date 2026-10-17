@@ -4,6 +4,37 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.16.0] - 2026-10-17 — One runtime, one image
+
+### Removed
+- **The Rust runtime is deleted (Sprint 34, WP-3 — Option C, ADR-016).** The unowned
+  `software_factory/` crate (Axum + Tokio, ~2,708 lines across 38 tracked files) nothing routed
+  to is gone. The last commit that contained it is tagged `rust-runtime-final`, so it is
+  recoverable. ADR-003 is marked superseded.
+
+### Changed
+- **One image, not two.** `scripts/verify-image.sh`, the publish matrix, and the dashboard now
+  target the Node image only. `verify-release.sh` checks four version sites — `package.json`,
+  `package-lock.json`, `CHANGELOG.md`, and the tag in `deploy/k8s/deployment.yaml` — instead of
+  six, because `Cargo.toml`/`Cargo.lock` no longer exist. AGENTS.md and CONSTITUTION IV.2 say
+  four.
+- **The product manifests moved, and were kept.** `software_factory/k8s/` → `deploy/k8s/`;
+  `software_factory/scripts/verify-k8s.py` → `scripts/verify-k8s.py`. The deployment runs
+  `ghcr.io/dmuhoro/software-factory/node:v4.16.0`. The NetworkPolicy that the NC-5 egress gate
+  renders from is preserved, and `RUST_LOG` (no readers) is removed, so the manifest gate checks
+  57 facts, not 58.
+- **CI no longer has a runtime job.** `verify.yml` drops the `rust` job and runs
+  `python scripts/verify-k8s.py`; `integrations.yml` points at `deploy/k8s/` and drops the Rust
+  Sonar exclusions; `scripts/verify-rust.sh` is deleted.
+
+### Added
+- **NC-9 is anchored to the live path.** The Node `/metrics` endpoint is JSON and reports the
+  ledger; `scripts/verify-layer1.sh` now ingests two telemetry records and asserts the scrape
+  reports `"telemetry":2` and answers without credentials (36 checks, up from 34). The problem is
+  no longer claimed as a Prometheus exposition, because it is not one.
+- **Full client-path verification** from a physical Android device over Tailscale: web UI and API
+  reachability recorded. The mobile (Flutter) client is verified in the trial runbook.
+
 ## [4.15.14] - 2026-10-17 — The skills benchmark can actually decide
 
 ### Changed

@@ -65,7 +65,7 @@ env:
   # same organisation publishes an image called `runtime`: GHCR packages are scoped to the owner,
   # so the second repository is refused or overwrites the first.
   #
-  # This workflow published to ghcr.io/dmuhoro/runtime while software_factory/k8s/deployment.yaml
+  # This workflow published to ghcr.io/dmuhoro/runtime while deploy/k8s/deployment.yaml
   # pulled ghcr.io/dmuhoro/software-factory/runtime. Both files are individually plausible, so
   # neither lint nor the image gate saw it, and a deployment of this branch would have reached
   # ImagePullBackOff behind a green pipeline. The manifest is authoritative -- it is what actually

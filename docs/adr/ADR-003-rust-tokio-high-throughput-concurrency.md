@@ -1,7 +1,8 @@
 # ADR-003: High-Performance Rust & Tokio Concurrency Engine
 
 ## Status
-Accepted
+
+Superseded by [ADR-016](ADR-016-delete-the-rust-runtime.md).
 
 ## Context
 High-throughput telemetry ingestion from IoT reefer monitors, clinical telemetry monitors, and property MLS syndication feeds creates bursty stream profiles susceptible to event queue lag and latency spikes in garbage-collected environments.

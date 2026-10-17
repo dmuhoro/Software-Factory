@@ -185,8 +185,8 @@ jobs:
         run: npx snyk test --severity-threshold=high --fail-on=high || exit 1
 
   # ── Datadog ─────────────────────────────────────────────────────────────────────────────
-  # The Rust runtime already exposes Prometheus metrics at /metrics, verified by
-  # scripts/verify-image.sh. This publishes the build's own verification result so the
+  # The service exposes ledger-derived metrics at /metrics (JSON), verified by
+  # scripts/verify-layer1.sh. This publishes the build's own verification result so the
   # release appears in the operational timeline. It does not scrape production: nothing here
   # has cluster access, and claiming live metrics from a CI runner would be the exact kind of
   # invented measurement this repository's constitution forbids.

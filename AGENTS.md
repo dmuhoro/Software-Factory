@@ -53,8 +53,7 @@ without bubblewrap fails the preflight by design rather than running verificatio
 
 ## Releasing
 
-A release is described in six places that must agree — `package.json`, `package-lock.json`,
-`software_factory/Cargo.toml`, `software_factory/Cargo.lock`, `CHANGELOG.md` and the image tag in
-`software_factory/k8s/deployment.yaml` — and is tagged.
+A release is described in four places that must agree — `package.json`, `package-lock.json`,
+`CHANGELOG.md` and the image tag in `deploy/k8s/deployment.yaml` — and is tagged.
 `bash scripts/verify-release.sh` is the gate. Bump the version, add the changelog entry, commit,
 tag, and push both the branch and the tag. Commits carry the `AI-Assisted:` attribution footer.

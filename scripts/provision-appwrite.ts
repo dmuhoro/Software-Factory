@@ -109,7 +109,7 @@ function buildSchema(databaseId: string): { databaseName: string; tables: TableS
         description: 'Append-only audit trail. Mirrors the DurableStore.appendAudit entry shape.',
         columns: [
           tenantId,
-          { kind: 'string', key: 'actorId', size: 128, required: true, indexed: true, description: 'Who acted: a tenant id, or a service: principal such as software_factory_runtime.' },
+          { kind: 'string', key: 'actorId', size: 128, required: true, indexed: true, description: 'Who acted: a tenant id, or a service: principal such as node_runtime.' },
           { kind: 'string', key: 'action', size: 128, required: true, indexed: true, description: 'For example AI_TRANSFORMATION_RECORDED.' },
           { kind: 'string', key: 'resourceUri', size: 512, required: true, description: 'factory:// scheme, the same URI the local store uses.' },
           { kind: 'string', key: 'checksum', size: 128, required: true, description: 'sha256: of the output, so a tampered record is detectable without storing the original.' },

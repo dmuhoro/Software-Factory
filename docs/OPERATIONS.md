@@ -97,7 +97,7 @@ which is how the system learns and how you see why. Fail closed, and fail loudly
 | **Appwrite live** | The scope split is gated (`npm run verify:scopes`); the live probe is `npm run appwrite:check` | **Blocked on one console action:** grant the key its scopes. Nothing in code. Whether the key is currently accepted is an operator fact, not something this repository can assert. |
 | **Auth** | Tenant IDs carried through services | No real identity provider. Anyone with a tenant ID has that tenant's access. **This blocks any external user.** |
 | **Observability** | `/metrics` Prometheus series exist | No dashboards, no alerts, no on-call. You would not know it broke. |
-| **Deployment** | Both images are built and run as non-root by `npm run verify:image`; the publish workflow is written | Never pushed to a registry and never deployed end to end. The manifest pins a tag, not a digest (`software_factory/k8s/deployment.yaml:71`). |
+| **Deployment** | The image is built and run as non-root by `npm run verify:image`; the publish workflow is written | Never pushed to a registry and never deployed end to end. The manifest pins a tag, not a digest (`deploy/k8s/deployment.yaml:71`). |
 | **Dependency supply chain** | The lockfile is committed; the skills lock gates vendored skill content (ADR-013: an unpinned or modified skill is refused) | No SLSA/provenance for npm dependencies; the package registry remains the trust root for installed packages. |
 | **Testing** | 502 unit/integration tests across 73 files, including an end-to-end loop suite that drives real git repositories and a stub model port | No end-to-end coverage of the inbox/agent-run API, and no fault-injection of the loop against a hostile target repository. |
 | **Niches** | 3 operational, rest refuse honestly | Adding niches is gated on ADRs, correctly. `CustomB2B` should stay refusing. |
@@ -179,9 +179,9 @@ Dependency-ordered, because the earlier items make the later ones cheap.
 
 - That the agent builds working software yet. It does not.
 - That the platform is safe for external users. There is no identity provider.
-- That a production image has ever been **published or deployed end to end**. Both images are built
+- That a production image has ever been **published or deployed end to end**. The image is built
   and run as non-root by `npm run verify:image`, but nothing has been pushed to a registry and the
-  manifest pins a tag rather than a digest (`software_factory/k8s/deployment.yaml:71`).
+  manifest pins a tag rather than a digest (`deploy/k8s/deployment.yaml:71`).
 - That three niches are implemented as compliance systems. They are adapters with guardrails
   declared and enforced in code paths; the compliance regimes named have not been independently
   certified by anyone.

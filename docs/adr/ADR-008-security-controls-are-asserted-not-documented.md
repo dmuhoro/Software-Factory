@@ -15,9 +15,9 @@ Neither was a mistake of attention. Both were mistakes of *instrument*.
 
 The image had never been built because building it was never part of the pipeline — CI ran
 typechecks, unit tests and harnesses, and the Dockerfile was a file. When it was finally built,
-it failed three times in a row, then the Rust image that the deployment actually runs failed
-on a toolchain that could not parse the committed lockfile. Eight defects, none of which any
-read of the Dockerfile could have found.
+it failed three times in a row. Eight defects, none of which any read of the Dockerfile
+could have found. (The second, Rust image mentioned in the original text was deleted with its
+crate by ADR-016.)
 
 The egress policy was open to the internet under a comment reading "replace with a CIDR
 allowlist before production." The comment documented the intention. The gate did not check
@@ -73,7 +73,7 @@ duplicate it, and deleted in favour of six added assertions.
 
 ## Consequences
 
-The image gate builds both images and inspects the artifacts. The manifest gate parses the
+The image gate builds the image the deployment runs and inspects the artifact. The manifest gate parses the
 YAML structurally rather than grepping it, so a wildcard in a comment cannot be mistaken for
 a rule and a rule written in an unanticipated form is still counted.
 

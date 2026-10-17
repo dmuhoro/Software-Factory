@@ -8,9 +8,6 @@ coverage/
 !.env.example
 .data/
 
-# Rust build output (2GB locally); the dependency graph is pinned in Cargo.lock
-software_factory/target/
-
 # Agent tooling installed by `npx skills add` (Appwrite SDK/CLI skills). These are local
 # development aids duplicated across several agent directories, not product code: committing
 # them would triple 236KB of vendored documentation into the repository and let an agent
@@ -42,7 +39,7 @@ artifacts/*.sha256
 crash.log
 crash.*.log
 
-# Cloud provider credentials. The GCR push path in software_factory/.github/workflows/ci.yml is
+# Cloud provider credentials. The GCR push path in the image publish workflow is
 # gated on secrets.GCR_PUSH, and a developer testing that locally will end up with a service
 # account key file on disk. It must never be committable.
 service-account*.json

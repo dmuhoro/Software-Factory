@@ -13,7 +13,6 @@ docs
 .env.*
 !.env.example
 test
-software_factory
 appwrite-functions
 README.md
 CHANGELOG.md

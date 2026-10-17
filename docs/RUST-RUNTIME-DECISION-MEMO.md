@@ -1,5 +1,8 @@
 # Rust runtime decision memo — archive, own, or delete `software_factory/`
 
+**Status: executed.** Sprint 34 WP-3 chose Option C (delete) and shipped it as
+ADR-016. The crate is recoverable at tag `rust-runtime-final`.
+
 - **Status**: **STOP FOR DANIEL** — a decision for the operator, not a sprint to start
 - **Date**: 2026-10-17
 - **Owner**: operator (the decision); engineering (any execution it authorizes)

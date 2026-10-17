@@ -8,9 +8,9 @@
  * happened. In the error path that is the worst place to fabricate: the operator reads a
  * confident-looking stack trace and believes it.
  *
- * The product does contain a Rust crate (`software_factory/`), but the running service is
- * the Node control plane and it does not emit Rust traces. Where a real trace is unavailable,
- * the honest move is to show the real error envelope, not to invent one.
+ * The running service is the Node control plane and it emits no Rust traces. (The Rust crate
+ * this comment used to mention was deleted in Sprint 34, ADR-016.) Where a real trace is
+ * unavailable, the honest move is to show the real error envelope, not to invent one.
  *
  * This guard has two arms:
  *   1. the error emitter carries no trace field and validation.ts holds no trace generator;
