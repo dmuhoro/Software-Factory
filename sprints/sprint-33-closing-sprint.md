@@ -1,6 +1,6 @@
 # Sprint 33 — The Closing Sprint
 
-**Status:** WP-0 governance landed · WP-1 vendoring landed · WP-2 intake landed · WP-3 diagnose-on-stuck landed · WP-4 skills bench landed · WP-5 host/image hygiene landed · WP-6 enforcement graduation tooling landed · WP-8 host-sample pinning landed · WP-7 decision memo in flight · **Opened:** 2026-10-16 · **Closed:** —
+**Status:** WP-0 governance landed · WP-1 vendoring landed · WP-2 intake landed · WP-3 diagnose-on-stuck landed · WP-4 skills bench landed · WP-5 host/image hygiene landed · WP-6 enforcement graduation tooling landed · WP-8 host-sample pinning landed · WP-7 decision memo written (`docs/RUST-RUNTIME-DECISION-MEMO.md`), awaiting Daniel's decision · **Opened:** 2026-10-16 · **Closed:** —
 
 **Thesis.** Finish every remaining engineering item so that the only work left is **operator-only**, and
 make each of those operator items **one command**. A "blocked" item may name an owner only if that owner
@@ -49,7 +49,7 @@ The brief for this sprint said it "follows Sprint 31 (v4.15.5)" and named the fi
 | **WP-5** | Host and image hygiene: move `software_factory/host` → `deploy/host` and repoint every reference; add `bubblewrap` to the image; `verify:image` reports the runtime flags the sandbox needs and fails closed when absent; `docs/RUNBOOK_EXECUTOR_HOST.md`; `verify:host --record` writes dated evidence. | `verify:image` fails closed without bwrap; `verify:host --record` writes a dated file | **done** |
 | **WP-6** | Enforcement graduation tooling: `unrelated-writes:report` summarises the shadow log across runs (units observed, would-refuse count, each would-refuse listed). Record the flip rule; **do not flip** `enforce`. | the report runs over the shadow log and lists every would-refuse | **done** |
 | **WP-8** | Test hermeticity: pin the host-resource sample the loop is judged against (`ResourceGovernorService.setSamplerForTests`), so the loop-driving tests measure the loop and not how busy the developer's desktop is. The seam swaps the sample only; budgets and the fail-closed refusal still run. | the loop halts on `resource exhaustion` under a pinned short sample; the **same fixture completes** under a pinned benign sample (negative control); with the override cleared the governor still reads the real host | **done** |
-| **WP-7** | Decision memo (no code): the Rust runtime (`software_factory/`) has no owner and its own tenant model. Options (archive, keep with an owner, delete) + a recommendation. | the memo; **STOP for Daniel** | **pending** |
+| **WP-7** | Decision memo (no code): the Rust runtime (`software_factory/`) has no owner and its own tenant model. Options (archive, keep with an owner, delete) + a recommendation. | the memo — `docs/RUST-RUNTIME-DECISION-MEMO.md`; **STOP for Daniel** | **memo written — awaiting Daniel's decision** |
 
 ## Pre-registered adoption rule (WP-4 — recorded BEFORE any real run)
 
