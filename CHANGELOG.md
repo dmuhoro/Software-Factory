@@ -4,6 +4,30 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.13] - 2026-10-17 — The release ritual can see a manifest/version drift, and main is green again
+
+### Fixed
+- **The release ritual could not see a manifest/version drift** (Sprint 34, WP-1). `verify-k8s.py`
+  asserts that the image tag in `software_factory/k8s/deployment.yaml` names the product version, and
+  CI runs it as the `kubernetes manifests` job — but `scripts/verify-release.sh`, the local ritual
+  that cuts a release, did not. So from `v4.15.7` to `v4.15.12` every release bumped five version
+  records and left the deployment manifest on the old tag: each release passed the ritual locally and
+  the `kubernetes manifests` job was red on `main` for five releases. A gate that runs locally and a
+  gate that runs in CI were checking different things, and the one the operator trusted was blind to
+  the defect. `verify-release.sh` now asserts, dependency-free (node and git only, no PyYAML), that
+  the deployment runs this release's image tag — so the ritual catches the drift the moment it is
+  introduced. Negative control recorded: a deliberately stale tag fails the ritual with one `FAIL`,
+  and the correct tag passes. `software_factory/k8s/deployment.yaml`'s tag is bumped to `v4.15.13`,
+  and `AGENTS.md`/`docs/CONSTITUTION.md` IV.2 now name the image tag as the sixth release record.
+  This is the release that carries the fix, which is why it exists as its own version.
+
+### Documentation
+- **Rust runtime decision memo** (`docs/RUST-RUNTIME-DECISION-MEMO.md`, Sprint 33 WP-7): the
+  unowned `software_factory/` crate, its evidence, and the three options, with a recommendation.
+- **Sprint 34 opened** (`sprints/sprint-34-first-orders.md`): the last code before a production
+  trial — delete the Rust runtime, make the benchmark able to decide, make the trial report itself,
+  and preflight the first live pull request.
+
 ## [4.15.12] - 2026-10-17 — The shadow guard can be measured, and the suite stops judging the desktop
 
 ### Added
