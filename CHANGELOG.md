@@ -4,6 +4,30 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.10] - 2026-10-17 — A benchmark a stub cannot fake
+
+### Added
+- **The skills-adoption benchmark (Sprint 33, WP-4).** The `skills-adoption-evidence` capability was
+  blocked because no harness could produce adoption evidence a stub could not forge. `runSkillBench`
+  now runs one task through two arms — the root doctrine (`off`) and a temp doctrine root with skills
+  injection `on` — and reports the first-attempt success rate per arm. The decision rule is
+  **pre-registered before the data** in `sprints/sprint-33-closing-sprint.md`: adopt only when the
+  on-arm's first-attempt rate exceeds the off-arm's by at least `ADOPTION_MIN_FIRST_ATTEMPT_DELTA`
+  (0.10) **and** the two Wilson intervals do not overlap. The rule and constants live in
+  `src/services/skillBenchService.ts`; the summariser, the interval math and the adoption evaluation
+  are pure.
+- **The refusals are real codes, not prose.** Fewer than three repetitions per task is
+  `BENCH_REPETITIONS_TOO_FEW`; a missing arm is `BENCH_ARMS_INCOMPLETE`; and a `--dry` stub pass,
+  whose only purpose is to prove the harness works, can never back an adoption claim —
+  `BENCH_STUB_NOT_EVIDENCE`. All four bench codes are registered in the boundary table
+  (`src/utils/apiError.ts`) so none degrades to `INTERNAL_ERROR`.
+- **`scripts/bench-fixtures.ts` and `scripts/bench-skills.ts`.** The first generates twelve
+  fixtures into `test/fixtures/bench/` and verifies them (`--check`); the second orchestrates a run
+  and writes a report. `--dry` drives a loopback stub provider through the real request path — no
+  external egress. New npm scripts: `bench:fixtures`, `bench:skills`.
+
+AI-Assisted: opencode (big-pickle)
+
 ## [4.15.9] - 2026-10-17 — When a unit gets stuck, say so, and say what to do
 
 ### Added
