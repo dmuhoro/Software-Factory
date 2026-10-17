@@ -98,7 +98,7 @@ jobs:
               shown to fail without its fix. A test that cannot fail is not a test.
             docs/CONSTITUTION.md -> "Known non-conformances": if a resolved entry describes
               behaviour the diff changes, the entry is now false. Flag it.
-            software_factory/k8s/: egress must never return to 0.0.0.0/0, and rendered CIDRs
+            deploy/k8s/: egress must never return to 0.0.0.0/0, and rendered CIDRs
               are snapshots, not durable controls. Both facts are load-bearing.
 
   # ── SonarQube ───────────────────────────────────────────────────────────────────────────
@@ -145,7 +145,6 @@ jobs:
             -Dsonar.sources=src,server.ts,scripts
             -Dsonar.exclusions=dist/**,node_modules/**,test/**,**/*.d.ts
             -Dsonar.typescript.tsconfigPath=tsconfig.json
-            -Dsonar.rust.exclusions=software_factory/target/**
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
 
   # ── Snyk ────────────────────────────────────────────────────────────────────────────────

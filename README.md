@@ -21,19 +21,20 @@ Idea or incomplete repository
 
 The system is intentionally evidence-first. It does not treat a successful build as proof that a product is complete, useful, secure, or ready for production.
 
-## The two runtimes
+## The runtime
 
-This repository contains two services that enforce the same tenant model independently.
+One service enforces the tenant model: the Node server (`src/`, `server.ts`), the product
+workspace for jobs, approvals, evidence and audit. It listens on `PORT` (3000 by default; the
+Kubernetes manifest sets `PORT=8080`).
 
-| | TypeScript service (`src/`, `server.ts`) | Rust runtime (`software_factory/`) |
-|---|---|---|
-| Role | Product workspace: jobs, approvals, evidence, audit | High-throughput telemetry ingestion and transformation |
-| Storage | Single-writer JSON ledger (`src/services/durableStore.ts`) | Appwrite |
-| State | **Tenant registry is in-memory** | Tenant profiles in memory, credentials at startup |
-| Scaling | **One writer. Do not run replicas.** | Stateless; horizontal scaling is safe |
-| Port | 3000 | 8080 |
+Until Sprint 34 a second service existed — a Rust crate at `software_factory/`, Axum + Tokio,
+enforcing the same tenant model independently and on its own tenant store. No user reached it,
+nothing routed traffic to it, and its only live coupling was to the release ritual; it was deleted
+under Option C (`docs/RUST-RUNTIME-DECISION-MEMO.md`). The last commit whose tree contained it is
+tagged `rust-runtime-final`, so it can be recovered, and ADR-003 is superseded by
+[ADR-016](docs/adr/ADR-016-one-runtime.md).
 
-The TypeScript ledger is protected by a process-lifetime writer lock. A second process
+The ledger is protected by a process-lifetime writer lock. A second process
 against the same data directory exits 75 rather than starting, because the adapter rewrites
 the whole file on every change and two writers would silently overwrite each other.
 
@@ -70,27 +71,6 @@ A request carries its credential in `x-tenant-id` and `x-api-key`. A credential 
 one tenant is refused with `403 TENANT_CREDENTIAL_MISMATCH` for any other, and a tenant with
 no provisioned credential is unwritable.
 
-## Running the Rust runtime
-
-```bash
-cd software_factory
-cargo build --release
-GEMINI_API_KEY=... \
-APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1 \
-APPWRITE_PROJECT_ID=... \
-APPWRITE_API_KEY=... \
-TENANT_API_KEYS="tenant_re_8841:...,tenant_hc_1042:..." \
-./target/release/software_factory
-```
-
-All five are required; the process exits 1 naming the missing one. `GEMINI_MOCK=1` enables
-the deterministic mock for local work, and its output is labelled `"mock": true` so a
-fabricated response cannot be mistaken for inference. A key bound to two tenants is rejected
-at startup.
-
-Endpoints: `/health` (liveness, public), `/ready` (readiness, 503 when unconfigured),
-`POST /api/v1/telemetry/ingest`, `GET /api/v1/tenants/me`.
-
 ## Verifying
 
 ```bash
@@ -99,15 +79,11 @@ npm run verify:docs         # documentation gates
 npm run verify:fresh-clone  # a clean clone installs and verifies (needs bubblewrap)
 npx tsc --noEmit            # types
 npm run verify:host         # the executor host is the one ADR-014 describes
-npm run verify:layer1       # 34 checks against the built server
+npm run verify:layer1       # 36 checks against the built server
 npm run verify:layer2       # 26 checks: tenant isolation
 npm run verify:layer3       # 24 checks: error contract, writer lock
 
-cd software_factory
-cargo test                  # 15 tests
-cargo clippy --all-targets -- -D warnings
-cargo fmt --check
-python3 scripts/verify-k8s.py   # 58 manifest assertions
+python3 scripts/verify-k8s.py   # 57 manifest assertions
 ```
 
 The three harnesses start the built server and drive it over HTTP, then assert nothing is
@@ -143,14 +119,14 @@ non-conformance table in `docs/CONSTITUTION.md`.
 - **There is no external identity provider.** A caller that presents a provisioned tenant
   credential is trusted; there is no interactive login, so anyone holding a tenant id and its
   secret has that tenant's access. <!-- owner: operator -->
-- **There are no dashboards, alerts, or on-call** on the Prometheus series the Rust runtime
-  already exposes at `/metrics` (`software_factory/src/metrics.rs`). The endpoint exists; the
+- **There are no dashboards, alerts, or on-call** on the Prometheus series the runtime exposes at
+  `/metrics` (`src/api/routes/factory.routes.ts`). The endpoint exists; the
   paging does not. <!-- owner: operator -->
 
-Two former limits are closed and are recorded here so they do not quietly reopen: both images
-build and are asserted against the built artifact (`npm run verify:image`, 25 checks), and the
+Two former limits are closed and are recorded here so they do not quietly reopen: the image
+builds and is asserted against the built artifact (`npm run verify:image`), and the
 Kubernetes NetworkPolicy's allow-all egress was replaced by an allowlist rendered from observed
-DNS answers (`npm run render:egress`; `software_factory/scripts/verify-k8s.py` fails if the
+DNS answers (`npm run render:egress`; `scripts/verify-k8s.py` fails if the
 wildcard returns). See `sprints/sprint-15-production-hardening.md` for the full record, including
 the fixes that were reverted to confirm the tests would fail without them.
 
@@ -529,7 +505,7 @@ doctrine/               Stage order, attempt cap, models per role, rules and hoo
 test/                   Deterministic unit and integration tests
 docs/                   Constitution, ADRs, contracts, and operating playbooks
 sprints/                Sequential implementation records
-software_factory/       Rust runtime foundation and domain adapters
+deploy/k8s/             Kubernetes manifests for the runtime
 appwrite-functions/     Optional Appwrite integration functions
 ```
 

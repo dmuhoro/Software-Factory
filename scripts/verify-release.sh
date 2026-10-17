@@ -67,12 +67,6 @@ read_version() {
     let v = null;
     if (kind === "json") {
       try { const j = JSON.parse(raw); v = j.version ?? j.packages?.[""]?.version ?? null; } catch {}
-    } else if (kind === "cargo") {
-      const m = raw.match(/^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m);
-      if (m) v = m[1];
-    } else if (kind === "cargo-lock") {
-      const m = raw.match(/name = "software_factory"\nversion = "([^"]+)"/);
-      if (m) v = m[1];
     } else if (kind === "changelog") {
       const m = raw.match(/^##\s*\[?v?(\d+\.\d+\.\d+)/m);
       if (m) v = m[1];
@@ -103,23 +97,21 @@ if ! REFERENCE="$(read_version package.json json)"; then
 fi
 
 section "All version records must agree (reference: package.json = $REFERENCE)"
-printf '  Every site below must read %s. They are five independent copies of one fact,\n' "$REFERENCE"
+printf '  Every site below must read %s. They are independent copies of one fact,\n' "$REFERENCE"
 printf '  and nothing but this script keeps them from drifting apart.\n\n'
 
 check_site "package.json"        package.json                json
 check_site "package-lock.json"   package-lock.json           json
-check_site "Cargo.toml"          software_factory/Cargo.toml  cargo
-check_site "Cargo.lock"          software_factory/Cargo.lock  cargo-lock
 check_site "CHANGELOG.md"        CHANGELOG.md                 changelog
 
 section "The Kubernetes deployment runs this release's image"
 # The deployment manifest names the image tag the product ships, and the tag must name the
-# release. CI asserts the same invariant in software_factory/scripts/verify-k8s.py, but the
-# local release ritual did not run it, so a manifest left on an older tag passed the ritual and
-# failed only in CI: the 'kubernetes manifests' job was red on main from v4.15.7 to v4.15.12,
-# five releases, each one green locally. This check is deliberately dependency-free (node and
-# git only, no PyYAML), so the ritual stays portable; CI still runs the full manifest suite.
-DEPLOY_MANIFEST="software_factory/k8s/deployment.yaml"
+# release. CI asserts the same invariant in scripts/verify-k8s.py, but the local release ritual
+# did not run it, so a manifest left on an older tag passed the ritual and failed only in CI: the
+# 'kubernetes manifests' job was red on main from v4.15.7 to v4.15.12, five releases, each one
+# green locally. This check is deliberately dependency-free (node and git only, no PyYAML), so
+# the ritual stays portable; CI still runs the full manifest suite.
+DEPLOY_MANIFEST="deploy/k8s/deployment.yaml"
 if [ ! -f "$DEPLOY_MANIFEST" ]; then
   fail "no deployment manifest at $DEPLOY_MANIFEST"
 else

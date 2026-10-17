@@ -177,7 +177,7 @@ section "The published image path is the one the manifest requests"
 # agree with it. GHCR namespaces packages per owner, so the repository name has to appear in the
 # path or the second repository to publish an image called `runtime` collides with the first.
 PUBLISH=".github/workflows/publish.yml"
-MANIFEST="software_factory/k8s/deployment.yaml"
+MANIFEST="deploy/k8s/deployment.yaml"
 if [ ! -f "$PUBLISH" ] || [ ! -f "$MANIFEST" ]; then
   fail "the publish workflow or the deployment manifest is missing, so the image path cannot be compared"
 else

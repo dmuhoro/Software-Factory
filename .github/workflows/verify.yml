@@ -177,33 +177,6 @@ jobs:
             exit 1
           fi
 
-  rust:
-    name: rust (fmt, clippy, tests)
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: software_factory
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      # The lock file is committed, so this resolves rather than updating the graph.
-      - name: Build
-        run: cargo build --locked --all-targets
-
-      - name: Format
-        run: cargo fmt --check
-
-      - name: Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
-
-      - name: Tests
-        run: cargo test --locked
-
   manifests:
     name: kubernetes manifests
     runs-on: ubuntu-latest
@@ -219,7 +192,7 @@ jobs:
         run: pip install pyyaml
 
       - name: Validate manifests
-        run: python software_factory/scripts/verify-k8s.py
+        run: python scripts/verify-k8s.py
 
   fresh-clone:
     name: fresh clone (reproducibility)

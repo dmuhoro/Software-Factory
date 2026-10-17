@@ -163,7 +163,7 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
     id: 'sandbox-in-shipped-image',
     title: 'Sandboxed execution in the shipped image',
     status: 'live',
-    summary: 'The image the loop runs in (./Dockerfile) installs bubblewrap, and `npm run verify:image node` proves the container can create a sandbox as the unprivileged `factory` user under the flags the host must grant (--cap-add SYS_ADMIN, seccomp/apparmor unconfined). The Rust runtime image is the HTTP surface and does not run sandboxed commands. A host that forbids user namespaces still fails closed at the sandbox boundary (ADR-010, ADR-014 §5).',
+    summary: 'The image the loop runs in (./Dockerfile) installs bubblewrap, and `npm run verify:image node` proves the container can create a sandbox as the unprivileged `factory` user under the flags the host must grant (--cap-add SYS_ADMIN, seccomp/apparmor unconfined). A host that forbids user namespaces still fails closed at the sandbox boundary (ADR-010, ADR-014 §5).',
     proves: 'npm run verify:image node',
   },
   {

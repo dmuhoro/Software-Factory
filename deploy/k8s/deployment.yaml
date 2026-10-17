@@ -63,12 +63,18 @@ spec:
           # GITHUB_TOKEN and costs nothing for a public package.
           #
           # At release time, replace this tag with the digest the publish job reported, i.e.
-          # ghcr.io/dmuhoro/software-factory/runtime@sha256:<digest>. A tag is a name and can be
+          # ghcr.io/dmuhoro/software-factory/node@sha256:<digest>. A tag is a name and can be
           # moved; a digest is the artifact. Pinning is what makes "roll back to the version that
           # worked" true, and what makes the running image auditable against the commit that
           # built it. No digest is written here today because none has been published yet, and
           # inventing one would be a claim nothing could check.
-          image: ghcr.io/dmuhoro/software-factory/runtime:v4.15.14
+          #
+          # Until Sprint 34 this ran the Rust image (`.../runtime`), built from
+          # `software_factory/Dockerfile`. That crate was deleted (WP-3, Option C): it was a
+          # second runtime nothing reached, on its own tenant model. The deployment now runs the
+          # Node server, which is the product (`./Dockerfile`, package `node`), on the same HTTP
+          # surface — `/health`, `/ready`, `/metrics`.
+          image: ghcr.io/dmuhoro/software-factory/node:v4.16.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

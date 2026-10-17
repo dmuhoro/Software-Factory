@@ -2,47 +2,34 @@
 #
 # NC-4: prove the image's security and runtime properties against the built artifact.
 #
-# There are two images in this repository, and the distinction between them is the whole
-# point of this script.
+# There is one image in this repository: `./Dockerfile`, the Node server, which is what
+# `deploy/k8s/deployment.yaml` runs and what `.github/workflows/publish.yml` publishes.
 #
-#   software_factory/Dockerfile  -> the Rust runtime. This is what k8s/deployment.yaml runs
-#                                   and what software_factory/.github/workflows/ci.yml
-#                                   builds. It is the production artifact.
-#   ./Dockerfile                 -> the Node server. It is not referenced by the Kubernetes
-#                                   manifests; it runs the same HTTP surface for local and
-#                                   container-based development.
+# Until Sprint 34 there were two. The second was `software_factory/Dockerfile`, a Rust runtime
+# that the manifest ran and this script verified first, because it was the artifact tenant
+# traffic would have reached. The crate was deleted (WP-3, Option C): no user reached it, and it
+# duplicated the tenant model. The image gate now verifies the one image that ships.
 #
-# The first version of this script verified only the Node image. That would have been a gate
-# that proved the wrong artifact was safe while the one that ships went unbuilt. Both are
-# verified now, and the Rust runtime is verified first, because it is the one that carries
-# tenant traffic.
+# The image had never been built. Building it found two defects, neither of which could be found
+# by reading a Dockerfile:
 #
-# Neither image had ever been built. Building them found seven defects between them, none of
-# which could be found by reading a Dockerfile:
+#   1. npm: not found -- the oven/bun base had no npm, while invoking npm.
+#   2. vite/esbuild shipped in the runtime image because build tools were declared as
+#      production dependencies.
 #
-#   Rust runtime
-#     1. rust:1.78 could not parse the committed Cargo.lock (rand_pcg 0.10.2 needs
-#        edition2024, i.e. Cargo 1.85+). The image could not be built at all.
-#     2. Cargo.lock was never copied into the build, and --locked was never passed, so the
-#        image resolved a dependency graph that no test had ever run against.
-#     3. The dependency-cache step ended in `|| true`, so a failed warm-up reported success.
-#     4. --target x86_64-unknown-linux-musl was hardcoded; the image could not build on arm64.
-#     5. There was no .dockerignore, so a 2.6GB target/ directory was sent on every build.
+# (The deleted Rust image had five more -- an unparseable Cargo.lock, a lockfile never copied in,
+# a `|| true` on the dependency cache, a hardcoded target triple, and no .dockerignore. Those
+# checks went with the image; this script no longer asserts anything about a crate that is gone.)
 #
-#   Node server
-#     6. npm: not found -- the oven/bun base had no npm, while invoking npm.
-#     7. vite/esbuild shipped in the runtime image because build tools were declared as
-#        production dependencies.
-#
-# So this script does not read the Dockerfiles. It builds the images, inspects what actually
-# landed, walks the layer history for credentials, and starts containers. A claim about a
+# So this script does not read the Dockerfile. It builds the image, inspects what actually
+# landed, walks the layer history for credentials, and starts the container. A claim about a
 # container that has never been run is a claim about a document.
 #
-# Usage: scripts/verify-image.sh [rust|node|all]
+# Usage: scripts/verify-image.sh [node]
 
 set -uo pipefail
 
-TARGET="${1:-all}"
+TARGET="${1:-node}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
@@ -152,178 +139,11 @@ common_checks() {  local IMAGE="$1" NAME="$2" EXPECT_UID="$3"
   fi
 }
 
-section "Build the production Rust runtime image (software_factory/Dockerfile)"
-if docker build -t sf-rust-verify software_factory >/tmp/sf-image-rust.log 2>&1; then
-  pass "the Rust runtime image builds (it had never been built)"
-  printf '  size: %s bytes\n' "$(docker image inspect -f '{{.Size}}' sf-rust-verify)"
-else
-  fail "the Rust runtime image does not build; see /tmp/sf-image-rust.log"
-  tail -15 /tmp/sf-image-rust.log
-  printf '\n\033[31m════ IMAGE GATE: %d passed, %d FAILED ════\033[0m\n' "$PASS" "$FAIL"
-  exit 1
-fi
 
-section "The Rust runtime: the build recipe is reproducible (static)"
-# These four are NOT observable at runtime, and the negative controls proved it. An image
-# built from a Dockerfile that omits Cargo.lock and --locked still boots, still runs as
-# uid 10001, still serves /health, and passes every check above. The result is a *working*
-# image compiled from an untested dependency graph -- the same defect as NC-3, where the
-# image installed a bun.lock that no CI run had ever exercised.
-#
-# So these are asserted against the build recipe and labelled static, because that is the
-# only place they can be seen. A static assertion is legitimate here precisely because it is
-# not pretending to be a runtime observation. Without this section the gate was green and
-# proved nothing about reproducibility, which is the state this comment was written in.
-DOCKERFILE_RUST=software_factory/Dockerfile
-
-# Everything below is matched against Docker *instructions*, with comment lines stripped.
-# A Dockerfile that documents a defect in prose is a normal and good thing to do; a grep that
-# cannot tell a comment from a command then reports the documentation as the defect, and the
-# check is worse than no check because it looks like it is working.
-INSTRUCTIONS="$(grep -vE '^[[:space:]]*#' "$DOCKERFILE_RUST")"
-
-# `|| true` on a build step is how the original Dockerfile reported success having built
-# nothing. It is the most valuable single line to make illegal in a build recipe.
-if printf '%s' "$INSTRUCTIONS" | grep -qE '\|\|[[:space:]]*true'; then
-  fail "a build step can fail silently via '|| true' (static)"
-else
-  pass "no build step swallows failure with '|| true' (static)"
-fi
-
-# A hardcoded target triple makes the image unbuildable on arm64, which includes Graviton.
-if printf '%s' "$INSTRUCTIONS" | grep -qE -- '--target[[:space:]]+[a-z0-9_]+-(unknown|linux)-'; then
-  fail "the build hardcodes a target triple and cannot build on arm64 (static)"
-else
-  pass "the build does not hardcode a target triple (static)"
-fi
-
-# The lockfile assertion gets the same treatment: a comment about Cargo.lock is not a copy.
-if printf '%s' "$INSTRUCTIONS" | grep -qE '^[[:space:]]*COPY[[:space:]].*Cargo\.lock'; then
-  pass "Cargo.lock is copied into the build (static)"
-else
-  fail "Cargo.lock is never copied into the build; the image resolves a fresh graph (static)"
-fi
-
-if printf '%s' "$INSTRUCTIONS" | grep -E 'cargo (build|install|update)' | grep -qv -- '--locked'; then
-  fail "an unlocked cargo invocation would resolve versions freely (static)"
-else
-  pass "every cargo invocation uses --locked (static)"
-fi
-
-common_checks sf-rust-verify "the Rust runtime" "10001"
-
-section "The Rust runtime: no credential is baked into any layer"
-ENV_BAKED="$(docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' sf-rust-verify 2>/dev/null \
-  | grep -E '^(GEMINI_API_KEY|APPWRITE_API_KEY|TENANT_API_KEYS)=' || true)"
-if [ -n "$ENV_BAKED" ]; then
-  fail "the Rust image bakes a credential into its environment"
-else
-  pass "the Rust image environment contains no credential"
-fi
-# The check above reads the *final* environment. That is a weaker statement than "no layer",
-# and the difference is exploitable: `RUN echo KEY=... > /tmp/x` followed by `RUN rm /tmp/x`
-# leaves a credential in an intermediate layer while the final environment looks clean. So the
-# layer history is walked separately, which is what this script claimed to do.
-assert_history_clean "the Rust image" sf-rust-verify \
-  "GEMINI_API_KEY|APPWRITE_API_KEY|APPWRITE_PROJECT_ID|TENANT_API_KEYS|FACTORY_API_KEY"
-
-section "The Rust runtime: it refuses to start without configuration, and names what is missing"
-# The fail-closed contract is enforced one variable at a time, so this walks them in order.
-# The image must die at every step and must never serve a single request while unconfigured.
-RUST_REQUIRED=(GEMINI_API_KEY APPWRITE_API_KEY APPWRITE_PROJECT_ID APPWRITE_ENDPOINT TENANT_API_KEYS)
-declare -a RUST_ENV=()
-RUST_REFUSED=0
-RUST_NAMED=0
-for VAR in "${RUST_REQUIRED[@]}"; do
-  docker run --rm "${RUST_ENV[@]}" sf-rust-verify >/tmp/sf-rust-refuse.log 2>&1
-  RC=$?
-  if [ "$RC" -eq 0 ]; then
-    fail "the Rust runtime started to completion while $VAR was unset"
-  else
-    RUST_REFUSED=$((RUST_REFUSED + 1))
-    for CANDIDATE in "${RUST_REQUIRED[@]}"; do
-      if grep -q "$CANDIDATE" /tmp/sf-rust-refuse.log 2>/dev/null; then
-        RUST_NAMED=$((RUST_NAMED + 1))
-        break
-      fi
-    done
-  fi
-  RUST_ENV+=(-e "$VAR=verify-gate-value")
-done
-if [ "$RUST_REFUSED" -eq "${#RUST_REQUIRED[@]}" ]; then
-  pass "the Rust runtime refused to start for all ${#RUST_REQUIRED[@]} missing variables"
-else
-  fail "the Rust runtime only refused $RUST_REFUSED of ${#RUST_REQUIRED[@]} missing variables"
-fi
-if [ "$RUST_NAMED" -gt 0 ]; then
-  pass "the refusal names a required variable ($RUST_NAMED of ${#RUST_REQUIRED[@]} refusals)"
-else
-  fail "the Rust refusal does not name any required variable ($RUST_NAMED of ${#RUST_REQUIRED[@]} did)"
-fi
-
-section "The Rust runtime: it serves, as a non-root user, when configured"
-PORT=18778
-CONTAINER="sf-rust-verify-run"
-docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-docker run -d --name "$CONTAINER" -p "$PORT:8080" \
-  -e GEMINI_API_KEY=verify-gate-value \
-  -e APPWRITE_API_KEY=verify-gate-value \
-  -e APPWRITE_PROJECT_ID=verify-gate-value \
-  -e APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1 \
-  -e TENANT_API_KEYS=verify-tenant:verify-key \
-  sf-rust-verify >/dev/null 2>&1
-
-READY=0
-for _ in $(seq 1 30); do
-  if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then READY=1; break; fi
-  sleep 1
-done
-if [ "$READY" -eq 1 ]; then
-  pass "the Rust runtime serves /health"
-  HEALTH="$(curl -fsS "http://127.0.0.1:$PORT/health" 2>/dev/null || echo '{}')"
-  if printf '%s' "$HEALTH" | grep -q '"status":"alive"'; then
-    pass "/health reports real liveness state: $HEALTH"
-  else
-    fail "/health returned no recognizable state: $HEALTH"
-  fi
-  if curl -fsS "http://127.0.0.1:$PORT/metrics" 2>/dev/null | grep -q 'sf_build_info'; then
-    pass "/metrics serves Prometheus series"
-  else
-    fail "/metrics did not serve the build-info series"
-  fi
-  IN_CTR="$(docker exec "$CONTAINER" id -u 2>/dev/null | tr -d '\r\n ')"
-  if [ "$IN_CTR" = "10001" ]; then
-    pass "the serving Rust container is uid $IN_CTR"
-  else
-    fail "the serving Rust container reports uid ${IN_CTR:-unknown}; expected 10001"
-  fi
-  HSTATE="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER" 2>/dev/null || echo none)"
-  case "$HSTATE" in
-    starting|healthy) pass "the declared HEALTHCHECK reports '$HSTATE'" ;;
-    none) fail "the Rust image declares no HEALTHCHECK" ;;
-    *) fail "the declared HEALTHCHECK reports '$HSTATE' while the service is up" ;;
-  esac
-else
-  fail "the Rust runtime never became ready; see docker logs $CONTAINER"
-  docker logs --tail 15 "$CONTAINER" 2>&1 | sed 's/^/    /'
-fi
-docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-
-if [ "$TARGET" = "rust" ]; then
-  printf '\n'
-  if [ "$FAIL" -eq 0 ]; then
-    printf '\033[32m════ IMAGE GATE: %d passed, 0 failed ════\033[0m\n' "$PASS"
-  else
-    printf '\033[31m════ IMAGE GATE: %d passed, %d FAILED ════\033[0m\n' "$PASS" "$FAIL"
-    exit 1
-  fi
-  exit 0
-fi
-
-# ── Node development server image ────────────────────────────────────────────────────────
+# ── The image the deployment runs (the Node server) ─────────────────────────────────────
 section "Build the Node server image (./Dockerfile)"
 if docker build -t sf-node-verify . >/tmp/sf-image-node.log 2>&1; then
-  pass "the Node server image builds (it had never been built either)"
+  pass "the Node server image builds (it had never been built)"
   printf '  size: %s bytes\n' "$(docker image inspect -f '{{.Size}}' sf-node-verify)"
 else
   fail "the Node server image does not build; see /tmp/sf-image-node.log"
@@ -349,7 +169,7 @@ if [ -n "$ENV_BAKED" ]; then
 else
   pass "the Node image environment contains no credential"
 fi
-# Same distinction as the Rust image above: the final environment is not the layer history.
+# The final environment is not the layer history.
 assert_history_clean "the Node image" sf-node-verify \
   "APPWRITE_API_KEY|APPWRITE_PROJECT_ID|GEMINI_API_KEY|TENANT_API_KEYS|FACTORY_API_KEY"
 

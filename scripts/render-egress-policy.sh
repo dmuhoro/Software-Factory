@@ -110,12 +110,12 @@ render() {
   cat <<EOF
 # GENERATED FILE -- do not edit by hand and do not commit.
 # Produced by scripts/render-egress-policy.sh from live DNS resolution.
-# Source of truth: software_factory/k8s/networkpolicy.yaml
+# Source of truth: deploy/k8s/networkpolicy.yaml
 #
 # Any '0.0.0.0/0' or '::/0' here means the render regressed to an allow-all. It is not
 # written by this script and must never be added by hand: an allow-all egress rule lets a
 # compromised process exfiltrate tenant data, which is the one thing this policy prevents.
-# scripts/verify-k8s.sh fails the build if one appears.
+# scripts/verify-k8s.py fails the build if one appears.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

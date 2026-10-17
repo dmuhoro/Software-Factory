@@ -145,6 +145,12 @@ check "writes still succeed after recovery" "$code" "200"
 code=$(curl -s -m 8 -o w2.json -w '%{http_code}' -X POST "http://127.0.0.1:$P2/api/telemetry/ingest" "${H4002[@]}" -d '{"tenantId":"tenant_hc_1042","niche":"healthcare","eventType":"y","payload":{"patientCohortId":"C-1"},"metadata":{"idempotencyKey":"post-recovery-2"}}')
 check "second write succeeds (lock released)" "$code" "200"
 check "both writes persisted to the ledger" "$(node -e "console.log(Object.keys(require('$D2/.data/software-factory.json').telemetry).length)")" "2"
+# NC-9: the metrics endpoint reports the ledger, not a constant. Two ingests landed above, so a
+# real exposition must count them; an endpoint returning a fixed figure would not move. This is
+# the Node service's `/metrics` (JSON), which replaced the deleted Rust Prometheus exposition.
+METRICS_BODY="$(curl -s -m 8 "http://127.0.0.1:$P2/api/factory/metrics")"
+check "metrics endpoint answers without credentials" "$(curl -s -m 8 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$P2/api/factory/metrics")" "200"
+check "metrics reports the telemetry records the ledger holds" "$(printf '%s' "$METRICS_BODY" | grep -c '"telemetry":2')" "1"
 # ADR-001 replay protection must survive recovery.
 code=$(curl -s -m 8 -o w3.json -w '%{http_code}' -X POST "http://127.0.0.1:$P2/api/telemetry/ingest" "${H4002[@]}" -d '{"tenantId":"tenant_hc_1042","niche":"healthcare","eventType":"x","payload":{"patientCohortId":"C-1"},"metadata":{"idempotencyKey":"post-recovery-1"}}')
 check "replayed idempotency key does not duplicate" "$(node -e "console.log(Object.keys(require('$D2/.data/software-factory.json').telemetry).length)")" "2"

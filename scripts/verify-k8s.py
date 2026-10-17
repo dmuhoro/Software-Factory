@@ -13,7 +13,7 @@ import pathlib
 
 import yaml
 
-K8S = pathlib.Path(__file__).resolve().parent.parent / "k8s"
+K8S = pathlib.Path(__file__).resolve().parent.parent / "deploy" / "k8s"
 
 failures = []
 checks = 0
@@ -163,7 +163,7 @@ check(
 # The version comes from package.json, which scripts/verify-release.sh already treats as the
 # reference site. One source: version -> image tag -> manifest, with the middle link asserted.
 def read_version():
-    root = pathlib.Path(__file__).resolve().parents[2]
+    root = pathlib.Path(__file__).resolve().parents[1]
     return json.loads((root / "package.json").read_text())["version"]
 
 
@@ -181,7 +181,7 @@ else:
         f"the deployment must run the image for the current release (v{VERSION})",
         f"{image} (tag {tag})",
     )
-# The pod's runAsUser must match the uid the image creates. software_factory/Dockerfile makes
+# The pod's runAsUser must match the uid the image creates. Dockerfile makes
 # 10001 and scripts/verify-image.sh asserts the container reports it; a mismatch here means the
 # pod crashes on start, which is cheap to catch in a manifest and expensive in a rollout.
 check(

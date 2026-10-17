@@ -1,7 +1,7 @@
-# Publish the runtime images to a registry.
+# Publish the runtime image to a registry.
 #
-# Why this exists: `k8s/deployment.yaml` referenced `gcr.io/...:v4.8.0`, a tag that had never
-# been pushed. The image gate proved both Dockerfiles *build*; nothing proved an image was
+# Why this exists: `deploy/k8s/deployment.yaml` referenced `gcr.io/...:v4.8.0`, a tag that had
+# never been pushed. The image gate proved the Dockerfile *builds*; nothing proved an image was
 # *published*. So the deployment described an artifact that did not exist, and the only way to
 # find out was to apply the manifest and watch ImagePullBackOff.
 #
@@ -14,8 +14,9 @@
 #     There is no credential to leak, rotate, or store, and the cost is free for a public package.
 #
 # So this path works today, and the GCR path can be added later behind the same tags if a
-# private registry is ever required. Both images are published, because there are two and
-# publishing only one would leave the other described but absent.
+# private registry is ever required. One image is published, because there is one runtime: the
+# Node server. Until Sprint 34 a second, Rust image was published too; that crate was deleted
+# (WP-3), so publishing it would describe an artifact whose source no longer exists.
 #
 # Honesty rules this file follows, the same as integrations.yml:
 #
@@ -79,14 +80,11 @@ jobs:
     timeout-minutes: 45
 
     strategy:
-      # One image failing must not hide the other's outcome, and the two are independent builds.
+      # One image, so nothing to keep independent; fail-fast stays false so a future second image
+      # cannot have its outcome hidden by the first.
       fail-fast: false
       matrix:
         include:
-          - name: runtime
-            context: ./software_factory
-            dockerfile: software_factory/Dockerfile
-            package: runtime
           - name: node
             context: .
             dockerfile: Dockerfile

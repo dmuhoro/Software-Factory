@@ -56,8 +56,6 @@ const stripAnsi = (text) => text.replace(/\u001b\[[0-9;]*m/g, '').trim();
 
 async function main() {
   const pkg = JSON.parse(await readFile(path.join(REPO_ROOT, 'package.json'), 'utf8'));
-  const cargoToml = await readFile(path.join(REPO_ROOT, 'software_factory', 'Cargo.toml'), 'utf8');
-  const cargoVersion = cargoToml.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? 'unknown';
 
   // ── Delivery history, from Git only ──────────────────────────────────────────────────
   const firstCommit = git('log', '--reverse', '--format=%ad', '--date=short').split('\n')[0] || 'unknown';
@@ -109,11 +107,10 @@ async function main() {
     { name: 'Layer 2 harness (tenant isolation)', cmd: ['bash', 'scripts/verify-layer2.sh'] },
     { name: 'Layer 3 harness (error contract, writer lock)', cmd: ['bash', 'scripts/verify-layer3.sh'] },
     { name: 'Layer 4 harness (durable tenancy)', cmd: ['bash', 'scripts/verify-layer4.sh'] },
-    { name: 'Image gate (both images built)', cmd: ['bash', 'scripts/verify-image.sh', 'all'] },
-    { name: 'Kubernetes manifests', cmd: ['python3', 'software_factory/scripts/verify-k8s.py'] },
+    { name: 'Image gate (the image the deployment runs)', cmd: ['bash', 'scripts/verify-image.sh', 'node'] },
+    { name: 'Kubernetes manifests', cmd: ['python3', 'scripts/verify-k8s.py'] },
     { name: 'Integration gates are honest', cmd: ['bash', 'scripts/verify-integrations.sh'] },
     { name: 'Documented commands exist', cmd: ['bash', 'scripts/verify-docs.sh'] },
-    { name: 'Rust tests', cmd: ['bash', 'scripts/verify-rust.sh'] },
     { name: 'Knowledge base MCP self-test', cmd: ['node', 'scripts/kb-mcp-server.mjs', '--self-test'] },
     {
       name: 'Release record gate (pre-release mode)',
@@ -168,8 +165,8 @@ async function main() {
 
   const record = {
     generatedAt: new Date().toISOString(),
-    generatedFrom: 'git log, package.json, software_factory/Cargo.toml, docs/CONSTITUTION.md, and live execution of the verification scripts',
-    version: { typescript: pkg.version, rust: cargoVersion, agree: pkg.version === cargoVersion },
+    generatedFrom: 'git log, package.json, docs/CONSTITUTION.md, and live execution of the verification scripts',
+    version: { typescript: pkg.version },
     delivery: {
       firstCommit,
       lastCommit,
@@ -210,9 +207,7 @@ async function main() {
   lines.push('');
   lines.push('| Component | Version |');
   lines.push('|---|---|');
-  lines.push(`| TypeScript service | ${pkg.version} |`);
-  lines.push(`| Rust runtime | ${cargoVersion} |`);
-  lines.push(`| Versions agree | ${record.version.agree ? 'yes' : '**NO — release gate will fail**'} |`);
+  lines.push(`| Node service | ${pkg.version} |`);
   lines.push('');
   lines.push('## Delivery history');
   lines.push('');
