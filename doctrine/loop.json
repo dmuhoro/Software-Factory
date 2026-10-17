@@ -96,6 +96,7 @@
     "byRole": {
       "drafter": ["grilling", "to-spec", "to-tickets"],
       "implementer": ["tdd"],
+      "implementer-stuck": ["diagnosing-bugs"],
       "reviewer": ["code-review", "improve-codebase-architecture"],
       "reporter": ["handoff"]
     }

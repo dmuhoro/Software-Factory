@@ -26,6 +26,7 @@
 import { randomUUID } from 'node:crypto';
 import { ConfirmationService, type IssuedConfirmation } from './confirmationService';
 import { ExecutionLoopService, type LoopRunOutcome } from './executionLoopService';
+import { buildStuckReports } from './stuckReportService';
 import { TenantQueueService } from './tenantQueueService';
 import { WebhookService } from './webhookService';
 import type { LoopRunRecord, LoopStatus } from './loopTypes';
@@ -136,6 +137,9 @@ export class LoopControlService {
           units: { total: record.units.length, done: record.units.filter((u) => u.status === 'done').length, stuck: record.units.filter((u) => u.status === 'stuck').length, blocked: record.units.filter((u) => u.status === 'blocked').length },
           commits: record.commits.length,
           refusedGates: record.gates.filter((g) => !g.passed).length,
+          // Each STUCK unit's report — failure class, what was tried, and a next step — so a receiver
+          // learns a unit is stuck, and why, the moment the run settles. Empty on a clean run.
+          stuckUnits: buildStuckReports(record),
           ...(record.hardStop ? { hardStop: record.hardStop } : {}),
           ...(record.refusal ? { refusal: record.refusal } : {}),
         }).catch((error) => {

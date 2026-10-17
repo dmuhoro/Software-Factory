@@ -81,11 +81,12 @@ export function injectSkills(prompt: string, block: string, enabled: boolean): s
  */
 export function resolveAdvisory(
   config: { inject: boolean; byRole: Record<string, string[]> },
-  role: string,
+  role: string | readonly string[],
   load: () => { skills: SkillDefinition[]; refusals: SkillRefusal[] } = loadPinnedSkills,
 ): AdvisoryResult {
   if (!config.inject) return EMPTY_ADVISORY;
-  const declared = config.byRole[role] ?? [];
+  const roles = Array.isArray(role) ? role : [role];
+  const declared = roles.flatMap((name) => config.byRole[name] ?? []);
   if (!declared.length) return { enabled: true, block: '', refusals: [] };
   const { skills, refusals } = load();
   const wanted = new Set(declared);
@@ -93,9 +94,26 @@ export function resolveAdvisory(
   const refusedFiles = new Set(refusals.map((refusal) => refusal.source));
   const absent: SkillRefusal[] = declared
     .filter((name) => !loadedNames.has(name) && !refusedFiles.has(`${name}.skill.md`))
-    .map((name) => ({ source: name, code: 'SKILL_UNPINNED' as const, detail: `skills.byRole:${role} names '${name}', which is not a pinned skill; refused rather than silently ignored` }));
+    .map((name) => ({ source: name, code: 'SKILL_UNPINNED' as const, detail: `skills.byRole:${roles.join('+')} names '${name}', which is not a pinned skill; refused rather than silently ignored` }));
   const fenced = fencedSkillBlock(skills.filter((skill) => wanted.has(skill.name)));
   return { enabled: true, block: fenced.block, refusals: [...refusals, ...absent, ...fenced.refusals] };
+}
+
+/**
+ * The implementer advisory, conditional on the attempt (Sprint 33, WP-3).
+ *
+ * A first attempt gets the `implementer` skills. From the **second** attempt of a unit — after the
+ * first was refused, so the model already has `feedback` describing the failure — the role
+ * `implementer-stuck` is added, which the doctrine maps to the `diagnosing-bugs` skill. The point is
+ * to hand the model a structured debugging method exactly when the naive retry has already failed,
+ * and never before. Like every advisory, it is inert unless `skills.inject` is on.
+ */
+export function resolveImplementerAdvisory(
+  config: { inject: boolean; byRole: Record<string, string[]> },
+  attempt: number,
+  load: () => { skills: SkillDefinition[]; refusals: SkillRefusal[] } = loadPinnedSkills,
+): AdvisoryResult {
+  return resolveAdvisory(config, attempt >= 2 ? ['implementer', 'implementer-stuck'] : 'implementer', load);
 }
 
 /**
@@ -104,5 +122,10 @@ export function resolveAdvisory(
 export class SkillInjectionService {
   public static advisoryForRole(role: string): AdvisoryResult {
     return resolveAdvisory(DoctrineService.load().loop.skills, role);
+  }
+
+  /** The implementer advisory for one attempt, adding the diagnose block from attempt 2. */
+  public static advisoryForImplementer(attempt: number): AdvisoryResult {
+    return resolveImplementerAdvisory(DoctrineService.load().loop.skills, attempt);
   }
 }

@@ -208,6 +208,7 @@ test('WP-6: the shipped doctrine leaves skills injection off, so the live resolv
   assert.deepEqual(DoctrineService.load().loop.skills.byRole, {
     drafter: ['grilling', 'to-spec', 'to-tickets'],
     implementer: ['tdd'],
+    'implementer-stuck': ['diagnosing-bugs'],
     reviewer: ['code-review', 'improve-codebase-architecture'],
     reporter: ['handoff'],
   });

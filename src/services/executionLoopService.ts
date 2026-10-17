@@ -19,6 +19,7 @@ import { assertRegistryComplete, runStageGates, type GateContext } from './loopG
 import { resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
 import { slimProof, widenProof, type AttemptRecord, type GateResult, type LoopEvent, type LoopRunRecord, type LoopStage, type UnitRecord } from './loopTypes';
 import { classifyLoopFailure, runFailureClass, summariseFailureClasses } from './loopFailureClass';
+import { buildStuckReports } from './stuckReportService';
 import { prFlowService } from './prFlowService';
 import { SkillInjectionService } from './skillInjectionService';
 
@@ -583,7 +584,7 @@ export class ExecutionLoopService {
         // A quarantined instruction file is recorded and never read — so prove its content did not
         // enter this payload before the payload leaves the process. Done here, before the model
         // call, so a leak is refused before any socket is opened. (Sprint 29, WP-1; ADR-008.)
-        const implementerPrompts = buildPrompts(implementRequest, SkillInjectionService.advisoryForRole('implementer'));
+        const implementerPrompts = buildPrompts(implementRequest, SkillInjectionService.advisoryForImplementer(attempt.attempt));
         DoctrineIsolationService.assertNoTargetInstructionContent(isolation, {
           'implementer.system': implementerPrompts.system,
           'implementer.task': implementerPrompts.task,
@@ -1137,6 +1138,7 @@ function renderReport(record: LoopRunRecord): string {
   const attempts = record.units.reduce((total, unit) => total + unit.attempts.length, 0);
   const refused = record.gates.filter((gate) => !gate.passed);
   const failureSummary = summariseFailureClasses(record.units.flatMap((unit) => unit.attempts));
+  const stuckReports = buildStuckReports(record);
   const lines: string[] = [
     `# Loop run ${record.runId}`,
     '',
@@ -1198,6 +1200,19 @@ function renderReport(record: LoopRunRecord): string {
     ...(failureSummary.counts.length
       ? failureSummary.counts.map((entry) => `- ${entry.failureClass}: ${entry.count}`)
       : ['- none: no attempt failed']),
+    '',
+    '## Stuck units',
+    '',
+    ...(stuckReports.length
+      ? stuckReports.flatMap((report) => [
+          `### ${report.unitId} — ${report.title}`,
+          '',
+          `- **Failure class:** ${report.failureClass}`,
+          `- **What was tried:** ${report.whatWasTried.length ? report.whatWasTried.map((item) => `attempt ${item.attempt} @ ${item.stage} (${item.reason})`).join('; ') : 'no failed attempt was recorded'}`,
+          `- **Next step:** ${report.nextStep}`,
+          '',
+        ])
+      : ['- none: no unit is stuck']),
     '',
     '## Gates',
     '',

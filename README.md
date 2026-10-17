@@ -343,7 +343,10 @@ What makes it safe to leave alone:
   next independent unit. Every failed attempt carries a machine-readable class — `security`,
   `verification`, `review`, `model`, `environment`, `policy`, or `unknown` — derived purely from
   its refusal code and stage (no model), persisted on the record so it survives `--resume`, and
-  summarised in the report's **Failure classes** section.
+  summarised in the report's **Failure classes** section. A STUCK unit is also reported on the
+  settlement webhook: the `loop.run.settled` payload carries a `stuckUnits` entry naming the unit's
+  failure class, every failed attempt (what was tried), and a class-specific **next step**, so an
+  operator's receiver learns a unit is stuck — and what to do — the moment the run settles.
 - **A unit that cannot fail its own check, or cannot run it, is refused before the model is
   dialled.** A unit whose verification command already exits 0 on the starting tree is a no-op —
   nothing it does can satisfy the proof — so `no-op-unit` refuses it once instead of burning the
@@ -363,7 +366,10 @@ What makes it safe to leave alone:
   shown the skills named for it in `byRole`, each pinned by sha256 in `skills-lock.json`. A skill is
   fenced and labelled untrusted, may not name a network endpoint, and can change no rule, gate, or
   model assignment; an unpinned or modified skill is refused. The flag defaults to `false`, so a run
-  reads no skill file and every prompt is byte-identical.
+  reads no skill file and every prompt is byte-identical. The one attempt-conditional role is
+  `implementer-stuck`: from a unit's **second** attempt — after a real refusal, so the model has
+  specific feedback — the implementer prompt gains the `diagnosing-bugs` skill; the first attempt
+  never sees it.
 - **A failed command reaches the next attempt with its file:line**, not just an exit code, so the
   model is told where to look.
 

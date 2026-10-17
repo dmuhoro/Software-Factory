@@ -128,7 +128,7 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
     id: 'skills-bridge',
     title: 'Vendored, hash-pinned advisory skills',
     status: 'live',
-    summary: 'A skill may be shown to a role only when its bytes match a recorded pin and the doctrine flag is on; an unpinned or modified skill is refused, injection OFF is a byte-identical prompt, and a skill cannot alter a rule, a gate, or a model assignment. Wired roles: drafter, implementer, reviewer.',
+    summary: 'A skill may be shown to a role only when its bytes match a recorded pin and the doctrine flag is on; an unpinned or modified skill is refused, injection OFF is a byte-identical prompt, and a skill cannot alter a rule, a gate, or a model assignment. Wired roles: drafter, implementer, reviewer, plus implementer-stuck (the diagnosing-bugs skill from a unit\'s second attempt).',
     proves: 'npm test -- test/skills-bridge.test.ts',
   },
   {
