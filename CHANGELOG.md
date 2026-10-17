@@ -4,6 +4,40 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.12] - 2026-10-17 — The shadow guard can be measured, and the suite stops judging the desktop
+
+### Added
+- **`npm run unrelated-writes:report`** (Sprint 33, WP-6). The guard that catches a unit writing
+  outside what it claimed has run in shadow mode since Sprint 26: the would-refuse finding is
+  recorded in the run record and nothing refuses. Two things made that evidence unusable — the
+  record kept only the gate's truncated detail (ten file names plus `(+2 more)`), and nothing read
+  the shadow log across runs. The new command reads the ledger and the doctrine allowlist and lists
+  every file enforcement would refuse, by unit and by run. It is read-only: it never flips
+  `enforce`, and an empty ledger is a clean exit, not an error. The decision itself now lives in one
+  place (`src/services/unrelatedWrites.ts`) so the gate and the report cannot disagree, and the
+  report recomputes from the stored `SlimProof` — the full written-file list, not the truncated
+  detail — so it shows all twelve files where the gate's message shows ten.
+- **The pre-registered flip rule** for when `enforcement` may be turned on is recorded in
+  `sprints/sprint-33-closing-sprint.md` **before** any real run, and `enforce` stays off.
+
+### Fixed
+- **The test suite no longer depends on how busy the developer's machine is** (Sprint 33, WP-8).
+  The loop refuses to run when the *host* is short on resources — correct, and not changed — but the
+  suite read the real machine, so the same clean tree gave different verdicts depending on what
+  else was running: `resource exhaustion: LOAD:loadavg-per-cpu=2.10,budget=2` halted real-loop tests
+  and reproduced on the released v4.15.11 tree. That is the defect this repository already fixed
+  twice in `test/setup-isolate-env.ts` (workspace roots, auth environment): a verdict that depends
+  on the environment that happened to cooperate is not evidence. The host sample is now pinned
+  there, through a seam (`ResourceGovernorService.setSamplerForTests`) that swaps the *sample only*.
+  Budgets, the `LOAD:`/`MEMORY:` refusal and the `RESOURCE_EXHAUSTED` throw are untouched, and
+  production never sets the seam, so `sample()` still reads the real host. `test/resource-governor.test.ts`
+  proves the governor still governs with the override cleared, and a real-loop case proves a pinned
+  short host still halts a run — with a negative control showing the same fixture completes under a
+  benign pin, so the halt comes from the pinned host and not from the fixture. Full suite after the
+  change: **557 passed, 0 failed**.
+
+AI-Assisted: opencode (big-pickle)
+
 ## [4.15.11] - 2026-10-17 — The image the loop runs in can sandbox, and we can prove it
 
 ### Changed
