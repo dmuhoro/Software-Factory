@@ -24,7 +24,7 @@
 #   absence is a refusal.
 #
 # Usage (as root, on the operator's Linux host):
-#   bash software_factory/host/provision-executor-host.sh
+#   bash deploy/host/provision-executor-host.sh
 #
 # Idempotent: re-running it re-installs the unit and fixes permissions, and does not
 # duplicate the runner or wipe a credential file that already has content.

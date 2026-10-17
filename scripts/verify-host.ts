@@ -30,6 +30,12 @@
  * Usage:
  *   npx tsx scripts/verify-host.ts                     # full preflight
  *   npx tsx scripts/verify-host.ts --bind-only         # only the listener checks (CI)
+ *   npx tsx scripts/verify-host.ts --record            # also write dated evidence
+ *
+ * `--record` writes `docs/evidence/executor-host-<YYYY-MM-DD>.md` — every check, its
+ * verdict and its detail, so "this host passed the preflight on this date" is a file, not
+ * a memory. The file is written whether the preflight passes or fails, because a record
+ * of the failure is exactly what an operator needs when it does.
  *
  * Exit codes: 0 every required check held; 1 a check failed; 2 the script could not run.
  */
@@ -39,7 +45,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { preflightSandbox, resolveSandboxBinary } from '../src/services/sandboxPreflightService';
 
-interface CheckResult {
+export interface CheckResult {
   name: string;
   ok: boolean;
   required: boolean;
@@ -142,7 +148,7 @@ function checkRunner(): void {
       ok: false,
       required: true,
       detail: `no passwd entry for '${user}'`,
-      remediation: 'run software_factory/host/provision-executor-host.sh, or create the runner account',
+      remediation: 'run deploy/host/provision-executor-host.sh, or create the runner account',
     });
     return;
   }
@@ -207,7 +213,7 @@ function checkUnit(): void {
       ok: false,
       required: true,
       detail: `${unitPath} does not exist`,
-      remediation: 'run software_factory/host/provision-executor-host.sh to install the unit',
+      remediation: 'run deploy/host/provision-executor-host.sh to install the unit',
     });
     return;
   }
@@ -216,7 +222,7 @@ function checkUnit(): void {
   const required = ['NoNewPrivileges=yes', 'ProtectSystem=strict', 'ProtectHome=yes', 'PrivateTmp=yes', 'Restart=on-failure'];
   const missing = required.filter((directive) => !unit.includes(directive));
   if (missing.length > 0) {
-    record({ name: 'the unit carries every hardening directive', ok: false, required: true, detail: `missing: ${missing.join(', ')}`, remediation: 'reinstall the unit from software_factory/host/software-factory-executor.service' });
+    record({ name: 'the unit carries every hardening directive', ok: false, required: true, detail: `missing: ${missing.join(', ')}`, remediation: 'reinstall the unit from deploy/host/software-factory-executor.service' });
   } else {
     record({ name: 'the unit carries every hardening directive', ok: true, required: true, detail: required.join(', ') });
   }
@@ -267,8 +273,58 @@ function checkSingleWriter(): void {
   }
 }
 
+/**
+ * Write the preflight result to a dated file.
+ *
+ * A green console is not evidence: it scrolls away, and "the host passed last week" is a
+ * claim with no artifact behind it. This writes what was checked, on which host, on which
+ * day, so the record survives the terminal. It is written on failure too — the run that
+ * failed is the one an operator most needs written down.
+ */
+export interface HostRecordInput {
+  hostname: string;
+  date: string;
+  bindOnly: boolean;
+  results: CheckResult[];
+}
+
+/** The evidence file's markdown, as a pure function, so a test can assert the format directly. */
+export function renderHostRecord({ hostname, date, bindOnly, results }: HostRecordInput): string {
+  const failedRequired = results.filter((c) => c.required && !c.ok).length;
+  const verdict = failedRequired === 0 ? 'PASS' : 'FAIL';
+  const lines: string[] = [
+    `# Executor-host preflight — ${date}`,
+    '',
+    `- Host: \`${hostname}\``,
+    `- Scope: ${bindOnly ? 'listener checks only (`--bind-only`)' : 'full preflight (ADR-014)'}`,
+    `- Verdict: **${verdict}** — ${results.filter((c) => c.ok).length} passed, ${failedRequired} required check(s) failed`,
+    `- Command: \`npx tsx scripts/verify-host.ts${bindOnly ? ' --bind-only' : ''} --record\``,
+    '',
+    '| Check | Verdict | Required | Detail |',
+    '| --- | --- | --- | --- |',
+    ...results.map((c) => `| ${c.name} | ${c.ok ? 'PASS' : c.required ? 'FAIL' : 'WARN'} | ${c.required ? 'yes' : 'no'} | ${c.detail.replace(/\|/g, '\\|')} |`),
+    '',
+  ];
+  const remediations = results.filter((c) => !c.ok && c.remediation);
+  if (remediations.length > 0) {
+    lines.push('## Remediation', '');
+    for (const c of remediations) lines.push(`- **${c.name}** — ${c.remediation}`);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+function writeRecord(bindOnly: boolean): string {
+  const date = new Date().toISOString().slice(0, 10);
+  const file = path.join(process.cwd(), 'docs', 'evidence', `executor-host-${date}.md`);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, renderHostRecord({ hostname: os.hostname(), date, bindOnly, results }));
+  return path.relative(process.cwd(), file);
+}
+
 function main(): number {
   const bindOnly = process.argv.includes('--bind-only');
+  const doRecord = process.argv.includes('--record');
   console.log(`verify:host — executor-host preflight (ADR-014) on ${os.hostname()}`);
   if (bindOnly) {
     checkBind();
@@ -285,6 +341,10 @@ function main(): number {
   const failedRequired = results.filter((check) => check.required && !check.ok);
   const passed = results.filter((check) => check.ok).length;
   console.log(`\n════ VERIFY HOST: ${passed} passed, ${failedRequired.length} required check(s) failed ════`);
+  if (doRecord) {
+    const written = writeRecord(bindOnly);
+    console.log(`evidence written: ${written}`);
+  }
   if (failedRequired.length > 0) {
     console.log('This host is not the host ADR-014 describes. The loop must not be run here until every failure above is fixed.');
     return 1;

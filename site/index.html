@@ -181,9 +181,9 @@
   {
     "id": "sandbox-in-shipped-image",
     "title": "Sandboxed execution in the shipped image",
-    "status": "blocked",
-    "summary": "The runtime image installs no bubblewrap, so sandboxed execution fails closed there (ADR-010).",
-    "owner": "operator"
+    "status": "live",
+    "summary": "The image the loop runs in (./Dockerfile) installs bubblewrap, and `npm run verify:image node` proves the container can create a sandbox as the unprivileged `factory` user under the flags the host must grant (--cap-add SYS_ADMIN, seccomp/apparmor unconfined). The Rust runtime image is the HTTP surface and does not run sandboxed commands. A host that forbids user namespaces still fails closed at the sandbox boundary (ADR-010, ADR-014 §5).",
+    "proves": "npm run verify:image node"
   },
   {
     "id": "external-cloud-runtime",
@@ -211,7 +211,7 @@
     <tr><td>Measured effect of the skills</td><td><span class="no">blocked</span></td><td>blocked — owner: harness: engineering; model run: operator</td></tr>
     <tr><td>Hosted frontier model</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
     <tr><td>Live GitHub pull request</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
-    <tr><td>Sandboxed execution in the shipped image</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
+    <tr><td>Sandboxed execution in the shipped image</td><td><span class="ok">live</span></td><td><code>npm run verify:image node</code></td></tr>
     <tr><td>External cloud runtime</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
   </table>
 <!-- capabilities:end -->
@@ -220,7 +220,7 @@
   <ul class="limits">
     <li>The reviewer is an LLM: not a security audit, not a correctness proof, not independent of the implementer, and it reads at most 60,000 characters of diff.</li>
     <li>The TypeScript ledger is single-writer; replicas are unsafe, and the deployment declares one.</li>
-    <li>Sandboxed execution uses a restricted local sandbox; the shipped runtime image installs no bubblewrap, so it fails closed there.</li>
+    <li>Sandboxed execution uses a restricted local sandbox; the image the loop runs in ships bubblewrap and a gate proves it can create a container, but a host that forbids user namespaces still fails closed at the boundary.</li>
     <li>No hosted frontier model call, and no live GitHub pull request, ships enabled — both are operator-blocked, above.</li>
   </ul>
 

@@ -68,3 +68,80 @@ test('the compose deployment is fail-closed and shares one volume-backed data pa
   assert.match(compose, /FACTORY_DATA_DIR:\s*\/data/, 'the ledger directory must sit on the mounted volume');
   assert.match(compose, /sf-data:\/data/, 'the data directory must be the mounted volume, or state is lost on replace');
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The executor host (Sprint 33, WP-5).
+//
+// The host artifacts were reachable at two paths and the image that runs the loop carried no
+// sandbox runtime. Both are the same class of defect: a deployment that looks finished and
+// fails at the boundary. These assert the artifacts live where the runbook says, that every
+// live reference agrees, and that the image ships a bubblewrap the preflight can actually use.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('the executor-host artifacts live under deploy/host and nowhere else', () => {
+  assert.ok(fs.existsSync(path.join(ROOT, 'deploy/host/provision-executor-host.sh')), 'the provisioning script must live at deploy/host/');
+  assert.ok(fs.existsSync(path.join(ROOT, 'deploy/host/software-factory-executor.service')), 'the hardened unit must live at deploy/host/');
+  assert.ok(!fs.existsSync(path.join(ROOT, 'software_factory/host')), 'the old software_factory/host path must be gone, or two copies drift');
+});
+
+test('no live reference still points at the moved host path', () => {
+  // The live surface: the runbook, the README, the scripts and the artifacts. Sprint files are
+  // historical records and may name the old path when describing the move itself.
+  const roots = ['README.md', 'docs', 'scripts', 'deploy'];
+  const offenders: string[] = [];
+  const walk = (rel: string): void => {
+    const full = path.join(ROOT, rel);
+    if (fs.statSync(full).isDirectory()) {
+      for (const entry of fs.readdirSync(full)) walk(path.join(rel, entry));
+      return;
+    }
+    if (!/\.(ts|md|sh|json|service|yml|yaml)$/.test(full)) return;
+    const text = fs.readFileSync(full, 'utf8');
+    if (text.includes('software_factory/host')) offenders.push(rel);
+  };
+  for (const rel of roots) walk(rel);
+  assert.deepEqual(offenders, [], `these files still name the moved path: ${offenders.join(', ')}`);
+});
+
+test('the Node image installs bubblewrap in the runtime stage', () => {
+  const dockerfile = read('Dockerfile');
+  const runtimeStart = dockerfile.indexOf('FROM node:22-slim AS runtime');
+  assert.ok(runtimeStart >= 0, 'the Node Dockerfile must have a runtime stage');
+  const runtime = dockerfile.slice(runtimeStart);
+  assert.match(runtime, /apt-get install -y --no-install-recommends bubblewrap/, 'the runtime stage must install bubblewrap; the loop refuses without a sandbox');
+  assert.match(runtime, /rm -rf \/var\/lib\/apt\/lists\/\*/, 'the apt lists must be removed in the same layer, as with every install here');
+});
+
+test('verify:image reports the sandbox runtime flags and fails closed without bwrap', () => {
+  const script = read('scripts/verify-image.sh');
+  assert.ok(script.includes('--cap-add SYS_ADMIN'), 'the gate must name the runtime flags the sandbox needs');
+  assert.ok(script.includes('seccomp=unconfined'), 'the gate must name the seccomp flag the sandbox needs');
+  assert.match(script, /command -v bwrap/, 'the gate must check the binary is present');
+  assert.match(script, /bwrap --unshare-all/, 'the gate must actually create a sandbox, not just find the binary');
+  // Fail closed: the absence of bwrap is a FAIL in the Node section, not a printed warning.
+  assert.match(script, /bubblewrap is absent from the Node image; every sandboxed run would refuse at the boundary/);
+});
+
+test('the executor-host runbook names the commands it tells you to run', () => {
+  const runbook = read('docs/RUNBOOK_EXECUTOR_HOST.md');
+  for (const command of ['deploy/host/provision-executor-host.sh', 'scripts/verify-host.ts', 'scripts/verify-image.sh', 'scripts/run-factory-loop.ts']) {
+    assert.ok(runbook.includes(command), `the runbook must name ${command}, and it must exist on disk`);
+  }
+});
+
+test('the preflight evidence is a dated file that records a failure, not only a pass', async () => {
+  const { renderHostRecord } = await import('../scripts/verify-host');
+  const markdown = renderHostRecord({
+    hostname: 'executor',
+    date: '2026-10-17',
+    bindOnly: false,
+    results: [
+      { name: 'bubblewrap can create a container', ok: true, required: true, detail: 'sandbox created' },
+      { name: 'FACTORY_BIND_HOST is set to a private address', ok: false, required: true, detail: 'unset', remediation: 'set FACTORY_BIND_HOST=127.0.0.1' },
+    ],
+  });
+  assert.match(markdown, /# Executor-host preflight — 2026-10-17/);
+  assert.match(markdown, /Verdict: \*\*FAIL\*\*/, 'a failed required check must render the record as FAIL');
+  assert.match(markdown, /\| bubblewrap can create a container \| PASS \| yes \|/);
+  assert.match(markdown, /## Remediation\n\n- \*\*FACTORY_BIND_HOST is set to a private address\*\* — set FACTORY_BIND_HOST=127\.0\.0\.1/);
+});

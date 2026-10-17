@@ -17,7 +17,7 @@
 #   §7  the ledger is a single writer (NC-2): one instance, no clustering, and the
 #       writable paths below are the only places this service may write
 #
-# Installed by software_factory/host/provision-executor-host.sh. The preflight
+# Installed by deploy/host/provision-executor-host.sh. The preflight
 # (scripts/verify-host.ts) re-reads this file and refuses to bless a host whose unit has
 # lost any of these directives, so the hardening cannot silently rot.
 

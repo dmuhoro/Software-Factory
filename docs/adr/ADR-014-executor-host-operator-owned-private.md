@@ -7,8 +7,8 @@
 - **Resolves**: where the unattended loop runs and who can reach it, so it can be driven from a phone
   without exposing a public service
 - **Supersedes**: nothing (works with ADR-009 storage selection and ADR-010 isolated execution)
-- **Implementation**: `software_factory/host/provision-executor-host.sh` (provisioning),
-  `software_factory/host/software-factory-executor.service` (hardened unit), `scripts/verify-host.ts`
+- **Implementation**: `deploy/host/provision-executor-host.sh` (provisioning),
+  `deploy/host/software-factory-executor.service` (hardened unit), `scripts/verify-host.ts`
   (`npm run verify:host`), the `FACTORY_BIND_HOST` setting in `runtimeConfig`, and the existing
   single-writer ledger (NC-2). The die-and-resume drill is `test/loop-die-resume.test.ts`.
 

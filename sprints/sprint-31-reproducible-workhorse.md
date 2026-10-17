@@ -277,9 +277,9 @@ satisfies it has not landed. The row is corrected to open.
 
 **Landed (repo-side).** The audit's list is now closed item by item:
 
-- `software_factory/host/software-factory-executor.service` — a hardened unit (`User=runner`,
+- `deploy/host/software-factory-executor.service` — a hardened unit (`User=runner`,
   `NoNewPrivileges=yes`, `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `Restart=on-failure`).
-- `software_factory/host/provision-executor-host.sh` — an idempotent provisioning script; it installs the
+- `deploy/host/provision-executor-host.sh` — an idempotent provisioning script; it installs the
   unit, creates the runner + directories, leaves an empty mode-600 credential file, and names the
   operator-only actions (VPS, tailnet, deploy keys) instead of doing them.
 - `scripts/verify-host.ts` + `npm run verify:host` — the preflight. It refuses a public bind, a runner

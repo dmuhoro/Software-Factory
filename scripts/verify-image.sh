@@ -116,10 +116,29 @@ assert_history_clean() {
 common_checks() {  local IMAGE="$1" NAME="$2" EXPECT_UID="$3"
 
   section "$NAME: runs as uid $EXPECT_UID, not root"
-  local IMAGE_USER RUN_UID
+  local IMAGE_USER IMAGE_ENTRY RUN_UID
   IMAGE_USER="$(docker image inspect -f '{{.Config.User}}' "$IMAGE" 2>/dev/null || echo '')"
+  IMAGE_ENTRY="$(docker image inspect -f '{{json .Config.Entrypoint}}' "$IMAGE" 2>/dev/null || echo '')"
+
+  # There are two honest ways for a container to end up unprivileged, and this repository uses
+  # both. A rootless `USER` is one. The Node image uses the other -- an entrypoint that drops
+  # privileges with setpriv before exec -- deliberately, because a volume-capable platform mounts
+  # its volume root:root and an unprivileged user cannot chown it. The first version of this
+  # check looked only for `USER`, and so failed the Node image while the service was in fact
+  # running as uid 10001 the whole time: a gate that measured the mechanism, not the outcome.
+  # The question is which uid the service ends up as, so that is what is asserted.
+  if printf '%s' "$IMAGE_ENTRY" | grep -q 'docker-entrypoint'; then
+    RUN_UID="$(docker run --rm "$IMAGE" sh -c 'id -u' 2>/dev/null | tr -d '\r\n ')"
+    if [ "$RUN_UID" = "$EXPECT_UID" ]; then
+      pass "$NAME has no rootless USER; its entrypoint drops to uid $RUN_UID before exec"
+    else
+      fail "$NAME reports uid ${RUN_UID:-unknown} through its entrypoint; expected $EXPECT_UID"
+    fi
+    return
+  fi
+
   if [ -z "$IMAGE_USER" ] || [ "$IMAGE_USER" = "root" ] || [ "$IMAGE_USER" = "0" ] || [ "$IMAGE_USER" = "0:0" ]; then
-    fail "$NAME runs as ${IMAGE_USER:-root}; a container escape should not start from uid 0"
+    fail "$NAME runs as ${IMAGE_USER:-root} with no privilege-dropping entrypoint; a container escape should not start from uid 0"
   else
     pass "$NAME image config sets USER to '$IMAGE_USER'"
   fi
@@ -363,11 +382,15 @@ for _ in $(seq 1 30); do
 done
 if [ "$READY" -eq 1 ]; then
   pass "the Node container serves its health endpoint"
-  IN_CTR="$(docker exec "$CONTAINER" id -u 2>/dev/null | tr -d '\r\n ')"
+  # PID 1 is the node server, and it is the process the entrypoint setpriv'd to `factory` before
+  # exec -- so PID 1's real uid is the honest answer. `docker exec id -u` runs a *new* process as
+  # the image's configured user (root here, since the image carries no USER by design) and would
+  # report root while the server runs unprivileged: the same wrong-instrument failure as above.
+  IN_CTR="$(docker exec "$CONTAINER" sh -c 'grep -E "^Uid:" /proc/1/status | awk "{print \$2}"' 2>/dev/null | tr -d '\r\n ')"
   if [ "$IN_CTR" = "10001" ]; then
-    pass "the serving Node container is uid $IN_CTR"
+    pass "the serving Node container's PID 1 runs as uid $IN_CTR"
   else
-    fail "the serving Node container reports uid ${IN_CTR:-unknown}"
+    fail "the serving Node container's PID 1 reports uid ${IN_CTR:-unknown}; expected 10001"
   fi
 else
   fail "the Node container never became ready; see docker logs $CONTAINER"
@@ -386,6 +409,37 @@ for tool in vite esbuild tsc; do
     pass "the build tool '$tool' is absent from the Node runtime image"
   fi
 done
+
+section "The Node server: the sandbox runtime is present and can create a container"
+# The loop shells out to bubblewrap for every sandboxed verification command (ADR-014 §5:
+# absence is a refusal). An image without bwrap builds, boots, serves /health, and then dies
+# at the sandbox boundary on the first real run -- and nothing above here would notice. So
+# this section reports the runtime flags the sandbox needs AND proves the binary can actually
+# create a container as the unprivileged user the server runs as. A binary that is present but
+# cannot sandbox is the same failure wearing a different hat, and it fails closed here too.
+SANDBOX_FLAGS=(--cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined)
+printf '  runtime flags the sandbox needs: %s\n' "${SANDBOX_FLAGS[*]}"
+if docker run --rm --entrypoint sh sf-node-verify -c 'command -v bwrap >/dev/null 2>&1'; then
+  pass "bubblewrap is installed in the Node image"
+else
+  fail "bubblewrap is absent from the Node image; every sandboxed run would refuse at the boundary"
+fi
+BWRAP_VERSION="$(docker run --rm --entrypoint sh sf-node-verify -c 'bwrap --version 2>/dev/null' | tr -d '\r\n')"
+if [ -n "$BWRAP_VERSION" ]; then
+  pass "the Node image reports $BWRAP_VERSION"
+else
+  fail "bubblewrap is present but reports no version; the binary is unusable"
+fi
+# The negative control is the whole point: run the container with the flags above and ask it
+# to build a sandbox as uid 10001 -- the user the loop's sandboxed commands run as. A missing
+# capability or a blocked namespace shows up here, not mid-run.
+if docker run --rm "${SANDBOX_FLAGS[@]}" --user 10001:10001 --entrypoint sh sf-node-verify \
+     -c 'bwrap --unshare-all --die-with-parent --ro-bind / / -- /bin/true' >/tmp/sf-node-bwrap.log 2>&1; then
+  pass "bwrap creates a container at runtime as uid 10001 with: ${SANDBOX_FLAGS[*]}"
+else
+  fail "bwrap is installed but cannot create a container at runtime; the sandbox would refuse. Needed: ${SANDBOX_FLAGS[*]}"
+  sed 's/^/    /' /tmp/sf-node-bwrap.log | tail -5
+fi
 
 printf '\n'
 if [ "$FAIL" -eq 0 ]; then

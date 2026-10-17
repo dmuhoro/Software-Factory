@@ -57,6 +57,17 @@ RUN groupadd --system --gid 10001 factory \
   && chown -R factory:factory /var/lib/software-factory \
   && chmod 700 /var/lib/software-factory
 
+# The loop shells out to bubblewrap for every sandboxed verification command, and ADR-014 §5
+# makes its absence a refusal rather than a downgrade. An image without bwrap builds, boots
+# and serves /health, then dies at the sandbox boundary on the first real run -- a defect no
+# build or health check can see. `scripts/verify-image.sh` proves the binary is present and
+# that it can actually create a container as the unprivileged `factory` user, with the runtime
+# flags the container needs. The apt lists are removed in the same layer, as with every other
+# install here, so nothing new is cached into the image.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends bubblewrap \
+  && rm -rf /var/lib/apt/lists/*
+
 # Production dependencies only. The build stage installed devDependencies, which is what
 # vite, esbuild and tsc need to build; none of them belong in a runtime image, and shipping
 # them widens the attack surface for no benefit. A dev-only dependency in the production
