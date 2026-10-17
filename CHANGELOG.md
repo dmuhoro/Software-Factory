@@ -4,6 +4,25 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.9] - 2026-10-17 — When a unit gets stuck, say so, and say what to do
+
+### Added
+- **Diagnose on stuck (Sprint 33, WP-3).** A unit's **first** attempt gets the `implementer` skills;
+  from its **second** attempt — after a real refusal, so the model has a specific `feedback` string —
+  the new doctrine role `implementer-stuck` adds the `diagnosing-bugs` skill to the implementer
+  prompt. The block is present only at attempt ≥ 2 and only when `loop.json:skills.inject` is on, so
+  an off flag still yields a byte-identical prompt (ADR-013). The doctrine pins the new role in
+  `doctrine/loop.json` and re-pins `doctrine/manifest.json`.
+- **A STUCK unit reports itself on the settlement webhook.** The signed `loop.run.settled` payload
+  now carries `stuckUnits`: one entry per stuck unit, naming its failure class, every failed attempt
+  (what was tried, with the refusal), and a class-specific **next step** derived from
+  `loopFailureClass`. A receiver learns a unit is stuck — and what to do about it — the moment the
+  run settles, not when someone next opens the report file. The run's markdown report gains a
+  matching **Stuck units** section. The builder is pure (no clock, no model, no I/O), so the same
+  record always yields the same report, and a clean run yields an empty list, never `undefined`.
+
+AI-Assisted: opencode (big-pickle)
+
 ## [4.15.8] - 2026-10-17 — The factory now interviews you before it builds
 
 ### Added

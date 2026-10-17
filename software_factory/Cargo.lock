@@ -1103,7 +1103,7 @@ dependencies = [
 
 [[package]]
 name = "software_factory"
-version = "4.15.8"
+version = "4.15.9"
 dependencies = [
  "anyhow",
  "async-trait",
