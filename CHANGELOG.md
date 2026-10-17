@@ -4,6 +4,34 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.15.8] - 2026-10-17 — The factory now interviews you before it builds
+
+### Added
+- **Interactive intake, the "grill session" (Sprint 33, WP-2).** A durable, tenant-scoped
+  human-in-the-loop intake through the control plane. `POST /api/loop/grills` starts a session and
+  the factory asks **one** clarifying question at a time; `POST /api/loop/grills/:id/answers`
+  records the operator's answer and returns the next question (or `done`); `POST
+  /api/loop/grills/:id/finish` drafts a task document from the goal plus the transcript through the
+  **same** `draftTaskDocument` parse-or-refuse path the one-shot goal bridge uses, so a grilled
+  document is no more trusted than a goal-drafted one (`LOOP_GRILL_DRAFT_INVALID` on a malformed
+  draft). The question cap is enforced by `grillSessionService`, not the model:
+  `FACTORY_GRILL_MAX_QUESTIONS` (default 8, clamped 1..32) bounds every session. Every turn is
+  written to the ledger as it happens, so a restart resumes mid-session; a session belonging to
+  another tenant is a miss, never a leak. The question source is a test seam (`GrillAsker`), so the
+  cap, resume, tenant isolation and refused-draft paths are all exercised without a model.
+- **The Interactive Intake tab.** `src/components/GrillIntakePanel.tsx`, mounted in `src/App.tsx`,
+  runs a grill session from the browser: it holds the tenant key in memory only (never storage or
+  the URL), asks each question in turn, and shows the drafted task document at the end.
+- **Capability `interactive-intake` is live**, proved by `npm test -- test/grill-session.test.ts`;
+  the README capability table and the public evidence page are re-rendered from the manifest.
+
+### Changed
+- **The ledger gains a collection (Sprint 33, WP-2).** `durableStore` records `grillSessions`; the
+  ledger version moves 8 → 9. Seven grill boundary codes are registered in `src/utils/apiError.ts`
+  and the L3 error contract.
+
+AI-Assisted: opencode (big-pickle)
+
 ## [4.15.7] - 2026-10-16 — The skills are in the tree and pinned
 
 ### Added
