@@ -15,6 +15,7 @@ import { validateTenantRequest } from '../middleware/tenantAuth';
 import { LoopControlService } from '../../services/loopControlService';
 import { GoalIntakeService } from '../../services/goalIntakeService';
 import { IssueIntakeService } from '../../services/issueIntakeService';
+import { GrillSessionService } from '../../services/grillSessionService';
 import { LearningDigestService } from '../../services/learningDigestService';
 
 const router = Router();
@@ -70,6 +71,61 @@ router.post('/issues', async (req: Request, res: Response) => {
     return res.status(201).json({ status: 'success', ...draft });
   } catch (error) {
     return respondWithError(res, error, 'LOOP_ISSUE_DRAFT_FAILED');
+  }
+});
+
+/**
+ * Start an interactive intake ("grill session"): the factory asks one clarifying question and the
+ * operator answers, turn by turn, until a task document can be drafted. Tenant-scoped and durable —
+ * a restart mid-session resumes from the ledger.
+ */
+router.post('/grills', async (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  try {
+    const result = await GrillSessionService.start({
+      tenantId: tenant(req),
+      repo: req.body?.repo,
+      goal: req.body?.goal,
+      providerId: req.body?.providerId,
+      model: req.body?.model,
+    });
+    return res.status(201).json({ status: 'success', ...result });
+  } catch (error) {
+    return respondWithError(res, error, 'LOOP_GRILL_FAILED');
+  }
+});
+
+/** One session's full record, so a thin client can review the turn so far. */
+router.get('/grills/:id', (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  const session = GrillSessionService.get(tenant(req), req.params.id);
+  if (!session) return res.status(404).json({ status: 'error', code: 'LOOP_GRILL_NOT_FOUND', message: 'No such grill session for this tenant.' });
+  return res.json({ status: 'success', session });
+});
+
+/** Answer the outstanding question; the reply is the next question, or `done` at the cap. */
+router.post('/grills/:id/answers', async (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  try {
+    const result = await GrillSessionService.answer({
+      tenantId: tenant(req),
+      sessionId: req.params.id,
+      answer: req.body?.answer,
+    });
+    return res.json({ status: 'success', ...result });
+  } catch (error) {
+    return respondWithError(res, error, 'LOOP_GRILL_FAILED');
+  }
+});
+
+/** Finish the session: draft the task document through the loop's own parse-or-refuse path. */
+router.post('/grills/:id/finish', async (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  try {
+    const draft = await GrillSessionService.finish({ tenantId: tenant(req), sessionId: req.params.id });
+    return res.status(201).json({ status: 'success', ...draft, sessionId: req.params.id });
+  } catch (error) {
+    return respondWithError(res, error, 'LOOP_GRILL_FAILED');
   }
 });
 

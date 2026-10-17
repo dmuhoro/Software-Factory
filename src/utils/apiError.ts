@@ -317,6 +317,16 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   ISSUE_GITHUB_RESPONSE_INVALID: { status: 502, message: 'GitHub returned a response that was not an issue.' },
   LOOP_ISSUE_DRAFT_INVALID: { status: 422, message: 'The issue-drafted task document was not accepted by the loop parser.' },
   LOOP_ISSUE_MODEL_REQUIRED: { status: 400, message: 'A registered providerId and model are required to draft an issue.' },
+  // Sprint 33 (WP-2): the interactive intake (grill session). A session is tenant-scoped, so a
+  // foreign or unknown id is a miss, not a forbidden resource; an answer to a session that is not
+  // asking is a state precondition (409), for the same reason LOOP_RUN_NOT_CANCELABLE is.
+  LOOP_GRILL_NOT_FOUND: { status: 404, message: 'No such grill session for this tenant.' },
+  LOOP_GRILL_GOAL_REQUIRED: { status: 400, message: 'A goal for the grill session is required.' },
+  LOOP_GRILL_MODEL_REQUIRED: { status: 400, message: 'A registered providerId and model are required to run a grill session.' },
+  LOOP_GRILL_ANSWER_REQUIRED: { status: 400, message: 'An answer to the outstanding question is required.' },
+  LOOP_GRILL_NOT_ASKING: { status: 409, message: 'The grill session is not awaiting an answer.' },
+  LOOP_GRILL_ALREADY_DRAFTED: { status: 409, message: 'The grill session has already drafted its task document.' },
+  LOOP_GRILL_DRAFT_INVALID: { status: 422, message: 'The grill-drafted task document was not accepted by the loop parser.' },
   // Sprint 27: per-tenant queue isolation. A tenant at its concurrent-run limit is a state
   // precondition, not a broken request: it may retry once a run settles. The status is 409
   // for the same reason LOOP_RUN_ALREADY_ACTIVE is -- the request is valid and the resource

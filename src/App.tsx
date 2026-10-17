@@ -29,6 +29,7 @@ import {
   Radio,
   GitCompare,
   Printer,
+  MessageCircleQuestion,
 } from 'lucide-react';
 import { IndustryNiche } from './models/tenant';
 import { ALL_COLLECTION_BLUEPRINTS, APPWRITE_DATABASE_CONFIG } from './models/appwriteSchema';
@@ -37,6 +38,7 @@ import { HealthDashboard } from './components/HealthDashboard';
 import { RecentExecutionsSidebar } from './components/RecentExecutionsSidebar';
 import { TenantSettingsToggle } from './components/TenantSettingsToggle';
 import { LoopControlPanel } from './components/LoopControlPanel';
+import { GrillIntakePanel } from './components/GrillIntakePanel';
 import { ComparePayloadsModal } from './components/ComparePayloadsModal';
 import { downloadTenantAuditReport } from './utils/reportGenerator';
 
@@ -53,7 +55,7 @@ interface TelemetryResult {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'stream' | 'appwrite' | 'gemini' | 'governance' | 'loop'>('stream');
+  const [activeTab, setActiveTab] = useState<'stream' | 'appwrite' | 'gemini' | 'governance' | 'loop' | 'intake'>('stream');
   const [selectedTenant, setSelectedTenant] = useState<string>('tenant_re_8841');
   const [selectedNiche, setSelectedNiche] = useState<IndustryNiche>(IndustryNiche.REAL_ESTATE);
   const [eventType, setEventType] = useState<string>('PROPERTY_VALUATION_REQUEST');
@@ -531,6 +533,7 @@ export default function App() {
             { id: 'gemini', label: 'Gemini JSON Schemas', icon: Cpu },
             { id: 'governance', label: 'Constitution & ADRs', icon: FileText },
             { id: 'loop', label: 'Unattended Loop', icon: Play },
+            { id: 'intake', label: 'Interactive Intake', icon: MessageCircleQuestion },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -556,6 +559,9 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
         {/* TAB 6: UNATTENDED LOOP CONTROL PLANE */}
         {activeTab === 'loop' && <LoopControlPanel />}
+
+        {/* TAB 7: INTERACTIVE INTAKE (GRILL SESSION) */}
+        {activeTab === 'intake' && <GrillIntakePanel />}
 
         {/* TAB 1: TELEMETRY STREAM & LOGS */}
         {activeTab === 'stream' && (

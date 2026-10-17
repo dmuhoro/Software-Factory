@@ -62,6 +62,13 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
     proves: 'npm run verify:loop',
   },
   {
+    id: 'interactive-intake',
+    title: 'Interactive intake (grill session)',
+    status: 'live',
+    summary: 'A durable, tenant-scoped human-in-the-loop intake: the factory asks one clarifying question at a time under a hard cap the model cannot raise, the operator answers, and a task document is drafted only through the same parse-or-refuse path as the one-shot goal bridge. A restart mid-session resumes from the ledger; a foreign session id is a miss, never a leak.',
+    proves: 'npm test -- test/grill-session.test.ts',
+  },
+  {
     id: 'failure-classification',
     title: 'Durable failure classification',
     status: 'live',
