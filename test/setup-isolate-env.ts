@@ -82,3 +82,19 @@ for (const variable of AUTH_AND_BACKEND) {
   delete process.env[variable];
 }
 
+/**
+ * The host's own load and memory, the last ambient input the suite inherited.
+ *
+ * The loop refuses to run when the *host* is short on resources (`ResourceGovernorService`, and
+ * the `resource-admission` gate). On a shared developer machine that made the loop-driving tests
+ * fail whenever the desktop was busy -- `resource exhaustion: LOAD:loadavg-per-cpu=2.10,budget=2`
+ * -- even though nothing was wrong with the code. A verdict that depends on whether Chrome was
+ * open is the same defect the workspace roots above fixed, so the sample is pinned here instead.
+ *
+ * The governor's own behaviour is not weakened: its test clears this override and proves the real
+ * path still reads the host and still refuses when the host is genuinely short. Here we pin a
+ * benign sample only so the tests that *drive real loops* measure the loop, not the machine.
+ */
+const { ResourceGovernorService } = await import('../src/services/resourceGovernorService');
+ResourceGovernorService.setSamplerForTests(() => ({ cpus: 8, freeMemMb: 8192, loadAvgPerCpu: 0.25 }));
+

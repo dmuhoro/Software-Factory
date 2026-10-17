@@ -30,6 +30,24 @@ export interface Budgets {
   maxParallelCeiling: number;
 }
 
+export interface ResourceSample {
+  cpus: number;
+  freeMemMb: number;
+  loadAvgPerCpu: number;
+}
+
+/**
+ * The sample the governor judges against. `null` means "read the host" — the production path.
+ *
+ * The override exists so the test suite can pin the host sample the same way it pins the
+ * workspace roots and the auth environment: a suite whose verdict depends on how busy the
+ * developer's desktop happens to be is not evidence, and a loop test that halts because the
+ * machine was compiling something is a red herring, not a bug. Only tests set it; production
+ * never calls `setSamplerForTests`, so `sample()` reads the real host. The governor's own test
+ * exercises the real path by clearing the override first.
+ */
+let samplerOverride: (() => ResourceSample) | null = null;
+
 function positiveEnv(name: string): number | undefined {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return undefined;
@@ -52,12 +70,22 @@ export class ResourceGovernorService {
     return { minFreeMemMb, maxLoadAvgPerCpu, maxParallelDefault, maxParallelCeiling };
   }
 
-  public static sample(): { cpus: number; freeMemMb: number; loadAvgPerCpu: number } {
+  public static sample(): ResourceSample {
+    if (samplerOverride) return samplerOverride();
     const cpus = os.cpus().length || 1;
     const freeMemMb = Math.floor(os.freemem() / (1024 * 1024));
     const loadAvg = os.loadavg()[0];
     if (!Number.isFinite(loadAvg)) throw new Error('RESOURCE_SAMPLE_UNAVAILABLE:loadavg');
     return { cpus, freeMemMb, loadAvgPerCpu: loadAvg / cpus };
+  }
+
+  /**
+   * Test seam: pin the host sample, or pass `null` to restore the real host. Mirrors
+   * `WebhookService.setTransportForTests` — it swaps the input and nothing else: the budgets, the
+   * comparisons and the fail-closed refusal all still run, because they are the parts under test.
+   */
+  public static setSamplerForTests(sampler: (() => ResourceSample) | null): void {
+    samplerOverride = sampler;
   }
 
   /** The concurrency cap: never more than the doctrine ceiling, never more than the host can take. */

@@ -1,6 +1,6 @@
 # Sprint 33 — The Closing Sprint
 
-**Status:** WP-0 governance landed · WP-1 vendoring landed · WP-2 intake landed · WP-3 diagnose-on-stuck landed · WP-4 skills bench landed · WP-5 host/image hygiene landed · WP-6..WP-7 in flight · **Opened:** 2026-10-16 · **Closed:** —
+**Status:** WP-0 governance landed · WP-1 vendoring landed · WP-2 intake landed · WP-3 diagnose-on-stuck landed · WP-4 skills bench landed · WP-5 host/image hygiene landed · WP-6 enforcement graduation tooling landed · WP-8 host-sample pinning landed · WP-7 decision memo in flight · **Opened:** 2026-10-16 · **Closed:** —
 
 **Thesis.** Finish every remaining engineering item so that the only work left is **operator-only**, and
 make each of those operator items **one command**. A "blocked" item may name an owner only if that owner
@@ -47,7 +47,8 @@ The brief for this sprint said it "follows Sprint 31 (v4.15.5)" and named the fi
 | **WP-3** | Diagnose on stuck: from attempt 2 of a unit, when skills are on, the implementer prompt gains the `diagnosing-bugs` advisory block; a STUCK unit's report carries failure class, what was tried, and a next step, delivered through the settlement webhook. | prompt-assembly tests (block present only at attempt ≥ 2 and only when enabled); report-content test | **done** |
 | **WP-4** | Benchmark harness (`npm run bench:skills`): 12–15 synthetic fixture repos under `test/fixtures/bench`, paired on/off runs, ≥3 repetitions, JSON output with Wilson intervals, labelled by model; stub dry pass labelled `stub: true`; pre-registered adoption rule. | the stub dry pass runs; the capability manifest refuses stub output as evidence; the rule is in this file **before** any real run | **done** |
 | **WP-5** | Host and image hygiene: move `software_factory/host` → `deploy/host` and repoint every reference; add `bubblewrap` to the image; `verify:image` reports the runtime flags the sandbox needs and fails closed when absent; `docs/RUNBOOK_EXECUTOR_HOST.md`; `verify:host --record` writes dated evidence. | `verify:image` fails closed without bwrap; `verify:host --record` writes a dated file | **done** |
-| **WP-6** | Enforcement graduation tooling: `unrelated-writes:report` summarises the shadow log across runs (units observed, would-refuse count, each would-refuse listed). Record the flip rule; **do not flip** `enforce`. | the report runs over the shadow log and lists every would-refuse | **pending** |
+| **WP-6** | Enforcement graduation tooling: `unrelated-writes:report` summarises the shadow log across runs (units observed, would-refuse count, each would-refuse listed). Record the flip rule; **do not flip** `enforce`. | the report runs over the shadow log and lists every would-refuse | **done** |
+| **WP-8** | Test hermeticity: pin the host-resource sample the loop is judged against (`ResourceGovernorService.setSamplerForTests`), so the loop-driving tests measure the loop and not how busy the developer's desktop is. The seam swaps the sample only; budgets and the fail-closed refusal still run. | the loop halts on `resource exhaustion` under a pinned short sample; the **same fixture completes** under a pinned benign sample (negative control); with the override cleared the governor still reads the real host | **done** |
 | **WP-7** | Decision memo (no code): the Rust runtime (`software_factory/`) has no owner and its own tenant model. Options (archive, keep with an owner, delete) + a recommendation. | the memo; **STOP for Daniel** | **pending** |
 
 ## Pre-registered adoption rule (WP-4 — recorded BEFORE any real run)
@@ -60,6 +61,25 @@ A skill is enabled for a role **only if**, over the bench (skills on vs off, ≥
 
 Otherwise the skill **stays off**. This rule is written here before any real measurement so the
 decision cannot be moved to fit the data (ADR-013 §7: preference is not evidence).
+
+## Pre-registered flip rule (WP-6 — recorded BEFORE `enforce` is turned on)
+
+`unrelatedWrites.enforce` flips from `false` to `true` **only** when all three hold, judged by
+`npm run unrelated-writes:report` over the runs already recorded:
+
+1. **A named, adjudicated true positive exists.** At least one finding whose file a human has
+   confirmed was a genuine cross-cutting write (a formatter rewrite, a codegen side effect, residue
+   from a tool the unit ran) — not a claim the implementer simply forgot to list. A finding nobody
+   has looked at is not evidence.
+2. **No false positive in the sample.** Every other finding over the same window is adjudicated the
+   same way and cleared as a claimed-but-unlisted file, moved to the allowlist, or fixed in the
+   implementer's claim step. One unresolved false positive keeps the guard in shadow.
+3. **The allowlist is settled.** The `unrelatedWrites.allow` list has been reviewed and the files it
+   clears are all intentional generated artifacts, not files that happened to be noisy.
+
+Flipping is a doctrine change to `doctrine/loop.json` in its own commit, with the run id of the
+adjudicated finding recorded in the commit message. The report itself never flips it — it reads the
+ledger and changes nothing.
 
 ## Parked (named, not worked)
 

@@ -33,6 +33,7 @@ const { FrontierModelService } = await import('../src/services/frontierModelServ
 const { TenantService } = await import('../src/services/tenantService');
 const { resetRateLimiterForTests } = await import('../src/api/middleware/rateLimiter');
 const { apiRouter } = await import('../src/api');
+const { ResourceGovernorService } = await import('../src/services/resourceGovernorService');
 const { IndustryNiche, TenantStatus, TenantSubscriptionTier } = await import('../src/models/tenant');
 
 DurableStore.resetForTests();
@@ -192,6 +193,30 @@ test('a second submission for a repository with a live run is refused', async ()
     await LoopControlService.whenSettled(first.runId);
   } finally {
     await new Promise<void>((resolve) => blocking.close(() => resolve()));
+  }
+});
+
+// ── the host-resource refusal, driven through the real loop ─────────────────
+
+const BENIGN_SAMPLE = { cpus: 8, freeMemMb: 8192, loadAvgPerCpu: 0.25 };
+
+test('a run halts, fail-closed, when the host sample is short on resources', async () => {
+  const { repo, task } = cleanRepo('loaded-host', CHECK);
+  // The suite pins a benign sample (test/setup-isolate-env.ts) so the loop tests measure the loop.
+  // Here we pin the other way: a genuinely short host must still stop the run before any work.
+  ResourceGovernorService.setSamplerForTests(() => ({ cpus: 8, freeMemMb: 8192, loadAvgPerCpu: 9 }));
+  try {
+    const submitted = await LoopControlService.submit({ tenantId: TENANT, repo, taskDocument: task });
+    // A short host is refused in the run's own prefix, so it can settle before `whenSettled` is
+    // consulted; the record is durable either way. Read whichever the run still offers.
+    const settled = LoopControlService.whenSettled(submitted.runId);
+    const record = settled ? (await settled).record : LoopControlService.get(TENANT, submitted.runId);
+    assert.ok(record, 'a halted run must leave a durable record');
+    assert.equal(record.status, 'halted', `a short host must halt the run, got ${record.status}`);
+    assert.match(record.hardStop ?? '', /resource exhaustion/i, 'the halt did not name resource exhaustion');
+    assert.equal(record.commits.length, 0, 'a halted run must not have committed anything');
+  } finally {
+    ResourceGovernorService.setSamplerForTests(() => BENIGN_SAMPLE);
   }
 });
 
