@@ -112,6 +112,32 @@ check_site "Cargo.toml"          software_factory/Cargo.toml  cargo
 check_site "Cargo.lock"          software_factory/Cargo.lock  cargo-lock
 check_site "CHANGELOG.md"        CHANGELOG.md                 changelog
 
+section "The Kubernetes deployment runs this release's image"
+# The deployment manifest names the image tag the product ships, and the tag must name the
+# release. CI asserts the same invariant in software_factory/scripts/verify-k8s.py, but the
+# local release ritual did not run it, so a manifest left on an older tag passed the ritual and
+# failed only in CI: the 'kubernetes manifests' job was red on main from v4.15.7 to v4.15.12,
+# five releases, each one green locally. This check is deliberately dependency-free (node and
+# git only, no PyYAML), so the ritual stays portable; CI still runs the full manifest suite.
+DEPLOY_MANIFEST="software_factory/k8s/deployment.yaml"
+if [ ! -f "$DEPLOY_MANIFEST" ]; then
+  fail "no deployment manifest at $DEPLOY_MANIFEST"
+else
+  DEPLOY_IMAGE="$(grep -m1 -E '^[[:space:]]*image:' "$DEPLOY_MANIFEST" | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/[[:space:]]*$//')"
+  if [ -z "$DEPLOY_IMAGE" ]; then
+    fail "$DEPLOY_MANIFEST declares no image"
+  elif printf '%s' "$DEPLOY_IMAGE" | grep -q '@sha256:'; then
+    pass "the deployment pins an immutable digest, so no tag can drift from the release"
+  else
+    DEPLOY_TAG="${DEPLOY_IMAGE##*:}"
+    if [ "${DEPLOY_TAG#v}" = "$REFERENCE" ]; then
+      pass "the deployment runs image tag $DEPLOY_TAG, matching the release"
+    else
+      fail "$DEPLOY_MANIFEST runs $DEPLOY_TAG but this release is $REFERENCE; bump the image tag"
+    fi
+  fi
+fi
+
 section "The version is a real semver, not a placeholder"
 if printf '%s' "$REFERENCE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
   pass "$REFERENCE is well-formed semver"

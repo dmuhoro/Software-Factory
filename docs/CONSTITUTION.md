@@ -78,7 +78,7 @@ record, and a metric.
 
 ### Article IV: Release and Provenance
 1. **Every shipped change gets a release and a tag.** Never ship an upgrade that is untagged or unversioned. Never let a hotfix drift behind the last tag when it changes product behaviour. *(Adopted from `Daftari/AGENTS.md` § Release & Tagging.)*
-2. **One product, one version.** The npm package, the crate, and the changelog MUST agree. `scripts/verify-release.sh` fails the build when they do not.
+2. **One product, one version.** The npm package, the crate, the changelog, and the deployed image tag MUST agree. `scripts/verify-release.sh` fails the build when they do not.
 3. **Provenance footers on agent-authored commits.** Every commit containing meaningful agent-generated content MUST carry an `AI-Assisted:` footer, and MUST be reviewed by a human before push. *(Adopted from `afropay-network/AGENTS.md` § Provenance & Authorship.)*
 4. **Version-control the shape, not the parameters.** The algorithm's structure belongs in version control; tuned constants, credentials, and per-tenant secrets MUST NOT. *(Adopted from `afropay-network/AGENTS.md` § Public Scaffolding, Private Parameters.)*
 
