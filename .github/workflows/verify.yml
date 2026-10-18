@@ -142,6 +142,12 @@ jobs:
       - name: Storage backend selection
         run: npm run verify:storage
 
+      # The backup/restore drill corrupts the ledger, triggers store recovery, and measures
+      # RPO/RTO. It is credential-free and destructive to in-memory state only, so it is safe
+      # to run in CI against a fresh checkout.
+      - name: Backup/restore drill (RPO/RTO)
+        run: npm run backup:restore-drill
+
       # Credential material in the index. Also credential-free, and cheap, so there is no reason
       # for it to be anything other than a required step.
       - name: No secret material

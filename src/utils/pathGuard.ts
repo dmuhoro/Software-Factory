@@ -102,10 +102,16 @@ export function resolveWithin(candidate: unknown, options: PathGuardOptions = {}
  * `realOrSelf` so a symlink (or a symlinked intermediate directory) that points
  * outside `root` is refused, not followed. The returned path is the real path, so
  * a writer that opens it cannot be redirected past the boundary by a symlink.
+ *
+ * `.git` paths are always refused: the git directory is never writable through
+ * this guard, and a symlinked `.git` is a traversal escape.
  */
 export function resolveFileWithin(root: string, relative: string, code = 'FILE_OUTSIDE_REPOSITORY'): string {
   if (typeof relative !== 'string' || relative.trim() === '') throw new Error('FILE_PATH_REQUIRED');
   if (path.isAbsolute(relative)) throw new Error(code);
+  const normalised = path.normalize(relative);
+  if (normalised.startsWith('..')) throw new Error(code);
+  if (normalised.split(path.sep).includes('.git')) throw new Error(code);
   const realRoot = realOrSelf(path.resolve(root));
   const candidate = path.resolve(realRoot, relative);
   // Reject traversal lexically first (cheap, no syscall).

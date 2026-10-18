@@ -192,3 +192,30 @@ test('path guard: path traversal (..) is refused', () => {
   );
   fs.rmSync(repo, { recursive: true, force: true });
 });
+
+test('path guard: symlink in a subdirectory pointing outside is refused', () => {
+  const outside = path.join(os.tmpdir(), 'fault-injection-subdir-secret.txt');
+  fs.writeFileSync(outside, 'outside secret');
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'fault-injection-repo-'));
+  fs.mkdirSync(path.join(repo, 'subdir'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'subdir', 'inside.txt'), 'inside content');
+  fs.symlinkSync(outside, path.join(repo, 'subdir', 'link-outside.txt'));
+  assert.throws(
+    () => resolveFileWithin(repo, 'subdir/link-outside.txt'),
+    /FILE_OUTSIDE_REPOSITORY/,
+    'a symlink in a subdirectory pointing outside must be refused',
+  );
+  fs.rmSync(outside, { force: true });
+  fs.rmSync(repo, { recursive: true, force: true });
+});
+
+test('path guard: .git/hooks path is refused', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'fault-injection-repo-'));
+  fs.writeFileSync(path.join(repo, 'inside.txt'), 'x');
+  assert.throws(
+    () => resolveFileWithin(repo, '.git/hooks/pre-commit'),
+    /FILE_OUTSIDE_REPOSITORY|TOOL_APPLY_PATH_GITDIR/,
+    'a .git/hooks path must be refused',
+  );
+  fs.rmSync(repo, { recursive: true, force: true });
+});
