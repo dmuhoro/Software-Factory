@@ -4,6 +4,11 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.16.1] - 2026-10-18 — Production trial evidence report
+
+### Added
+- **Automatic trial evidence (Sprint 34, WP-4).** `npm run trial:report -- --repo <path> --since <date>` derives verified commits, units attempted/STUCK, failure classes, wall time, tokens/cost where reported, and post-merge reverts/fixes from the ledger and git. `trial:note` records operator-entered fields, clearly labelled. `docs/PRODUCTION_TRIAL.md` defines five readiness criteria and the success definition. The report refuses to claim a number it cannot derive.
+
 ## [4.16.0] - 2026-10-17 — One runtime, one image
 
 ### Removed
