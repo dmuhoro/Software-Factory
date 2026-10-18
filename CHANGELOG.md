@@ -4,6 +4,11 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.16.2] - 2026-10-18 — PR configuration preflight
+
+### Added
+- **Pull-request configuration preflight (Sprint 34, WP-5).** `npm run verify:pr-config` checks the allowlisted secret reference, the permitted host, the owner/name scope and the no-merge rule without opening a pull request; a green run with an invalid token proves no socket was opened and no secret value is printed. `docs/OPERATIONS.md` §4.1 gives the runbook and the fine-grained PAT scopes (Contents RW, Pull requests RW, Metadata R). `pr-config-preflight` is a live capability proven by `npm run verify:pr-config`.
+
 ## [4.16.1] - 2026-10-18 — Production trial evidence report
 
 ### Added
