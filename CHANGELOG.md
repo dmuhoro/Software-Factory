@@ -4,6 +4,15 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.16.6] - 2026-10-18 — Identity & access hardening
+
+### Added
+- **RBAC enforcement on mutation routes (Sprint 34, WP-8).** `src/api/middleware/rbac.ts`: `rbacRequire(permission)` middleware wired into tool-apply apply/approve/reject/records (`loop:submit` / `loop:read`), operations execute-proposal/merge-next (`loop:submit`), and loop runs (`loop:submit`). Fail closed: unrecognised permission or missing binding is 403.
+- **Self-serve tenant provisioning (Sprint 34, WP-8).** `POST /api/tenants` is publicly accessible — creates a tenant, hashes a root API key with scrypt, returns the plaintext key exactly once (never stored, logged, or recoverable). `GET /tenants` remains tenant-authenticated. `isPublicPath` accepts a method parameter so only `POST /tenants` is public.
+- **E2E agent-run API test (Sprint 34, WP-8).** `test/agent-run-e2e.test.ts`: full HTTP path — plan run → prepare worktrees → enqueue → execute-proposal (tool applier) → approve merge → verified commit on primary repo. Uses a local stub model (no network, no API key).
+- **CI backup/restore drill (Sprint 34, WP-8).** `.github/workflows/verify.yml`: backup/restore drill step added to the TypeScript job, measuring RPO/RTO on every change.
+- **Fault injection hardening (Sprint 34, WP-8).** `src/utils/pathGuard.ts` `resolveFileWithin` now refuses `.git` paths at the guard boundary (defense in depth). `test/fault-injection.test.ts` (15 tests): symlink in subdirectory pointing outside refused; `.git/hooks` path refused; telemetry PHI refusal; RBAC resource boundary.
+
 ## [4.16.5] - 2026-10-18 — Structural production readiness (Pareto workstreams)
 
 ### Added

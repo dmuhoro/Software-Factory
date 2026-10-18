@@ -12,10 +12,7 @@
 import { Router, Request, Response } from 'express';
 import { respondWithError } from '../../utils/respondWithError';
 import { validateTenantRequest } from '../middleware/tenantAuth';
-import type { AuthenticatedPrincipal } from '../middleware/tenantAuth';
-import { RbacService } from '../../services/rbacService';
-import { emitSecurityError } from '../../utils/validation';
-import { classifyApiError, toErrorBody } from '../../utils/apiError';
+import { rbacRequire } from '../middleware/rbac';
 import { LoopControlService } from '../../services/loopControlService';
 import { GoalIntakeService } from '../../services/goalIntakeService';
 import { IssueIntakeService } from '../../services/issueIntakeService';
@@ -25,25 +22,10 @@ import { LearningDigestService } from '../../services/learningDigestService';
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
 
-function requireLoopSubmit(req: Request, res: Response): boolean {
-  const principal = (req as { principal?: AuthenticatedPrincipal }).principal;
-  if (!principal) {
-    res.status(401).json(emitSecurityError('UNAUTHORIZED', 'A valid credential is required.'));
-    return false;
-  }
-  const decision = RbacService.check(principal, 'loop:submit');
-  if (!decision.allowed) {
-    const classified = classifyApiError(new Error(decision.reason ?? 'RBAC_PERMISSION_DENIED'));
-    res.status(classified.status).json(toErrorBody(classified));
-    return false;
-  }
-  return true;
-}
-
 /** Submit a run. Resolves with the run id as soon as the record exists; the work continues. */
 router.post('/runs', async (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;
-  if (!requireLoopSubmit(req, res)) return;
+  if (!rbacRequire(req, res, 'loop:submit')) return;
   try {
     const result = await LoopControlService.submit({
       tenantId: tenant(req),

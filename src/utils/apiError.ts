@@ -298,6 +298,29 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   LOOP_GOAL_DRAFT_INVALID: { status: 422, message: 'The drafted task document was not accepted by the loop parser; the goal is too ambiguous to plan.' },
   LOOP_RUN_NOT_CANCELABLE: { status: 409, message: 'Only a running loop run can be cancelled.' },
   LOOP_CONFIRMATION_INVALID: { status: 400, message: 'The confirmation token is missing, expired or already used.' },
+  // Sprint 34 (WP-8): tool applier — structured edits applied through an isolated worktree,
+  // verified sandboxed, and gated behind human approval. These errors publish by name so a
+  // caller scraping the CLI or HTTP response can see exactly what was refused and why.
+  EXECUTION_OUTPUT_EMPTY: { status: 400, message: 'The model returned no output for this execution.' },
+  EXECUTION_OUTPUT_MALFORMED: { status: 400, message: 'The model output does not match the required structured-edits format.' },
+  EXECUTION_OUTPUT_NO_EDITS: { status: 400, message: 'The model output did not name any files to edit.' },
+  EXECUTION_OUTPUT_TOO_MANY_EDITS: { status: 400, message: 'The model output names more files than the per-apply cap allows.' },
+  TOOL_APPLY_APPROVAL_NOT_FOUND: { status: 404, message: 'No such tool-apply approval request.' },
+  TOOL_APPLY_APPROVAL_NOT_PENDING: { status: 409, message: 'The tool-apply approval has already been decided.' },
+  TOOL_APPLY_CONTENT_REQUIRED: { status: 400, message: 'A create or modify edit must include file content.' },
+  TOOL_APPLY_FILE_TOO_LARGE: { status: 413, message: 'An edited file exceeds the per-file size cap.' },
+  TOOL_APPLY_INVALID: { status: 400, message: 'The tool-apply request is not well-formed.' },
+  TOOL_APPLY_NO_EDITS: { status: 400, message: 'No edits were supplied to apply.' },
+  TOOL_APPLY_PATH_ABSOLUTE: { status: 400, message: 'An edit path is absolute; only repository-relative paths are permitted.' },
+  TOOL_APPLY_PATH_ESCAPES_REPO: { status: 403, message: 'An edit path escapes the repository boundary.' },
+  TOOL_APPLY_PATH_GITDIR: { status: 403, message: 'An edit path touches .git, which is not writable.' },
+  TOOL_APPLY_PATH_OUTSIDE_REPO: { status: 403, message: 'An edit path resolves outside the repository.' },
+  TOOL_APPLY_PATH_REQUIRED: { status: 400, message: 'An edit path is required.' },
+  TOOL_APPLY_PATH_TRAVERSAL: { status: 400, message: 'An edit path uses traversal (..) and is refused.' },
+  TOOL_APPLY_RECORD_INCOMPLETE: { status: 500, message: 'The tool-apply record is missing fields required for merge.' },
+  TOOL_APPLY_RECORD_NOT_FOUND: { status: 404, message: 'No tool-apply record exists for this approval.' },
+  TOOL_APPLY_TOO_MANY_EDITS: { status: 400, message: 'Too many edits in a single apply; the cap is 40.' },
+  TOOL_APPLY_WRONG_ACTION: { status: 400, message: 'The approval is not a tool-apply merge action.' },
   // Sprint 28 (WP-2): the tracker bridge. An issue from a tracker is the raw material for a task
   // document. A local issue that cannot be read, and a GitHub issue that cannot be fetched, are
   // refusals -- never an empty issue the architect would then invent requirements around.

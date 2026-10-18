@@ -6,17 +6,17 @@
  * POST   /api/tool-apply/reject    — reject a pending apply and clean up
  * GET    /api/tool-apply/records   — list apply records for audit
  *
- * Every route is tenant-authenticated. Merge (approve) requires the MODIFY_BRANCH
- * harness action, which is not automatic — a human must decide via
- * POST /api/factory-jobs/approvals/:approvalId/decision.
+ * Every route is tenant-authenticated and RBAC-protected:
+ *   - apply/approve/reject require `loop:submit` (mutating repository state)
+ *   - records requires `loop:read` (audit read)
+ * Merge (approve) additionally requires the MODIFY_BRANCH harness action — a human
+ * must decide via POST /api/factory-jobs/approvals/:approvalId/decision.
  */
 
 import { Router, Request, Response } from 'express';
 import { respondWithError } from '../../utils/respondWithError';
 import { validateTenantRequest } from '../middleware/tenantAuth';
-import type { AuthenticatedPrincipal } from '../middleware/tenantAuth';
-import { RbacService } from '../../services/rbacService';
-import { emitSecurityError } from '../../utils/validation';
+import { rbacRequire } from '../middleware/rbac';
 import { ToolApplierService, ToolApplyRequest, StructuredEdit } from '../../services/toolApplierService';
 import { classifyApiError, toErrorBody } from '../../utils/apiError';
 
@@ -44,15 +44,7 @@ function parseEdits(body: unknown): StructuredEdit[] {
 
 router.post('/apply', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;
-  const principal = (req as { principal?: AuthenticatedPrincipal }).principal;
-  if (!principal) {
-    return res.status(401).json(emitSecurityError('UNAUTHORIZED', 'A valid credential is required.'));
-  }
-  const decision = RbacService.check(principal, 'loop:submit');
-  if (!decision.allowed) {
-    const classified = classifyApiError(new Error(decision.reason ?? 'RBAC_PERMISSION_DENIED'));
-    return res.status(classified.status).json(toErrorBody(classified));
-  }
+  if (!rbacRequire(req, res, 'loop:submit')) return;
   const { branch, verificationCommand, requestedBy, rationale } = req.body ?? {};
   if (!branch || typeof branch !== 'string') return fail(res, { message: 'TOOL_APPLY_INVALID: branch required' });
   if (!requestedBy || typeof requestedBy !== 'string') return fail(res, { message: 'TOOL_APPLY_INVALID: requestedBy required' });
@@ -83,15 +75,7 @@ router.post('/apply', (req: Request, res: Response) => {
 
 router.post('/approve', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;
-  const principal = (req as { principal?: AuthenticatedPrincipal }).principal;
-  if (!principal) {
-    return res.status(401).json(emitSecurityError('UNAUTHORIZED', 'A valid credential is required.'));
-  }
-  const decision = RbacService.check(principal, 'loop:submit');
-  if (!decision.allowed) {
-    const classified = classifyApiError(new Error(decision.reason ?? 'RBAC_PERMISSION_DENIED'));
-    return res.status(classified.status).json(toErrorBody(classified));
-  }
+  if (!rbacRequire(req, res, 'loop:submit')) return;
   const { approvalId, decidedBy } = req.body ?? {};
   if (!approvalId || typeof approvalId !== 'string') return fail(res, { message: 'TOOL_APPLY_INVALID: approvalId required' });
 
@@ -106,15 +90,7 @@ router.post('/approve', (req: Request, res: Response) => {
 
 router.post('/reject', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;
-  const principal = (req as { principal?: AuthenticatedPrincipal }).principal;
-  if (!principal) {
-    return res.status(401).json(emitSecurityError('UNAUTHORIZED', 'A valid credential is required.'));
-  }
-  const decision = RbacService.check(principal, 'loop:submit');
-  if (!decision.allowed) {
-    const classified = classifyApiError(new Error(decision.reason ?? 'RBAC_PERMISSION_DENIED'));
-    return res.status(classified.status).json(toErrorBody(classified));
-  }
+  if (!rbacRequire(req, res, 'loop:submit')) return;
   const { approvalId, note, decidedBy } = req.body ?? {};
   if (!approvalId || typeof approvalId !== 'string') return fail(res, { message: 'TOOL_APPLY_INVALID: approvalId required' });
   if (!note || typeof note !== 'string') return fail(res, { message: 'TOOL_APPLY_INVALID: note required' });
@@ -130,15 +106,7 @@ router.post('/reject', (req: Request, res: Response) => {
 
 router.get('/records', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;
-  const principal = (req as { principal?: AuthenticatedPrincipal }).principal;
-  if (!principal) {
-    return res.status(401).json(emitSecurityError('UNAUTHORIZED', 'A valid credential is required.'));
-  }
-  const decision = RbacService.check(principal, 'loop:read');
-  if (!decision.allowed) {
-    const classified = classifyApiError(new Error(decision.reason ?? 'RBAC_PERMISSION_DENIED'));
-    return res.status(classified.status).json(toErrorBody(classified));
-  }
+  if (!rbacRequire(req, res, 'loop:read')) return;
   const records = ToolApplierService.list(tenant(req));
   return ok(res, { records, count: records.length });
 });
