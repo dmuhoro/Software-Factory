@@ -16,6 +16,7 @@ import agentsRoutes from './agents.routes';
 import proofRoutes from './proof.routes';
 import operationsRoutes from './operations.routes';
 import loopRoutes from './loop.routes';
+import toolApplierRoutes from './toolApplier.routes';
 import whoamiRoutes from './whoami.routes';
 import usageRoutes from './usage.routes';
 import operatorRoutes from './operator.routes';
@@ -35,6 +36,7 @@ router.use('/agents', agentsRoutes);
 router.use('/proof', proofRoutes);
 router.use('/operations', operationsRoutes);
 router.use('/loop', loopRoutes);
+router.use('/tool-apply', toolApplierRoutes);
 // Self-describing authz. Not a public path: it answers for the authenticated caller only.
 router.use('/whoami', whoamiRoutes);
 // The caller's own metered usage. Also answers only for the authenticated caller.
