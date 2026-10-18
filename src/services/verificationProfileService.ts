@@ -104,6 +104,7 @@ export function executeVerification(
   profile: VerificationProfile,
   timeoutMs: number,
   sandbox: LoopSandboxConfig,
+  extraBindPaths: string[] = [],
 ): VerificationExecution {
   // Every spawned verification command receives only the loop's scrubbed environment. The ambient
   // environment is never forwarded: `sandboxArgv` copies every entry it is given onto the bwrap
@@ -114,7 +115,7 @@ export function executeVerification(
   const logs: string[] = [];
   for (const step of profile.steps) {
     const command = verificationStepCommand(step, repo);
-    const result = runCommand(repo, command, timeoutMs, env, sandbox);
+    const result = runCommand(repo, command, timeoutMs, env, sandbox, extraBindPaths);
     logs.push(`$ ${step.label}\n${result.output}`);
     if (result.exitCode !== 0) {
       return {

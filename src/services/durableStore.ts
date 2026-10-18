@@ -38,8 +38,9 @@ const LEDGER_COLLECTIONS = [
   'clientWorkspaces', 'handovers', 'clientAcceptances', 'hostedDeployments', 'modelProviders',
   'agentRuns', 'worktrees', 'proofRecords', 'queueJobs', 'executionRuns',
   'deploymentObservations', 'mergeRecords', 'securityScans', 'projectAdapters',
-  'tenants', 'factoryLoopRuns', 'usageEvents', 'operatorCaps', 'pullRequests',
+  'tenants', 'factoryLoopRuns', 'usageEvents', 'operatorCaps',   'pullRequests',
   'grillSessions',
+  'toolApplyRecords',
 ] as const;
 
 export type LedgerCollection = (typeof LEDGER_COLLECTIONS)[number];

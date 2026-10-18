@@ -80,12 +80,12 @@ function git(repo: string, args: string[]): { code: number; out: string } {
 }
 
 /** Runs a shell command inside the repository under the loop's scrubbed environment. */
-export function runCommand(repo: string, command: string, timeoutMs: number, env?: NodeJS.ProcessEnv, sandbox?: LoopSandboxConfig): { exitCode: number; output: string; startedAt: string; completedAt: string } {
+export function runCommand(repo: string, command: string, timeoutMs: number, env?: NodeJS.ProcessEnv, sandbox?: LoopSandboxConfig, extraBindPaths: string[] = []): { exitCode: number; output: string; startedAt: string; completedAt: string } {
   const startedAt = now();
   if (sandbox?.enabled) {
     let argv: string[];
     try {
-      const built = sandboxArgv(repo, sandbox, command, env);
+      const built = sandboxArgv(repo, sandbox, command, env, extraBindPaths);
       if ('reason' in built) return { exitCode: 1, output: built.reason, startedAt, completedAt: now() };
       argv = built.argv;
     } catch (error) {
@@ -156,7 +156,7 @@ export function isSandboxVisible(candidate: string): boolean {
 }
 
 /** Build the bubblewrap invocation for a verification command. Refuses, does not warn. */
-function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, env?: NodeJS.ProcessEnv): { ok: true; argv: string[] } | { ok: false; reason: string } {
+function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, env?: NodeJS.ProcessEnv, extraBindPaths: string[] = []): { ok: true; argv: string[] } | { ok: false; reason: string } {
   const repoPath = path.resolve(repo);
   if (sandbox.backend !== 'bwrap') {
     return { ok: false, reason: `refused: sandbox backend "${sandbox.backend}" is not supported; only bwrap is accepted` };
@@ -189,6 +189,14 @@ function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, 
     argv.push('--bind', resolved, resolved);
   }
   argv.push('--bind', repoPath, repoPath);
+
+  // Extra bind paths (e.g. a tool-applier worktree outside the repo) are mounted
+  // read-write so verification commands can reach them inside the sandbox.
+  for (const extra of extraBindPaths) {
+    const resolved = path.resolve(extra);
+    if (!fs.existsSync(resolved)) continue;
+    argv.push('--bind', resolved, resolved);
+  }
 
   argv.push('--clearenv');
   argv.push('--setenv', 'HOME', '/tmp/loop');
