@@ -272,6 +272,42 @@ export const FINANCIAL_SERVICES_RESPONSE_SCHEMA = {
   ],
 };
 
+export const EDUCATION_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    status: { type: Type.STRING },
+    confidenceScore: { type: Type.NUMBER },
+    nicheSpecificResult: {
+      type: Type.OBJECT,
+      properties: {
+        studentId: { type: Type.STRING },
+        ferpaConsent: { type: Type.BOOLEAN },
+        coppaConsent: { type: Type.BOOLEAN },
+        accredited: { type: Type.BOOLEAN },
+        riskRating: { type: Type.STRING },
+      },
+      required: ["studentId", "ferpaConsent", "coppaConsent", "accredited", "riskRating"],
+    },
+    recommendedActions: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    anomaliesDetected: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    complianceVerified: { type: Type.BOOLEAN },
+  },
+  required: [
+    "status",
+    "confidenceScore",
+    "nicheSpecificResult",
+    "recommendedActions",
+    "anomaliesDetected",
+    "complianceVerified",
+  ],
+};
+
 export function getNicheResponseSchema(niche: IndustryNiche) {
   switch (niche) {
     case IndustryNiche.REAL_ESTATE:
@@ -284,6 +320,8 @@ export function getNicheResponseSchema(niche: IndustryNiche) {
       return CUSTOM_B2B_RESPONSE_SCHEMA;
     case IndustryNiche.FINANCIAL_SERVICES:
       return FINANCIAL_SERVICES_RESPONSE_SCHEMA;
+    case IndustryNiche.EDUCATION:
+      return EDUCATION_RESPONSE_SCHEMA;
     default:
       return CUSTOM_B2B_RESPONSE_SCHEMA;
   }

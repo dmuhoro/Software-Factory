@@ -42,6 +42,7 @@ export const OPERATIONAL_NICHES: readonly IndustryNiche[] = [
   IndustryNiche.LOGISTICS,
   IndustryNiche.CUSTOM_B2B,
   IndustryNiche.FINANCIAL_SERVICES,
+  IndustryNiche.EDUCATION,
 ] as const;
 
 export const NICHE_REGISTRY: Record<IndustryNiche, NicheAdapterMetadata> = {
@@ -93,6 +94,16 @@ export const NICHE_REGISTRY: Record<IndustryNiche, NicheAdapterMetadata> = {
     sampleEventTypes: ['PAYMENT_INITIATED', 'FRAUD_ALERT', 'AML_REVIEW', 'CARD_DATA_ACCESS'],
     mandatoryGuardrails: ['PCI DSS Card Data Boundary', 'AML Transaction Monitoring', 'Counterparty Sanctions Screening'],
     complianceStandard: 'PCI DSS v4 / AML / Basel operational risk',
+    operational: true,
+  },
+  [IndustryNiche.EDUCATION]: {
+    niche: IndustryNiche.EDUCATION,
+    displayName: 'Education & Learning Adapter',
+    version: '1.0.0',
+    description: 'Student data privacy controls: FERPA compliance, COPPA safeguards, accreditation standards, and safeguarding of student records.',
+    sampleEventTypes: ['STUDENT_ENROLLED', 'GRADE_POSTED', 'ATTENDANCE_RECORDED', 'DISCIPLINARY_ACTION'],
+    mandatoryGuardrails: ['FERPA Student Privacy', 'COPPA Child Privacy', 'Accreditation Standards Compliance'],
+    complianceStandard: 'FERPA / COPPA / State accreditation',
     operational: true,
   },
 };

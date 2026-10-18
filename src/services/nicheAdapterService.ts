@@ -77,6 +77,8 @@ export class NicheAdapterService {
         return this.processCustomB2B(rawPayload, tenantContext);
       case IndustryNiche.FINANCIAL_SERVICES:
         return this.processFinancialServices(rawPayload);
+      case IndustryNiche.EDUCATION:
+        return this.processEducation(rawPayload);
       default:
         // Exhaustive switch over IndustryNiche. If a new niche is added to the enum but not
         // handled here, this branch fires: a modelled-but-unimplemented niche refuses honestly.
@@ -310,6 +312,62 @@ export class NicheAdapterService {
           fraudScreenedAt: new Date().toISOString(),
           reviewRequired: amountUsd >= FINANCIAL_REVIEW_THRESHOLD_USD || structuring,
           sanctionedCounterparty: SANCTIONED_COUNTERPARTIES.has(counterparty.toLowerCase()),
+        },
+        guardrailsApplied,
+        violationNotice: violations.length > 0 ? violations.join('; ') : undefined,
+      },
+    };
+  }
+
+  /**
+   * Education: student privacy and accreditation controls.
+   *
+   * Evaluates FERPA (student directory information protection), COPPA (child online privacy),
+   * and accreditation standards. Returns a real verdict: any student data exposure without
+   * consent fails compliance; missing accreditation fails compliance.
+   */
+  private static processEducation(payload: Record<string, unknown>): NicheAdapterResult {
+    const guardrailsApplied: string[] = [];
+    let isCompliant = true;
+    const violations: string[] = [];
+
+    const studentId = String(payload.studentId ?? '');
+    const directoryInfoConsent = payload.directoryInfoConsent === true;
+    const parentalConsent = payload.parentalConsent === true;
+    const studentAge = Number(payload.studentAge ?? 0);
+    const accredited = payload.accredited === true;
+
+    // FERPA: directory information may not be disclosed without consent.
+    guardrailsApplied.push('FERPA Student Privacy');
+    if (studentId.length > 0 && !directoryInfoConsent) {
+      isCompliant = false;
+      violations.push('student directory information disclosed without consent (FERPA violation)');
+    }
+
+    // COPPA: children under 13 require parental consent.
+    guardrailsApplied.push('COPPA Child Privacy');
+    if (studentAge > 0 && studentAge < 13 && !parentalConsent) {
+      isCompliant = false;
+      violations.push('child under 13 lacks parental consent (COPPA violation)');
+    }
+
+    // Accreditation: institution must be accredited.
+    guardrailsApplied.push('Accreditation Standards Compliance');
+    if (!accredited) {
+      isCompliant = false;
+      violations.push('institution is not accredited');
+    }
+
+    return {
+      result: {
+        isCompliant,
+        normalizedPayload: {
+          ...payload,
+          studentId,
+          privacyScreenedAt: new Date().toISOString(),
+          ferpaConsent: directoryInfoConsent,
+          coppaConsent: studentAge > 0 && studentAge < 13 ? parentalConsent : null,
+          accredited,
         },
         guardrailsApplied,
         violationNotice: violations.length > 0 ? violations.join('; ') : undefined,

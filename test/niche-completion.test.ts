@@ -143,6 +143,53 @@ test('financial services: clean transaction complies', () => {
   assert.equal(result!.violationNotice, undefined);
 });
 
+test('education: compliant student record passes FERPA, COPPA, accreditation', () => {
+  const { result } = NicheAdapterService.processAdapter(
+    IndustryNiche.EDUCATION,
+    { studentId: 'S-123', directoryInfoConsent: true, parentalConsent: true, studentAge: 16, accredited: true },
+  );
+
+  assert.ok(result);
+  assert.equal(result!.isCompliant, true);
+  assert.ok(result!.guardrailsApplied.includes('FERPA Student Privacy'));
+  assert.ok(result!.guardrailsApplied.includes('COPPA Child Privacy'));
+  assert.ok(result!.guardrailsApplied.includes('Accreditation Standards Compliance'));
+  assert.equal(result!.violationNotice, undefined);
+});
+
+test('education: missing FERPA consent fails compliance', () => {
+  const { result } = NicheAdapterService.processAdapter(
+    IndustryNiche.EDUCATION,
+    { studentId: 'S-123', directoryInfoConsent: false, parentalConsent: true, studentAge: 16, accredited: true },
+  );
+
+  assert.ok(result);
+  assert.equal(result!.isCompliant, false);
+  assert.ok(result!.violationNotice!.includes('FERPA violation'));
+});
+
+test('education: child under 13 without parental consent fails COPPA', () => {
+  const { result } = NicheAdapterService.processAdapter(
+    IndustryNiche.EDUCATION,
+    { studentId: 'S-123', directoryInfoConsent: true, parentalConsent: false, studentAge: 10, accredited: true },
+  );
+
+  assert.ok(result);
+  assert.equal(result!.isCompliant, false);
+  assert.ok(result!.violationNotice!.includes('COPPA violation'));
+});
+
+test('education: non-accredited institution fails compliance', () => {
+  const { result } = NicheAdapterService.processAdapter(
+    IndustryNiche.EDUCATION,
+    { studentId: 'S-123', directoryInfoConsent: true, parentalConsent: true, studentAge: 16, accredited: false },
+  );
+
+  assert.ok(result);
+  assert.equal(result!.isCompliant, false);
+  assert.ok(result!.violationNotice!.includes('not accredited'));
+});
+
 test('the three originally served niches are unaffected by custom_b2b and financial_services', () => {
   const served: [IndustryNiche, Record<string, unknown>][] = [
     [IndustryNiche.REAL_ESTATE, { propertyType: 'Condo', squareFootage: 1200, listPrice: 500_000 }],

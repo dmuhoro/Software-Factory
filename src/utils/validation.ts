@@ -168,6 +168,13 @@ export function validateIncomingTelemetry(raw: unknown): { isValid: boolean; err
         error: emitMalformedContextError("Financial services telemetry requires 'amountUsd' attribute"),
       };
     }
+  } else if (niche === IndustryNiche.EDUCATION) {
+    if (!inner.studentId) {
+      return {
+        isValid: false,
+        error: emitMalformedContextError("Education telemetry requires 'studentId' attribute"),
+      };
+    }
   }
 
   return { isValid: true, data: payload };

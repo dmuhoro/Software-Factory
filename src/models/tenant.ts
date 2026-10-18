@@ -9,6 +9,7 @@ export enum IndustryNiche {
   LOGISTICS = 'logistics',
   CUSTOM_B2B = 'custom_b2b',
   FINANCIAL_SERVICES = 'financial_services',
+  EDUCATION = 'education',
 }
 
 export enum TenantSubscriptionTier {
