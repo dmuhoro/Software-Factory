@@ -165,6 +165,87 @@ Dependency-ordered, because the earlier items make the later ones cheap.
 - Publish and digest-pin the first image; run the manifest end to end.
 - Dashboards and alerts on the metrics that already exist.
 
+## 4.0 Layer 0 — wiring cloud model providers before the loop can dial out
+
+The unattended loop calls models through `FrontierModelService`, which sends every request
+through the egress guard (`src/utils/egressGuard.ts`). The guard is fail closed:
+
+* `FACTORY_MODEL_ALLOWED_HOSTS` lists the hostnames a remote provider may reach. Unset means
+  no remote host is permitted.
+* `FACTORY_ALLOWED_SECRET_REFS` lists the environment variable *names* the factory may resolve
+  and forward as bearer tokens. Unset means no secret may be resolved.
+
+Neither is a default. Until an operator sets both, the loop cannot make a live model call.
+
+### Registering providers
+
+`npm run register:model-providers` reads provider configuration from the environment and
+registers each one through `FrontierModelService.register()`, which validates host and secret
+reference at registration time. A provider that fails validation is not registered, and the
+script exits non-zero.
+
+```
+# .env — server-side only, never committed
+FACTORY_MODEL_PROVIDERS=deepseek,together,mistral,nvidia,openai
+
+FACTORY_ALLOWED_SECRET_REFS=DEEPSEEK_API_KEY,TOGETHER_API_KEY,MISTRAL_API_KEY,NVIDIA_API_KEY,OPENAI_API_KEY
+FACTORY_MODEL_ALLOWED_HOSTS=api.deepseek.com,api.together.xyz,api.mistral.ai,integrate.api.nvidia.com,api.openai.com
+
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_SECRET_REF=DEEPSEEK_API_KEY
+DEEPSEEK_MODEL_IDS=deepseek-chat,deepseek-coder
+
+TOGETHER_BASE_URL=https://api.together.xyz/v1
+TOGETHER_SECRET_REF=TOGETHER_API_KEY
+TOGETHER_MODEL_IDS=Qwen/Qwen2.5-Coder-32B-Instruct
+
+MISTRAL_BASE_URL=https://api.mistral.ai/v1
+MISTRAL_SECRET_REF=MISTRAL_API_KEY
+MISTRAL_MODEL_IDS=mistral-large-latest
+
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_SECRET_REF=NVIDIA_API_KEY
+NVIDIA_MODEL_IDS=nemotron-3.5-super-vl-120b-a12b
+
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_SECRET_REF=OPENAI_API_KEY
+OPENAI_MODEL_IDS=gpt-5-mini,gpt-5
+```
+
+Each provider `{ID}` reads `{ID}_BASE_URL` (required for remote kinds), `{ID}_SECRET_REF` (the
+env var *name* holding the key — the value itself is never printed), `{ID}_MODEL_IDS`, and
+`{ID}_KIND` (`openai-compatible` | `gemini-native` | `local`, default `openai-compatible`).
+
+### Role assignment
+
+Provider registration only makes a provider reachable. Which role uses which provider is set in
+`doctrine/agents/models.json` (roles → tiers → `providerId/model`), overridable per role or per
+tier through environment variables:
+
+```
+FACTORY_MODEL_ROLE_IMPLEMENTER=deepseek/deepseek-coder
+FACTORY_MODEL_TIER_FRONTIER=deepseek/deepseek-chat
+```
+
+or per task document: `models.implementer: deepseek/deepseek-coder`.
+
+### Verification
+
+`npm run test -- test/model-provider-registration.test.ts` proves registration accepts an
+allowlisted host + mounted secret, refuses an unallowlisted host, refuses an unallowlisted or
+unmounted secret ref, registers local providers without credentials, and refuses remote
+providers without a base URL. No socket is opened during registration — DNS resolution happens
+at request time, not here.
+
+### What remains blocked
+
+A registered provider still needs a real API key. This repository does not ship one, and the
+keys that appeared in prior transcripts are burned (rotate them). Until an operator mounts live
+keys under `FACTORY_ALLOWED_SECRET_REFS`, registration succeeds but every request fails closed
+at the socket boundary. Layers 2–5 (bench adoption decision, production trial, enforcement flip,
+production deployment) are gated on live keys and cannot be exercised without them.
+
+
 ### 4.1 Rehearsing pull-request mode without opening a pull request
 
 `npm run verify:pr-config -- --repo <path> [--owner <owner/name>]` checks every precondition the
