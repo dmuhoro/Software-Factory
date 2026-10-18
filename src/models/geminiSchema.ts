@@ -234,6 +234,44 @@ export const CUSTOM_B2B_RESPONSE_SCHEMA = {
   ],
 };
 
+export const FINANCIAL_SERVICES_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    status: { type: Type.STRING },
+    confidenceScore: { type: Type.NUMBER },
+    nicheSpecificResult: {
+      type: Type.OBJECT,
+      properties: {
+        transactionId: { type: Type.STRING },
+        counterparty: { type: Type.STRING },
+        amountUsd: { type: Type.NUMBER },
+        fraudScreenedAt: { type: Type.STRING },
+        reviewRequired: { type: Type.BOOLEAN },
+        sanctionedCounterparty: { type: Type.BOOLEAN },
+        riskRating: { type: Type.STRING },
+      },
+      required: ["transactionId", "counterparty", "amountUsd", "riskRating"],
+    },
+    recommendedActions: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    anomaliesDetected: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    complianceVerified: { type: Type.BOOLEAN },
+  },
+  required: [
+    "status",
+    "confidenceScore",
+    "nicheSpecificResult",
+    "recommendedActions",
+    "anomaliesDetected",
+    "complianceVerified",
+  ],
+};
+
 export function getNicheResponseSchema(niche: IndustryNiche) {
   switch (niche) {
     case IndustryNiche.REAL_ESTATE:
@@ -242,6 +280,10 @@ export function getNicheResponseSchema(niche: IndustryNiche) {
       return HEALTHCARE_RESPONSE_SCHEMA;
     case IndustryNiche.LOGISTICS:
       return LOGISTICS_RESPONSE_SCHEMA;
+    case IndustryNiche.CUSTOM_B2B:
+      return CUSTOM_B2B_RESPONSE_SCHEMA;
+    case IndustryNiche.FINANCIAL_SERVICES:
+      return FINANCIAL_SERVICES_RESPONSE_SCHEMA;
     default:
       return CUSTOM_B2B_RESPONSE_SCHEMA;
   }

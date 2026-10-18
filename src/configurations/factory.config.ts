@@ -40,6 +40,8 @@ export const OPERATIONAL_NICHES: readonly IndustryNiche[] = [
   IndustryNiche.REAL_ESTATE,
   IndustryNiche.HEALTHCARE,
   IndustryNiche.LOGISTICS,
+  IndustryNiche.CUSTOM_B2B,
+  IndustryNiche.FINANCIAL_SERVICES,
 ] as const;
 
 export const NICHE_REGISTRY: Record<IndustryNiche, NicheAdapterMetadata> = {
@@ -77,17 +79,21 @@ export const NICHE_REGISTRY: Record<IndustryNiche, NicheAdapterMetadata> = {
     niche: IndustryNiche.CUSTOM_B2B,
     displayName: 'Custom Enterprise B2B Adapter',
     version: '1.0.0',
-    description: 'Generic workflow transformation with configurable compliance and risk scoring.',
+    description: 'Tenant-specific control set enforced against each transaction: SOC2 trust criteria, ISO 27001 access boundary, and any guardrails the tenant declares in its profile. A custom_b2b tenant must provision its control set (customGuardrails) before the adapter will render a compliance verdict.',
     sampleEventTypes: ['TRANSACTION_CREATED', 'AUDIT_TRIGGER', 'POLICY_EVALUATION'],
     mandatoryGuardrails: ['SOC2 Trust Service Criteria', 'ISO 27001 Access Boundary'],
-    complianceStandard: 'SOC2 Type II / ISO 27001',
-    operational: false,
-    unavailableReason:
-      'No implemented adapter. This niche was previously served by the real-estate adapter, ' +
-      'which validated non-property events against property rules and reported Fair Housing ' +
-      'guardrails that were never applied. The TypeScript path returned isCompliant: true ' +
-      'without evaluating any control. Both were refusals disguised as results. Serving it ' +
-      'requires a tenant-specific control set, not a generic pass-through.',
+    complianceStandard: 'Tenant-defined control set (SOC2 Type II / ISO 27001 aligned)',
+    operational: true,
+  },
+  [IndustryNiche.FINANCIAL_SERVICES]: {
+    niche: IndustryNiche.FINANCIAL_SERVICES,
+    displayName: 'Financial Services Adapter',
+    version: '1.0.0',
+    description: 'Payment and fraud controls: transaction amount thresholds, counterparty screening, AML flags, and card-data boundary checks.',
+    sampleEventTypes: ['PAYMENT_INITIATED', 'FRAUD_ALERT', 'AML_REVIEW', 'CARD_DATA_ACCESS'],
+    mandatoryGuardrails: ['PCI DSS Card Data Boundary', 'AML Transaction Monitoring', 'Counterparty Sanctions Screening'],
+    complianceStandard: 'PCI DSS v4 / AML / Basel operational risk',
+    operational: true,
   },
 };
 

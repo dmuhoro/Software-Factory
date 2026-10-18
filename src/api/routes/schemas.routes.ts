@@ -10,6 +10,7 @@ import {
   HEALTHCARE_RESPONSE_SCHEMA,
   LOGISTICS_RESPONSE_SCHEMA,
   CUSTOM_B2B_RESPONSE_SCHEMA,
+  FINANCIAL_SERVICES_RESPONSE_SCHEMA,
 } from '../../models/geminiSchema';
 import { NICHE_REGISTRY } from '../../configurations/factory.config';
 
@@ -37,6 +38,7 @@ router.get('/gemini', (_req: Request, res: Response) => {
       healthcare: HEALTHCARE_RESPONSE_SCHEMA,
       logistics: LOGISTICS_RESPONSE_SCHEMA,
       custom_b2b: CUSTOM_B2B_RESPONSE_SCHEMA,
+      financial_services: FINANCIAL_SERVICES_RESPONSE_SCHEMA,
     },
     operationalNiches: Object.values(NICHE_REGISTRY)
       .filter((niche) => niche.operational)

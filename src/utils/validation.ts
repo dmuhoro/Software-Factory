@@ -136,10 +136,10 @@ export function validateIncomingTelemetry(raw: unknown): { isValid: boolean; err
       };
     }
     // Zero-conflation PHI check
-    if (inner.ssn || inner.socialSecurityNumber || inner.patientFullName) {
+    if (inner.ssn || inner.socialSecurityNumber || inner.patientFullName || inner.email) {
       return {
         isValid: false,
-        error: emitMalformedContextError("Direct PHI (SSN, Full Name) detected in raw stream; violates HIPAA zero-conflation guardrails"),
+        error: emitMalformedContextError("Direct PHI (SSN, Full Name, Email) detected in raw stream; violates HIPAA zero-conflation guardrails"),
       };
     }
   } else if (niche === IndustryNiche.LOGISTICS) {
@@ -147,6 +147,25 @@ export function validateIncomingTelemetry(raw: unknown): { isValid: boolean; err
       return {
         isValid: false,
         error: emitMalformedContextError("Logistics telemetry requires 'shipmentTrackingId' or 'waybillNumber' attribute"),
+      };
+    }
+  } else if (niche === IndustryNiche.FINANCIAL_SERVICES) {
+    if (!inner.transactionId) {
+      return {
+        isValid: false,
+        error: emitMalformedContextError("Financial services telemetry requires 'transactionId' attribute"),
+      };
+    }
+    if (!inner.counterparty) {
+      return {
+        isValid: false,
+        error: emitMalformedContextError("Financial services telemetry requires 'counterparty' attribute"),
+      };
+    }
+    if (inner.amountUsd === undefined || inner.amountUsd === null) {
+      return {
+        isValid: false,
+        error: emitMalformedContextError("Financial services telemetry requires 'amountUsd' attribute"),
       };
     }
   }

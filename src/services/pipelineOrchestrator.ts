@@ -61,6 +61,13 @@ export class PipelineOrchestrator {
       };
     }
 
+    // Tenant profile supplies the custom_b2b control set (customGuardrails). Absent means the
+    // adapter cannot evaluate a tenant-specific verdict and will refuse rather than fabricate.
+    const tenantProfile = TenantService.getTenant(payload.tenantId);
+    const tenantContext = {
+      customGuardrails: tenantProfile?.customGuardrails,
+    };
+
     // Layer 3: Store raw telemetry document in the selected storage backend.
     // A failure here means nothing was persisted. It must be named as a ledger fault and
     // must NOT fall through to the generic enrichment message, which claims the record was
@@ -85,7 +92,7 @@ export class PipelineOrchestrator {
     const { documentId, deduplicated } = rawWrite;
 
     // Layer 4: Swappable domain adapter processing
-    const adapterResult = NicheAdapterService.processAdapter(payload.niche, payload.payload);
+    const adapterResult = NicheAdapterService.processAdapter(payload.niche, payload.payload, tenantContext);
     if (adapterResult.error || !adapterResult.result) {
       return {
         status: 'error',
