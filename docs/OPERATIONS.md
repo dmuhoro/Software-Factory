@@ -165,6 +165,39 @@ Dependency-ordered, because the earlier items make the later ones cheap.
 - Publish and digest-pin the first image; run the manifest end to end.
 - Dashboards and alerts on the metrics that already exist.
 
+### 4.1 Rehearsing pull-request mode without opening a pull request
+
+`npm run verify:pr-config -- --repo <path> [--owner <owner/name>]` checks every precondition the
+open path checks, plus the two it cannot: that the token is mounted under an allowlisted reference,
+and that the host is the one this product speaks to. It never opens a pull request and never prints
+a secret value. It exits non-zero on this repository's shipped configuration, because PR mode is off
+and no token is wired — that is the correct result, not a bug.
+
+To rehearse a real target:
+
+1. Enable PR mode in `doctrine/loop.json`: `pullRequest.enabled = true`, `mode = "github"`,
+   `github.tokenSecret = "PR_GITHUB_TOKEN"`, `github.baseUrl = "https://api.github.com"`.
+2. Allowlist the reference: `FACTORY_ALLOWED_SECRET_REFS=PR_GITHUB_TOKEN` (server-side only).
+3. Mount the token in the server's environment (never in a dotenv file that can be committed):
+   `PR_GITHUB_TOKEN=<token>`, mode 600 where a file is used.
+4. Run the preflight with the scratch repository and its exact scope:
+   `npm run verify:pr-config -- --repo /path/to/scratch --owner <owner>/<scratch-repo>`.
+
+The token must be a **fine-grained personal access token**, scoped to **one** repository (the
+scratch repo), with exactly these permissions:
+
+| Permission | Access | Why |
+| --- | --- | --- |
+| **Contents** | Read and write | push the `factory/pr/<runId>` branch the PR is opened from |
+| **Pull requests** | Read and write | create the pull request; never merge it |
+| **Metadata** | Read | mandatory for every fine-grained token |
+
+Nothing else. No `Actions`, no `Administration`, no `Workflows`, no organization-wide access, and no
+classic token (a classic token's scopes cannot be narrowed to one repository). The product opens the
+pull request and stops; merging stays an operator action, and the preflight fails if a configuration
+claims otherwise.
+
+
 **Layer 5 — Reproducibility and assurance**
 - Independent security review. The gates are assertions; someone else has to try to break them.
 - Vendor and pin any external skill content the operator adopts (ADR-013); the lock and pin gate ship, the content is a reviewed decision.

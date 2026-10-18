@@ -34,6 +34,7 @@
     "verify:secrets:control": "bash scripts/verify-secret-gate-control.sh",
     "verify:storage": "bash scripts/verify-storage-backend.sh",
     "verify:storage:live": "bash scripts/verify-storage-backend.sh --require-appwrite",
+    "verify:pr-config": "tsx scripts/verify-pr-config.ts",
     "verify:scopes": "bash scripts/verify-appwrite-scopes.sh",
     "verify:full": "bash scripts/verify-full.sh",
     "verify:fresh-clone": "bash scripts/verify-fresh-clone.sh",

@@ -153,6 +153,13 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
     owner: 'operator',
   },
   {
+    id: 'pr-config-preflight',
+    title: 'Pull-request configuration preflight (opens nothing)',
+    status: 'live',
+    summary: 'Checks the allowlisted secret reference, the permitted host, the owner/name scope and the no-merge rule without opening a pull request; a green run with an invalid token proves no socket was opened.',
+    proves: 'npm run verify:pr-config',
+  },
+  {
     id: 'live-github-pull-request',
     title: 'Live GitHub pull request',
     status: 'blocked',
