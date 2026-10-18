@@ -1,0 +1,111 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "software-factory",
+    "title": "Software Factory",
+    "tags": ["software-factory", "b2b-saas", "unattended-loop"],
+    "timezone": "UTC",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "type": "stat",
+        "title": "Ledger Status",
+        "targets": [
+          {
+            "expr": "software_factory_ledger_degraded",
+            "legendFormat": "degraded"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "options": { "0": { "text": "HEALTHY", "color": "green" }, "1": { "text": "DEGRADED", "color": "red" } }, "type": "value" ]
+            }
+          }
+        }
+      },
+      {
+        "type": "stat",
+        "title": "Contended Writer",
+        "targets": [
+          {
+            "expr": "software_factory_contended_writer",
+            "legendFormat": "contended_writer"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "options": { "0": { "text": "NONE", "color": "green" }, "1": { "text": "CONTENDED", "color": "red" } }, "type": "value" ]
+            }
+          }
+        }
+      },
+      {
+        "type": "graph",
+        "title": "Verification Failure Rate",
+        "targets": [
+          {
+            "expr": "rate(software_factory_verification_failures_total[5m])",
+            "legendFormat": "failures/5m"
+          }
+        ]
+      },
+      {
+        "type": "graph",
+        "title": "STUCK Units",
+        "targets": [
+          {
+            "expr": "software_factory_units_stuck",
+            "legendFormat": "stuck_units"
+          }
+        ]
+      },
+      {
+        "type": "graph",
+        "title": "Memory Pressure Score",
+        "targets": [
+          {
+            "expr": "software_factory_memory_pressure_score",
+            "legendFormat": "pressure %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 100,
+            "unit": "percent"
+          }
+        }
+      },
+      {
+        "type": "stat",
+        "title": "Uptime (seconds)",
+        "targets": [
+          {
+            "expr": "software_factory_uptime_seconds",
+            "legendFormat": "uptime"
+          }
+        ]
+      },
+      {
+        "type": "table",
+        "title": "Supported Niches",
+        "targets": [
+          {
+            "expr": "software_factory_supported_niches",
+            "legendFormat": "{{niche}}"
+          }
+        ]
+      }
+    ],
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": []
+    }
+  }
+}

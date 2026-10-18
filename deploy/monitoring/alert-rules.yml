@@ -1,0 +1,68 @@
+# Software Factory — Prometheus alerting rules
+#
+# Rendered from deploy/monitoring/alert-rules.yml. Alerts fire on the metrics
+# exposed by GET /metrics (src/api/routes/factory.routes.ts:85). Every alert
+# names the metric, the threshold, and the runbook action.
+
+groups:
+  - name: software-factory
+    rules:
+      - alert: SoftwareFactoryLedgerDegraded
+        expr: software_factory_ledger_degraded == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Durable ledger has recovered from corruption"
+          description: "The ledger was unreadable and has been recovered. recordsLost={{ $value }}. Check the health endpoint recovery details."
+          runbook: "docs/OPERATIONS.md — Layer 3 Durability: backup/restore drill"
+
+      - alert: SoftwareFactoryContendedWriter
+        expr: software_factory_contended_writer == 1
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Second writer detected on the single-writer ledger"
+          description: "Another process holds the writer lock. NC-2 (single-writer) is violated. Refuse traffic until the contender is gone."
+          runbook: "ADR-014 — executor host is single-writer; no horizontal scale"
+
+      - alert: SoftwareFactoryVerificationFailureRate
+        expr: rate(software_factory_verification_failures_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Verification failure rate above 10%"
+          description: "{{ $value | humanizePercentage }} of verification runs failed in the last 5m. Investigate failing target repositories."
+          runbook: "Check the failing unit's checkpoint.json for the refused gate"
+
+      - alert: SoftwareFactoryStuckUnitsHigh
+        expr: software_factory_units_stuck > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} units are STUCK"
+          description: "Units have exhausted their attempt cap and are blocked. Review the stuck report and the failure classes."
+          runbook: "test/loop-die-resume.test.ts — die-and-resume drill"
+
+      - alert: SoftwareFactoryMemoryPressure
+        expr: software_factory_memory_pressure_score > 90
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Heap pressure above 90%"
+          description: "Process heap is {{ $value }}% of total. Risk of OOM kills."
+          runbook: "Check the /health systemHealth.memory payload"
+
+      - alert: SoftwareFactoryUptimeReset
+        expr: software_factory_uptime_seconds < 300
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "Software Factory process restarted"
+          description: "Uptime is {{ $value }}s. The process may have been restarted or redeployed."
+          runbook: "Check the deployment pipeline for the last image digest"
