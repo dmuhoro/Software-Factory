@@ -4,6 +4,15 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.16.5] - 2026-10-18 — Structural production readiness (Pareto workstreams)
+
+### Added
+- **Niche completion (Sprint 34, WP-7).** Custom B2B adapter now renders a real compliance verdict against the tenant's declared `customGuardrails` control set (refuses with no control set — no fabricated SOC2 evidence). New Financial Services vertical with PCI DSS card-data boundary, AML structuring detection, counterparty sanctions screening, and high-value-transaction review. Both marked operational. `doctrine/agents/models.json` role assignment applies to all niches. `test/niche-completion.test.ts` and `test/l5-niche-refusal.test.ts` (18 tests) prove all niches operational, custom_b2b refuses without a control set, financial services fails on card data/sanctioned counterparty/structuring.
+- **Fault injection & hostile repo testing (Sprint 34, WP-7).** `test/fault-injection.test.ts` (13 tests): telemetry validation refuses PHI (SSN, email, full name), missing fields, unknown niches, missing idempotency key; RBAC refuses resource-out-of-scope access; path guard defeats symlink escapes via a security fix in `src/utils/pathGuard.ts` `resolveFileWithin` (now returns the real path so a symlink target outside the repo is refused).
+- **Observability live (Sprint 34, WP-7).** `test/observability-metrics.test.ts` (3 tests) proves `/metrics` exposes ledgerDegraded, uptimeSeconds, supportedNiches and verification outcomes that the alert rules in `deploy/monitoring/alert-rules.yml` depend on; `/health` reports durableStore + storage state; `/factory/metrics` is publicly scrapeable. `scripts/verify-slo.ts` verifies SLOs: store not degraded, no contended writer (NC-2), niches operational, health endpoint healthy.
+- **Backup/restore operationalized (Sprint 34, WP-7).** `docs/BACKUP_RESTORE.md` recovery runbook with measured RPO/RTO, restore-from-backup procedure, and scheduling guidance. `npm run backup:restore-drill` exits 0: restored from backup, no records lost.
+- **Dependency supply chain (Sprint 34, WP-7).** `scripts/verify-image-digest.ts` updated to v4.16.5; `deploy/k8s/deployment.yaml` image pinned to `node:v4.16.5`. knip adds zero new warnings; `verify-no-secrets` passed (no credential material committed).
+
 ## [4.16.4] - 2026-10-18 — Structural gaps closed
 
 ### Added

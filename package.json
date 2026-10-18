@@ -1,7 +1,7 @@
 {
   "name": "software-factory",
   "private": true,
-  "version": "4.16.4",
+  "version": "4.16.5",
   "type": "module",
   "scripts": {
     "appwrite:check": "tsx scripts/check-appwrite.ts",
@@ -38,6 +38,7 @@
     "register:model-providers": "tsx scripts/register-model-providers.ts",
     "backup:restore-drill": "tsx scripts/backup-restore-drill.ts",
     "verify:image-digest": "tsx scripts/verify-image-digest.ts",
+    "verify:slo": "tsx scripts/verify-slo.ts",
     "verify:scopes": "bash scripts/verify-appwrite-scopes.sh",
     "verify:full": "bash scripts/verify-full.sh",
     "verify:fresh-clone": "bash scripts/verify-fresh-clone.sh",
