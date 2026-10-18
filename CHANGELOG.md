@@ -4,6 +4,17 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.16.4] - 2026-10-18 — Structural gaps closed
+
+### Added
+- **Tool Applier Service (Sprint 34, structural gap #1).** `src/services/toolApplierService.ts` bridges model output to durable change: structured edits (`path`, `operation`, `content`) are validated through `resolveFileWithin`, applied in an isolated git worktree, verified sandboxed against the repository's own verification contract, and gated behind a human approval (`MODIFY_BRANCH`) before merge. `agentExecutionService.ts` no longer returns `PROPOSAL_REQUIRES_TOOL_APPLIER` — it now applies verified edits and requests approval. API routes at `POST /api/tool-apply/{apply,approve,reject}` and `GET /api/tool-apply/records`. `test/tool-applier.test.ts` (10 tests) proves traversal refusal, verification-blocked merge, passing edit lands pending approval, approve merges into primary repo, reject cleans up. `groundTruthService.ts` / `verificationProfileService.ts` thread `extraBindPaths` through the bwrap sandbox so a worktree outside the repo is reachable at verification time.
+
+### Added
+- **Observability alerting rules.** `deploy/monitoring/alert-rules.yml` — Prometheus alerts for ledger degradation, contended writer (NC-2 single-writer violation), verification failure rate, STUCK units, memory pressure, and process restart. `deploy/monitoring/dashboard.json` — Grafana dashboard structure.
+- **Recovery drill.** `scripts/backup-restore-drill.ts` — measures RPO/RTO by corrupting the ledger, triggering `DurableStore` recovery, and recording restore-from-backup, records-lost, and recovery time. `npm run backup:restore-drill` exits 0: restored from backup, no records lost.
+- **Deployment digest verification.** `scripts/verify-image-digest.ts` — verifies `deploy/k8s/deployment.yaml` image tag matches package.json, image is Node (not deleted Rust runtime), `imagePullPolicy` present. Manifest updated to `node:v4.16.3`.
+- **Cloud model setup directions.** `docs/CLOUD_MODEL_SETUP.md` — operator-facing directions for mounting cloud-model API keys server-side, registering providers, assigning roles, verifying registration. Security rules: never commit, never print, allowlist before mount.
+
 ## [4.16.3] - 2026-10-18 — Cloud model wiring
 
 ### Added

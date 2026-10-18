@@ -89,6 +89,20 @@ operator.
 | **Layer 4** | Flip enforcement: turn `unrelatedWrites.enforce` on; harden ops (dashboards, alerts on `/metrics`). | Trial data from Layer 3. | Hardened production readiness. |
 | **Layer 5** | Production deployment: `verify:full` on a fresh clone; `verify:deploy` green; digest-pinned image; `origin/main == tag^{commit}`. | All layers above. | Product is deployable end to end. |
 
+## Structural gaps closed this session (independent of model keys)
+
+The following gaps from OPERATIONS.md §3 were closed without requiring live model keys:
+
+| Gap | What was built | Proof |
+|-----|---------------|-------|
+| **Tool applier** (OPERATIONS.md §2 — the #1 gap) | `src/services/toolApplierService.ts`: structured edits → `resolveFileWithin` → isolated worktree → sandboxed verification → human approval gate. `agentExecutionService.ts` no longer returns `PROPOSAL_REQUIRES_TOOL_APPLIER`. | `test/tool-applier.test.ts` 10/10 pass: traversal refused, absolute path refused, `.git` path refused, verification failure blocks merge, passing edit lands pending approval, approve merges into primary repo, reject cleans up, records listable for audit. |
+| **Tool applier API routes** | `src/api/routes/toolApplier.routes.ts`: `POST /api/tool-apply/apply`, `/approve`, `/reject`, `GET /api/tool-apply/records`. Registered in `src/api/routes/index.ts`. | tsc clean; routes are tenant-authenticated like all other API routes. |
+| **Egress bind paths** | `src/services/groundTruthService.ts`, `src/services/verificationProfileService.ts`: `extraBindPaths` threaded through `runCommand` → `sandboxArgv` → `executeVerification`, so a worktree outside the repo is reachable inside the bwrap sandbox. | `test/tool-applier.test.ts` verification passes inside the sandbox against a worktree at a non-repo path. |
+| **Observability** | `deploy/monitoring/alert-rules.yml`: Prometheus alerting rules for ledger degradation, contended writer, verification failure rate, STUCK units, memory pressure, process restart. `deploy/monitoring/dashboard.json`: Grafana dashboard structure. | Files present; alert rule metric names match `/metrics` JSON keys (src/api/routes/factory.routes.ts:85). |
+| **Recovery drill** | `scripts/backup-restore-drill.ts`: measures RPO/RTO by corrupting the ledger, triggering store recovery, and recording restore-from-backup, records-lost, recovery time. | `npm run backup:restore-drill` exits 0: restored from backup, no records lost, RTO measured in ms. |
+| **Deployment digest verification** | `scripts/verify-image-digest.ts`: verifies deployment manifest image tag matches package.json, image is Node (not deleted Rust runtime), imagePullPolicy present. | `npm run verify:image-digest` exits 0: `node:v4.16.3` matches package version. `deploy/k8s/deployment.yaml` updated to v4.16.3. |
+| **API key setup directions** | `docs/CLOUD_MODEL_SETUP.md`: operator-facing directions for mounting cloud-model API keys server-side, registering providers, assigning roles, verifying registration. Security rules: never commit, never print, allowlist before mount. | File present; references `.env.example` provider env vars and `docs/OPERATIONS.md` §4.0 runbook. |
+
 ## WP-2 amendment to the pre-registered adoption rule (recorded BEFORE any real run)
 
 The rule recorded in `sprints/sprint-33-closing-sprint.md:54-63` is **amended** here on 2026-10-17,
