@@ -97,17 +97,26 @@ export function resolveWithin(candidate: unknown, options: PathGuardOptions = {}
 /**
  * Resolves a file that must live inside `root`. Used by writers, which need the
  * real parent directory to defeat a symlinked intermediate directory.
+ *
+ * The containment check runs on REAL paths: the candidate is resolved through
+ * `realOrSelf` so a symlink (or a symlinked intermediate directory) that points
+ * outside `root` is refused, not followed. The returned path is the real path, so
+ * a writer that opens it cannot be redirected past the boundary by a symlink.
  */
 export function resolveFileWithin(root: string, relative: string, code = 'FILE_OUTSIDE_REPOSITORY'): string {
   if (typeof relative !== 'string' || relative.trim() === '') throw new Error('FILE_PATH_REQUIRED');
   if (path.isAbsolute(relative)) throw new Error(code);
   const realRoot = realOrSelf(path.resolve(root));
   const candidate = path.resolve(realRoot, relative);
-  // Reject traversal lexically first (cheap, no syscall), then again on real paths.
+  // Reject traversal lexically first (cheap, no syscall).
   if (candidate !== realRoot && !candidate.startsWith(`${realRoot}${path.sep}`)) throw new Error(code);
-  const parent = realOrSelf(path.dirname(candidate));
+  // Resolve the candidate to its real path so a symlink target is judged by where it
+  // actually points, not by the path string used to reach it.
+  const real = realOrSelf(candidate);
+  if (real !== realRoot && !real.startsWith(`${realRoot}${path.sep}`)) throw new Error(code);
+  const parent = realOrSelf(path.dirname(real));
   if (parent !== realRoot && !parent.startsWith(`${realRoot}${path.sep}`)) throw new Error(code);
-  return candidate;
+  return real;
 }
 
 /** True when the path exists, is a directory, and contains a `.git` entry. */
