@@ -4,6 +4,11 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.16.3] - 2026-10-18 — Cloud model wiring
+
+### Added
+- **Cloud model provider registration (Sprint 34, WP-6).** `npm run register:model-providers` registers cloud providers (DeepSeek, Together, Mistral, NVIDIA, OpenAI) through `FrontierModelService.register()`, which validates each provider's base URL against `FACTORY_MODEL_ALLOWED_HOSTS` and its secret reference against `FACTORY_ALLOWED_SECRET_REFS` — fail closed, no socket opened at registration. Role assignment via `doctrine/agents/models.json` and env overrides (`FACTORY_MODEL_ROLE_{ROLE}`, `FACTORY_MODEL_TIER_{TIER}`). `docs/OPERATIONS.md` §4.0 runbook; `.env.example` documents every provider env var. `test/model-provider-registration.test.ts` (9 tests) proves allowlisted host + mounted secret registers; unallowlisted host refused; unallowlisted/unmounted secret ref refused; local provider registers without credentials; remote provider without base URL refused.
+
 ## [4.16.2] - 2026-10-18 — PR configuration preflight
 
 ### Added
