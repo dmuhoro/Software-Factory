@@ -39,7 +39,7 @@ type PrincipalRequest = Request & { principal?: AuthenticatedPrincipal; tenantCo
  * authenticated principal, and a public path has none, so without this the limiter
  * would reject the very endpoints orchestrators and scrapers depend on.
  */
-export function isPublicPath(reqPath: string): boolean {
+export function isPublicPath(reqPath: string, method: string = 'GET'): boolean {
   // A path we cannot read is not a path we can excuse. An unreadable path is treated as
   // PROTECTED, so the caller is refused rather than waved through. This must fail closed:
   // a crash or a permissive default here would expose every tenant-scoped route.
@@ -51,7 +51,11 @@ export function isPublicPath(reqPath: string): boolean {
   const normalised = reqPath.replace(/\/+$/, '') || '/';
   if (normalised === '/health' || normalised === '/ready' || normalised === '/metrics') return true;
   if (normalised === '/factory/health' || normalised === '/factory/ready' || normalised === '/factory/metrics') return true;
-  return normalised.startsWith('/schemas');
+  if (normalised.startsWith('/schemas')) return true;
+  // Self-serve tenant signup: POST /tenants creates a tenant and returns a root key once.
+  // GET /tenants remains protected (tenant isolation).
+  if (normalised === '/tenants' && method === 'POST') return true;
+  return false;
 }
 
 function presentedCredential(req: Request): string | undefined {
@@ -92,7 +96,7 @@ function isLoopback(req: Request): boolean {
  *    a verifiable digest cannot authenticate anyone.
  */
 export async function tenantAuthMiddleware(req: Request, res: Response, next: NextFunction) {
-  if (isPublicPath(req.path)) return next();
+  if (isPublicPath(req.path, req.method)) return next();
 
   const typed = req as PrincipalRequest;
 
