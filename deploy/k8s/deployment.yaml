@@ -74,7 +74,7 @@ spec:
           # second runtime nothing reached, on its own tenant model. The deployment now runs the
           # Node server, which is the product (`./Dockerfile`, package `node`), on the same HTTP
           # surface — `/health`, `/ready`, `/metrics`.
-          image: ghcr.io/dmuhoro/software-factory/node:v4.16.6
+          image: ghcr.io/dmuhoro/software-factory/node:v4.16.7
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
