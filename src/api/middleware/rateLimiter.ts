@@ -74,7 +74,7 @@ export function tenantRateLimiter(req: Request, res: Response, next: NextFunctio
   // Health, readiness and metrics are unauthenticated by design so orchestrators and
   // scrapers can reach them. They are not tenant-scoped, so there is no tenant quota to
   // apply; they are excluded rather than given a shared bucket.
-  if (!principal && isPublicPath(req.path)) return next();
+  if (!principal && isPublicPath(req.path, req.method)) return next();
 
   // Failing closed: a request on a PROTECTED path that reached the limiter without an
   // authenticated principal is refused rather than given a shared anonymous bucket.

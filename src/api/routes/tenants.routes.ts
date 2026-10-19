@@ -64,7 +64,10 @@ router.post('/', async (req: Request, res: Response) => {
   const requestedTier = tier && tierValues.includes(tier) ? tier : TenantSubscriptionTier.STARTER;
 
   const id = makeTenantId(name);
-  if (TenantService.getTenant(id)) {
+  // Refuse duplicate names before committing: scan existing tenants rather than
+  // guessing an id, since makeTenantId adds a random suffix that can never collide.
+  const existing = TenantService.listTenants().find((t) => t.name === name.trim());
+  if (existing) {
     return res.status(409).json(emitSecurityError('TENANT_EXISTS', `A tenant named '${name}' already exists`));
   }
 
