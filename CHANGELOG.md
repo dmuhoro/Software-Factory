@@ -4,6 +4,22 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+## [4.16.7] - 2026-10-19 — ADR documentation, test coverage, server key setup
+
+### Added
+- **ADR-017 — RBAC on mutation routes (Sprint 34, WP-9).** Documents `src/api/middleware/rbac.ts` (`rbacRequire` middleware) wired into tool-apply apply/approve/reject/records (`loop:submit` / `loop:read`), operations execute-proposal/merge-next (`loop:submit`), and loop runs (`loop:submit`). Fail closed: unrecognised permission or missing binding is 403.
+- **ADR-018 — Self-serve tenant provisioning (Sprint 34, WP-9).** Documents `POST /api/tenants`: publicly accessible signup that creates a tenant, hashes the root API key with scrypt, returns the plaintext key exactly once (never stored, logged, or recoverable). `GET /tenants` remains tenant-authenticated. `isPublicPath` accepts a method parameter so only `POST /tenants` is public.
+- **ADR-019 — Niche completion (Sprint 34, WP-9).** Documents Custom B2B adapter rendering a real compliance verdict against the tenant's declared `customGuardrails` control set, plus the Financial Services vertical (PCI DSS card-data boundary, AML structuring detection, counterparty sanctions screening, high-value review). Both operational.
+- **ADR-020 — Backup/restore drill in CI (Sprint 34, WP-9).** Documents `scripts/backup-restore-drill.ts` and the `docs/BACKUP_RESTORE.md` recovery runbook, with the drill wired into `.github/workflows/verify.yml` as a credential-free step on every change.
+- **RBAC route tests (Sprint 34, WP-9).** `test/rbac-routes.test.ts` (5 tests): operator with `loop:submit` can apply; auditor without `loop:submit` is refused (403); viewer without `loop:submit` is refused (403); viewer with `loop:read` can read records (200). Exercises real routes through an Express test server.
+- **Tenant provisioning tests (Sprint 34, WP-9).** `test/tenant-provisioning.test.ts` (5 tests): public signup returns 201 + root key once; duplicate name refused (409); invalid niche refused (400); missing name refused (400); root key not stored or recoverable (digest only).
+- **Server key setup script (Sprint 34, WP-9).** `scripts/setup-server-keys.sh`: credential-free — checks required env vars, `.gitignore`, no placeholder keys, runs pr-config/drill/image-digest/slo gates. No secrets embedded.
+- **API error codes.** `src/utils/apiError.ts` gains `EXECUTION_OUTPUT_*` and `TOOL_APPLY_*` error codes for the tool applier and execution output paths.
+
+### Fixed
+- **Rate limiter public-path method.** `src/api/middleware/rateLimiter.ts` now passes `req.method` to `isPublicPath`, so `POST /tenants` (public signup) is not misclassified as protected and refused with 401.
+- **Duplicate tenant detection.** `src/api/routes/tenants.routes.ts` checks `TenantService.listTenants()` for an existing tenant by name before creating, since `makeTenantId` adds a random suffix that can never collide — the previous `getTenant(id)` check was dead code.
+
 ## [4.16.6] - 2026-10-18 — Identity & access hardening
 
 ### Added
