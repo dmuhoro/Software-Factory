@@ -69,6 +69,7 @@ export const GATE_FAILURE_CLASSES: Record<string, LoopFailureClass> = {
   'plan-is-executable': 'policy',
   'unrelated-writes': 'policy',
   'bug-diagnosis-evidence': 'defect',
+  'ast-structural-verification': 'model',
 };
 
 /** Non-gate refusal codes (the first token of a thrown message) and the class each denotes. */
@@ -83,6 +84,7 @@ const REASON_PATTERNS: ReadonlyArray<readonly [RegExp, LoopFailureClass]> = [
   [/^(SANDBOX_|GIT_|WORKTREE_|DOCTRINE_ROOT_)/, 'environment'],
   [/^merge-conflict/, 'environment'],
   [/^(DEFECT_|BUG_)/, 'defect'],
+  [/^(AST_STRUCTURAL_)/, 'model'],
   [/^NOTHING_STAGED/, 'policy'],
   [/^(REPO_NOT_CLEAN|LOOP_|TASK_DOCUMENT_|TARGET_REPOSITORY_|GATE_REFUSED|GATE_NOT_IMPLEMENTED)/, 'policy'],
 ];

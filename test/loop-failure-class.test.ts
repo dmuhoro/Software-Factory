@@ -71,6 +71,7 @@ test('each gate maps to the class its semantics imply', () => {
     'plan-is-executable': 'policy',
     'unrelated-writes': 'policy',
     'bug-diagnosis-evidence': 'defect',
+    'ast-structural-verification': 'model',
   };
   assert.deepEqual(GATE_FAILURE_CLASSES, expected);
 });
@@ -107,6 +108,7 @@ test('the refusal codes the loop actually throws classify to their real class', 
     ['GIT_COMMAND_FAILED', 'environment'],
     ['DEFECT_DETECTED', 'defect'],
     ['BUG_IN_IMPLEMENTATION', 'defect'],
+    ['AST_STRUCTURAL_VERIFIED', 'model'],
     ['NOTHING_STAGED', 'policy'],
     ['REPO_NOT_CLEAN', 'policy'],
   ];

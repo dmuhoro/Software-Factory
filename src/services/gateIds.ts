@@ -24,6 +24,7 @@ export const GATE_IDS = [
   'evidence-is-machine-derived',
   'unrelated-writes',
   'bug-diagnosis-evidence',
+  'ast-structural-verification',
 ] as const;
 
 export type GateId = (typeof GATE_IDS)[number];

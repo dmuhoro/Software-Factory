@@ -4,7 +4,7 @@
     "DOCTRINE.md": "sha256:6f71f374aca64b05b60d9556ef91d104a69a997de2d20f5fb75d77038f05aacb",
     "README.md": "sha256:9cf9938e7fab8e0ee30df1d7de2f8f7b97d21fe7a5713193144327932cfc30c2",
     "agents/models.json": "sha256:85c12e4f460e3a31e5e301c7e1d5d4a9fdc77f795124582c634680276f261ed3",
-    "hooks/hooks.json": "sha256:a35e73310f145cfe9179784902c5d7c275a8700bf3f3beacca98963204ce1d8e",
+    "hooks/hooks.json": "sha256:fa954fb95f80ba8a47dcc5c6702d74a06a0e1629cce6ad9a4a6eeb3ab45f1a5d",
     "loop.json": "sha256:565a0d93817db3e161a56ea9f7b704b2bba314f44e9443c466058a2cab29f433",
     "rules/rules.json": "sha256:303c8b21f2f2769de9fea15060a8a38bb88c306d82f76c754b8b7c4f3e606b2a"
   }

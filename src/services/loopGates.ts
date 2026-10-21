@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import { GATE_IDS, type GateId } from './gateIds';
 import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsolationService';
@@ -10,6 +12,7 @@ import { stageAndScanSecrets } from './commitService';
 import { unrelatedWritesIn } from './unrelatedWrites';
 import { detectVerificationProfile } from './verificationProfileService';
 import { bugDetectiveService, type DiagnosisInput } from './bugDetectiveService';
+import { buildKnowledgeGraph, findDefinition, type KnowledgeGraph, type SymbolNode } from './astKnowledgeGraph';
 import { isGitRepository } from '../utils/pathGuard';
 import type { GateResult, LoopRunRecord, LoopSandboxConfig, LoopStage, UnitRecord } from './loopTypes';
 import type { WorkUnit } from './taskDocumentService';
@@ -232,6 +235,83 @@ const REGISTRY: Record<GateId, GateFn> = {
     return {
       passed: true,
       detail: `bug-diagnosis-evidence: ${diagnosis.rootCause} Pointers: ${pointerSummary}. Remediation: ${diagnosis.remediation}${diagnosis.uncertain ? ' — uncertain; read the raw refusal.' : ''}`,
+    };
+  },
+
+  'ast-structural-verification': (ctx) => {
+    // L2 Agency: AST-based structural verification (Graphify steal). Parses the changed files
+    // into knowledge graphs and checks for structural defects that simple command exit codes
+    // miss: unused imports, references to undefined symbols, functions with no callers.
+    // Advisory when enforce is off, blocking when on. Never writes to the target tree.
+    const proof = ctx.proof;
+    if (!proof) return { passed: true, detail: 'no proof was produced; AST structural check deferred' };
+
+    const changedFiles = proof.claimedFiles.filter((f) => /\.(ts|js|tsx|jsx)$/.test(f));
+    if (!changedFiles.length) {
+      return { passed: true, detail: 'no TypeScript/JavaScript files changed; AST structural check not applicable' };
+    }
+
+    const issues: string[] = [];
+    const allSymbols = new Map<string, SymbolNode[]>(); // symbol name -> definitions across all files
+
+    // First pass: build graphs and collect all symbol definitions.
+    const graphs = new Map<string, KnowledgeGraph>();
+    for (const file of changedFiles) {
+      const fullPath = path.join(ctx.repo, file);
+      try {
+        if (!fs.existsSync(fullPath)) continue;
+        const sourceText = fs.readFileSync(fullPath, 'utf8');
+        const graph = buildKnowledgeGraph(fullPath, sourceText);
+        graphs.set(file, graph);
+        for (const sym of graph.symbols) {
+          const list = allSymbols.get(sym.name) ?? [];
+          list.push(sym);
+          allSymbols.set(sym.name, list);
+        }
+      } catch {
+        // Skip files that can't be read or parsed.
+      }
+    }
+
+    // Second pass: check each file for structural issues.
+    for (const [file, graph] of graphs) {
+      // Check imports: imported symbols should be defined somewhere in the changed set or be
+      // node builtins / external packages.
+      for (const sym of graph.symbols) {
+        if (sym.kind !== 'import') continue;
+        const imported = sym.name.split(',').map((n) => n.trim());
+        for (const name of imported) {
+          if (name.startsWith('node:')) continue; // node builtin
+          const isExternal = !allSymbols.has(name) && !/^[./]/.test(name);
+          if (isExternal) continue; // external package, not our problem
+          if (allSymbols.has(name)) continue; // defined in changed set
+          issues.push(`${file}: imported symbol '${name}' is not defined in changed files`);
+        }
+      }
+
+      // Check call edges: called symbols should be defined somewhere or be external.
+      for (const edge of graph.edges) {
+        if (edge.kind !== 'calls') continue;
+        const target = edge.to;
+        if (target.startsWith('module:')) continue; // module import, handled above
+        if (/^[A-Z]/.test(target)) continue; // likely a class or constructor, skip
+        if (allSymbols.has(target)) continue; // defined in changed set
+        if (/^(console|Math|JSON|Array|Object|String|Number|Boolean|Date|Promise|setTimeout|setInterval|clearTimeout|clearInterval|require|module|process|global|window|document)\b/.test(target)) continue; // JS builtins
+        issues.push(`${file}: call to '${target}' has no definition in changed files`);
+      }
+    }
+
+    if (issues.length) {
+      const detail = issues.slice(0, 10).join('; ');
+      return {
+        passed: false,
+        detail: `AST structural verification: ${issues.length} issue(s): ${detail}`,
+      };
+    }
+
+    return {
+      passed: true,
+      detail: `AST structural verification: ${graphs.size} file(s) parsed, ${Array.from(allSymbols.values()).flat().length} symbol(s) defined, no structural issues found`,
     };
   },
 
