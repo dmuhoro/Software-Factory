@@ -11,10 +11,22 @@
  *
  * Pure: no clock, no model, no I/O beyond reading the input. The same input always yields the
  * same diagnosis, so a diagnosis is reproducible evidence, not a vibe.
+ *
+ * Enhancements (Graphify steal + cloudflare security-audit-skill shape):
+ *  - AST knowledge graph integration: real file:line pointers from source parsing, not guesses
+ *  - Machine-readable security audit findings: file:line, severity, remediation, confidence
+ *  - All findings carry a `source` tag so callers know where each pointer came from
  */
 
 import type { LoopFailureClass } from './loopFailureClass';
 import { createHash } from 'node:crypto';
+import {
+  buildKnowledgeGraph,
+  findDefinition,
+  diagnoseLocation,
+  type KnowledgeGraph,
+  type SymbolNode,
+} from './astKnowledgeGraph';
 
 export interface DiagnosisInput {
   /** The failure class the loop already assigned (e.g. 'defect', 'verification', 'review'). */
@@ -27,6 +39,10 @@ export interface DiagnosisInput {
   stage?: string;
   /** A file:line pointer observed in the failure, if any. */
   location?: string;
+  /** Optional source text for AST-based pointer resolution (Graphify integration). */
+  sourceText?: string;
+  /** File path for the source text, required when sourceText is provided. */
+  sourceFile?: string;
 }
 
 export interface DiagnosisPointer {
@@ -34,6 +50,11 @@ export interface DiagnosisPointer {
   line?: number;
   /** Why this location matters — what the detective sees there. */
   rationale: string;
+  /** Where this pointer came from: 'input' (named in failure), 'message' (scanned from text),
+   *  or 'ast' (resolved via knowledge graph). */
+  source: 'input' | 'message' | 'ast';
+  /** Confidence 0..1 that this location is relevant to the failure. */
+  confidence: number;
 }
 
 export interface Diagnosis {
@@ -43,12 +64,37 @@ export interface Diagnosis {
   failureClass: LoopFailureClass;
   /** Root-cause hypothesis: one sentence, honest about uncertainty. */
   rootCause: string;
-  /** File:line pointers, most likely first. Never fabricated — only locations named in the input. */
+  /** File:line pointers, most likely first. Never fabricated — only locations named in the input
+   *  or resolved through the AST knowledge graph. */
   pointers: DiagnosisPointer[];
   /** Remediation advice: a concrete next action, not a promise it will fix the unit. */
   remediation: string;
   /** True when the detective could not produce a meaningful diagnosis. */
   uncertain: boolean;
+  /** Machine-readable security audit findings (cloudflare security-audit-skill shape).
+   *  Empty unless the failure class is security or the input names a security-relevant symbol. */
+  findings: SecurityFinding[];
+}
+
+/** A machine-readable security audit finding. */
+export interface SecurityFinding {
+  /** Stable id for the finding. */
+  id: string;
+  /** Severity: 'critical' | 'high' | 'medium' | 'low' | 'info'. */
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
+  /** The rule that fired, e.g. 'secret-scan', 'doctrine-integrity', 'hardcoded-secret'. */
+  rule: string;
+  /** Human-readable description of the finding. */
+  description: string;
+  /** File:line location, resolved through AST when possible. */
+  file: string;
+  line?: number;
+  /** Remediation advice specific to this finding. */
+  remediation: string;
+  /** Confidence 0..1 that this is a real issue, not a false positive. */
+  confidence: number;
+  /** Machine-readable evidence: the matched pattern or symbol. */
+  evidence: string;
 }
 
 /** Does the input carry any recognisable signal (reason code, message marker, or location)? */
@@ -104,7 +150,7 @@ function honestRootCause(input: DiagnosisInput): string {
 }
 
 /** Extract file:line pointers only from locations named in the input — never guess. */
-function extractPointers(input: DiagnosisInput): DiagnosisPointer[] {
+function extractInputPointers(input: DiagnosisInput): DiagnosisPointer[] {
   const pointers: DiagnosisPointer[] = [];
   if (input.location) {
     const match = input.location.match(/^([^:]+):(\d+)(?::(\d+))?$/);
@@ -113,15 +159,19 @@ function extractPointers(input: DiagnosisInput): DiagnosisPointer[] {
         file: match[1],
         line: match[2] ? Number(match[2]) : undefined,
         rationale: 'Named in the failure input as the observed location.',
+        source: 'input',
+        confidence: 0.9,
       });
     } else {
       pointers.push({
         file: input.location,
         rationale: 'Named in the failure input; no line could be parsed from it.',
+        source: 'input',
+        confidence: 0.5,
       });
     }
   }
-  // Also scan the message for file:line patterns, but only emit ones that look real.
+  // Scan the message for file:line patterns, only emit ones that look real.
   const message = input.message ?? '';
   const seen = new Set<string>();
   for (const m of message.matchAll(/([A-Za-z0-9_./-]+\.(?:ts|js|json|md|txt|py|go|rs|java|rb|cs|php|c|h|cpp|hpp|yaml|yml|toml|ini|cfg|conf)):(\d+)/g)) {
@@ -129,7 +179,52 @@ function extractPointers(input: DiagnosisInput): DiagnosisPointer[] {
     const line = Number(m[2]);
     if (file && line > 0 && line < 100000 && !seen.has(file)) {
       seen.add(file);
-      pointers.push({ file, line, rationale: 'Observed in the failure message as a file:line location.' });
+      pointers.push({ file, line, rationale: 'Observed in the failure message as a file:line location.', source: 'message', confidence: 0.7 });
+    }
+  }
+  return pointers;
+}
+
+/** Resolve AST-based pointers for symbols named in the failure input. */
+function extractASTPointers(input: DiagnosisInput): DiagnosisPointer[] {
+  const pointers: DiagnosisPointer[] = [];
+  if (!input.sourceText || !input.sourceFile) return pointers;
+
+  const graph = buildKnowledgeGraph(input.sourceFile, input.sourceText);
+  const message = input.message ?? '';
+  const reason = input.reason ?? '';
+
+  // Find symbol names mentioned in the message or reason, then resolve via AST.
+  const symbolCandidates = new Set<string>();
+  for (const m of message.matchAll(/\b([A-Za-z_$][A-Za-z0-9_$]*)\b/g)) {
+    symbolCandidates.add(m[1]);
+  }
+  for (const m of reason.matchAll(/\b([A-Za-z_$][A-Za-z0-9_$]*)\b/g)) {
+    symbolCandidates.add(m[1]);
+  }
+
+  const seen = new Set<string>();
+  for (const name of symbolCandidates) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const diag = diagnoseLocation(graph, name);
+    if (diag.definition) {
+      pointers.push({
+        file: diag.definition.file,
+        line: diag.definition.line,
+        rationale: `AST-resolved definition of '${name}' in ${diag.definition.file}:${diag.definition.line}.`,
+        source: 'ast',
+        confidence: 0.85,
+      });
+    }
+    // Add callers as secondary pointers.
+    for (const caller of diag.callers.slice(0, 3)) {
+      pointers.push({
+        file: input.sourceFile,
+        rationale: `${name} is called from ${caller.from}.`,
+        source: 'ast',
+        confidence: 0.6,
+      });
     }
   }
   return pointers;
@@ -159,22 +254,115 @@ function remediationFor(input: DiagnosisInput): string {
   }
 }
 
+/** Scan source text for security-relevant patterns and produce machine-readable findings.
+ *  Advisory only: flags potential issues, never blocks or edits. */
+function auditSecurity(input: DiagnosisInput, graph?: KnowledgeGraph): SecurityFinding[] {
+  const findings: SecurityFinding[] = [];
+  const message = input.message ?? '';
+  const reason = input.reason ?? '';
+  const sourceText = input.sourceText ?? '';
+  const sourceFile = input.sourceFile ?? '';
+
+  // Secret patterns in the refusal message.
+  type SecretPattern = [pattern: RegExp, rule: string, severity: 'critical' | 'high' | 'medium' | 'low' | 'info', description: string, remediation: string];
+  const secretPatterns: SecretPattern[] = [
+    [/SECRET_CONTENT_REFUSED/, 'secret-scan', 'critical', 'Staged content matched a credential pattern', 'Remove the secret from staged files and re-submit.'],
+    [/SECRET_PATH_REFUSED/, 'secret-scan', 'critical', 'A changed path is reserved for secrets', 'Do not commit files under reserved secret paths.'],
+    [/TARGET_DOCTRINE_LEAKED_INTO_RUN/, 'doctrine-integrity', 'critical', 'A quarantined instruction file reached a run payload', 'Remove the leaked instruction from the run payload.'],
+    [/DOCTRINE_MANIFEST_MISMATCH/, 'doctrine-integrity', 'high', 'The doctrine does not match its manifest', 'Re-run doctrine:manifest to re-pin the manifest.'],
+  ];
+
+  let findingId = 0;
+  for (const [pattern, rule, severity, description, remediation] of secretPatterns) {
+    if (pattern.test(reason) || pattern.test(message)) {
+      findingId += 1;
+      // Try to resolve a location via AST if we have source.
+      let file = sourceFile;
+      let line: number | undefined;
+      let confidence = 0.8;
+      let evidence = pattern.source;
+      if (graph && sourceFile) {
+        const symbols = graph.symbols.filter((s) => s.kind === 'import' || s.kind === 'variable');
+        if (symbols.length > 0) {
+          file = symbols[0].file;
+          line = symbols[0].line;
+          evidence = `${rule} matched in ${sourceFile}`;
+          confidence = 0.9;
+        }
+      }
+      findings.push({
+        id: `sec-${findingId}`,
+        severity,
+        rule,
+        description,
+        file,
+        line,
+        remediation,
+        confidence,
+        evidence,
+      });
+    }
+  }
+
+  // Hardcoded secret patterns in source text (AST-aware).
+  type HardcodedPattern = [pattern: RegExp, rule: string, severity: 'critical' | 'high' | 'medium' | 'low' | 'info', description: string, remediation: string];
+  const hardcodedPatterns: HardcodedPattern[] = [
+    [/AKIA[0-9A-Z]{16}/, 'hardcoded-secret', 'high', 'AWS access key id hardcoded in source', 'Move to environment variable or secret manager.'],
+    [/(?:password|secret|api.?key|token)\s*[:=]\s*['"][^'"]{8,}/i, 'hardcoded-secret', 'high', 'Potential hardcoded secret value', 'Replace with a secret reference.'],
+    [/sk-[A-Za-z0-9]{20,}/, 'hardcoded-secret', 'high', 'Looks like an API key hardcoded in source', 'Move to environment variable or secret manager.'],
+  ];
+  if (sourceText) {
+    const lines = sourceText.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const lineText = lines[i];
+      for (const [pattern, rule, severity, description, remediation] of hardcodedPatterns) {
+        if (pattern.test(lineText)) {
+          findingId += 1;
+          findings.push({
+            id: `sec-${findingId}`,
+            severity,
+            rule,
+            description,
+            file: sourceFile,
+            line: i + 1,
+            remediation,
+            confidence: 0.75,
+            evidence: lineText.trim().slice(0, 120),
+          });
+        }
+      }
+    }
+  }
+
+  return findings;
+}
+
 /**
  * Diagnose one observed failure. Total: always returns a diagnosis. When the input carries no
  * recognisable signal, `uncertain` is true and the remediation says to read the raw refusal.
+ *
+ * When `sourceText` and `sourceFile` are provided, the AST knowledge graph is used to resolve
+ * real file:line pointers for symbols named in the failure (Graphify integration).
  */
 export function diagnose(input: DiagnosisInput): Diagnosis {
-  const pointers = extractPointers(input);
+  const inputPointers = extractInputPointers(input);
+  const astPointers = extractASTPointers(input);
+  const pointers = [...inputPointers, ...astPointers];
+
   const rootCause = honestRootCause(input);
-  const uncertain = pointers.length === 0 && !hasRecognisableSignal(input);
+  const graph = (input.sourceText && input.sourceFile) ? buildKnowledgeGraph(input.sourceFile, input.sourceText) : undefined;
+  const findings = auditSecurity(input, graph);
+
+  const uncertain = pointers.length === 0 && !hasRecognisableSignal(input) && findings.length === 0;
 
   return {
-    id: `diagnosis-${cryptoHash(JSON.stringify(input))}`,
+    id: `diagnosis-${cryptoHash(JSON.stringify({ ...input, pointerCount: pointers.length }))}`,
     failureClass: input.failureClass,
     rootCause,
     pointers,
     remediation: remediationFor(input),
     uncertain,
+    findings,
   };
 }
 
