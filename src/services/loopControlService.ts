@@ -29,6 +29,7 @@ import { ExecutionLoopService, type LoopRunOutcome } from './executionLoopServic
 import { buildStuckReports } from './stuckReportService';
 import { TenantQueueService } from './tenantQueueService';
 import { WebhookService } from './webhookService';
+import { DurableStore } from './durableStore';
 import type { LoopRunRecord, LoopStatus } from './loopTypes';
 import { resolveWithin, isGitRepository } from '../utils/pathGuard';
 import { TelemetryLogger } from '../utils/telemetryLogger';
@@ -54,6 +55,8 @@ export interface SubmitLoopRunInput {
   taskDocument: string;
   /** Lowers doctrine's attempts-per-unit. Cannot raise it. */
   attemptCap?: number;
+  /** Idempotency key: re-submitting with the same key returns the existing run instead of creating a new one. */
+  idempotencyKey?: string;
 }
 
 interface ActiveLoopRun {
@@ -76,6 +79,15 @@ export class LoopControlService {
     const repo = resolveRepo(input.repo);
     const taskDocument = resolveTaskDocument(input.taskDocument);
 
+    // Idempotency: a re-submission with the same key returns the existing run.
+    if (input.idempotencyKey) {
+      const existing = DurableStore.list('factoryLoopRuns') as unknown as LoopRunRecord[];
+      const match = existing.find((r) => r.tenantId === input.tenantId && r.idempotencyKey === input.idempotencyKey);
+      if (match) {
+        return { runId: match.runId, repo: match.repo, taskDocument: match.taskDocument, status: match.status as 'running' };
+      }
+    }
+
     const busy = this.activeByRepo.get(repo);
     if (busy) throw new Error(`LOOP_RUN_ALREADY_ACTIVE:${busy}`);
 
@@ -94,7 +106,15 @@ export class LoopControlService {
       taskDocument,
       tenantId: input.tenantId,
       attemptCap: input.attemptCap,
-      onRunCreated: (id) => { runId = id; },
+      onRunCreated: (id) => {
+        runId = id;
+        if (input.idempotencyKey) {
+          const existing = DurableStore.get('factoryLoopRuns', id) as unknown as LoopRunRecord | undefined;
+          if (existing) {
+            DurableStore.upsert('factoryLoopRuns', id, { ...existing, idempotencyKey: input.idempotencyKey } as unknown as Record<string, unknown>);
+          }
+        }
+      },
     });
 
     if (!runId) {

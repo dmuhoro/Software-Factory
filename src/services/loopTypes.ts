@@ -133,8 +133,10 @@ export interface LoopRunRecord {
   hardStop?: string;
   refusal?: string;
   /** Dominant failure class across this run's failed attempts (or the class of a run-level hard
-   * stop when no attempt failed). Absent on a clean run. Since v4.13.28 (Sprint 29, WP-3). */
+   *  stop when no attempt failed). Absent on a clean run. Since v4.13.28 (Sprint 29, WP-3). */
   failureClass?: LoopFailureClass;
+  /** Idempotency key used to submit this run, if any. Re-submission with the same key returns this run. */
+  idempotencyKey?: string;
   /** Number of narration claims recorded and discarded across the run. */
   narrationRejected: number;
 }

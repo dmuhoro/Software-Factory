@@ -42,6 +42,7 @@ const LEDGER_COLLECTIONS = [
   'grillSessions',
   'toolApplyRecords',
   'llmTraces',
+  'loopMemories',
 ] as const;
 
 export type LedgerCollection = (typeof LEDGER_COLLECTIONS)[number];
@@ -90,6 +91,7 @@ export interface DurableState {
   pullRequests: Record<string, Record<string, unknown>>;
   grillSessions: Record<string, Record<string, unknown>>;
   llmTraces: Record<string, Record<string, unknown>>;
+  loopMemories: Record<string, Record<string, unknown>>;
 }
 
 /** Audit log is append-only but bounded; an unbounded array is a disk-exhaustion risk. */
