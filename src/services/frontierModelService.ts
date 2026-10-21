@@ -1,5 +1,6 @@
 import { DurableStore } from './durableStore';
 import { egressJson, resolveSecretRef, validateProviderUrl } from '../utils/egressGuard';
+import { LLMTracingService } from './llmTracingService';
 
 export type ModelProviderKind = 'openai-compatible' | 'gemini-native' | 'local';
 const MIN_MODEL_REQUEST_TIMEOUT_MS = 15_000;
@@ -81,19 +82,43 @@ export class FrontierModelService {
     const system = requireText(input.system, 'MODEL_PROVIDER_SYSTEM_PROMPT_REQUIRED', MAX_SYSTEM_CHARS);
     const task = requireText(input.task, 'MODEL_PROVIDER_TASK_REQUIRED', MAX_TASK_CHARS);
     const maxOutputTokens = Math.min(Math.max(Number(input.maxOutputTokens) || 4000, 1), MAX_OUTPUT_TOKENS);
-    const result = await egressJson({
-      baseUrl: provider.baseUrl,
-      kind: provider.kind,
-      pathname: '/chat/completions',
-      method: 'POST',
-      secret,
-      timeoutMs: provider.timeoutMs ?? DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
-      body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, { role: 'user', content: task }], max_completion_tokens: maxOutputTokens }),
-    });
-    if (result.status !== 200) throw new Error(`MODEL_PROVIDER_REQUEST_FAILED:${result.status}`);
-    const raw = result.body as { choices?: Array<{ message?: { content?: unknown } }> };
-    const content = raw?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') throw new Error('MODEL_PROVIDER_INVALID_RESPONSE');
-    return { providerId: provider.id, model, content, raw };
+    const startMs = Date.now();
+    const inputChars = system.length + task.length;
+    let content = '';
+    let status: 'success' | 'failure' = 'success';
+    let errorCode: string | undefined;
+    try {
+      const result = await egressJson({
+        baseUrl: provider.baseUrl,
+        kind: provider.kind,
+        pathname: '/chat/completions',
+        method: 'POST',
+        secret,
+        timeoutMs: provider.timeoutMs ?? DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
+        body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, { role: 'user', content: task }], max_completion_tokens: maxOutputTokens }),
+      });
+      if (result.status !== 200) throw new Error(`MODEL_PROVIDER_REQUEST_FAILED:${result.status}`);
+      const raw = result.body as { choices?: Array<{ message?: { content?: unknown } }> };
+      const rawContent = raw?.choices?.[0]?.message?.content;
+      content = typeof rawContent === 'string' ? rawContent : '';
+      if (typeof content !== 'string') throw new Error('MODEL_PROVIDER_INVALID_RESPONSE');
+      return { providerId: provider.id, model, content, raw };
+    } catch (error) {
+      status = 'failure';
+      errorCode = error instanceof Error ? error.message : 'UNKNOWN';
+      throw error;
+    } finally {
+      const latencyMs = Date.now() - startMs;
+      LLMTracingService.record({
+        tenantId,
+        providerId: provider.id,
+        model,
+        latencyMs,
+        inputChars,
+        outputChars: content.length,
+        status,
+        errorCode,
+      });
+    }
   }
 }

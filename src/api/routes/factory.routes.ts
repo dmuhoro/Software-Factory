@@ -8,6 +8,7 @@ import { NICHE_REGISTRY } from '../../configurations/factory.config';
 import { APP_NAME, APP_VERSION } from '../../configurations/buildInfo';
 import { buildCapabilityManifest } from '../../services/capabilityManifest';
 import { SkillRegistryService } from '../../services/skillRegistryService';
+import { LLMTracingService } from '../../services/llmTracingService';
 
 const router = Router();
 const startedAt = Date.now();
@@ -88,6 +89,8 @@ router.get('/metrics', async (_req: Request, res: Response) => {
   const successes = records.filter((record) => record.status === 'COMPLETED').length;
   const p = (quantile: number) => (durations.length ? durations[Math.min(durations.length - 1, Math.floor(durations.length * quantile))] : 0);
   const stats = DurableStore.stats();
+  const traces = LLMTracingService.query({ limit: 10_000 });
+  const traceMetrics = LLMTracingService.metrics(traces);
   res.json({
     status: 'success',
     metrics: {
@@ -101,15 +104,24 @@ router.get('/metrics', async (_req: Request, res: Response) => {
       ledgerRecords: stats.collections,
       ledgerDegraded: stats.degraded,
       uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
-      // Quotas are declared per subscription tier in factory.config.ts. This list was a
-      // hardcoded array that included 'custom_b2b' while that niche had no working adapter,
-      // so the metrics endpoint advertised a capability the pipeline could not deliver. It is
-      // now derived from the registry, which is the single place that knows which niches are
-      // actually served -- and a hand-maintained list beside a registry is exactly the pair
-      // that drifts.
       supportedNiches: Object.values(NICHE_REGISTRY)
         .filter((niche) => niche.operational)
         .map((niche) => niche.niche),
+      llm: {
+        totalCalls: traceMetrics.totalCalls,
+        successfulCalls: traceMetrics.successfulCalls,
+        failedCalls: traceMetrics.failedCalls,
+        totalTokens: traceMetrics.totalTokens,
+        totalInputTokens: traceMetrics.totalInputTokens,
+        totalOutputTokens: traceMetrics.totalOutputTokens,
+        avgLatencyMs: Math.round(traceMetrics.avgLatencyMs),
+        p50LatencyMs: traceMetrics.p50LatencyMs,
+        p95LatencyMs: traceMetrics.p95LatencyMs,
+        p99LatencyMs: traceMetrics.p99LatencyMs,
+        callsByModel: traceMetrics.callsByModel,
+        callsByProvider: traceMetrics.callsByProvider,
+        callsByTenant: traceMetrics.callsByTenant,
+      },
     },
   });
 });
