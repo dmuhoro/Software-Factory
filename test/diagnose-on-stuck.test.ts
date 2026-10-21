@@ -159,7 +159,7 @@ test('WP-3: a clean run yields no stuck reports (an empty list, never undefined)
 });
 
 test('WP-3: every failure class has a distinct, non-empty next step', () => {
-  const classes: Array<import('../src/services/loopFailureClass').LoopFailureClass> = ['security', 'verification', 'review', 'model', 'environment', 'policy', 'unknown'];
+  const classes: Array<import('../src/services/loopFailureClass').LoopFailureClass> = ['security', 'verification', 'review', 'model', 'defect', 'environment', 'policy', 'unknown'];
   const steps = classes.map((failureClass) => nextStepForFailureClass(failureClass));
   for (const step of steps) assert.ok(step.length > 0);
   assert.equal(new Set(steps).size, classes.length, 'each class must give its own next step, not a shared platitude');

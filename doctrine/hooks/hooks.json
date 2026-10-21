@@ -24,7 +24,7 @@
     },
     "report": {
       "before": ["doctrine-integrity"],
-      "after": ["evidence-is-machine-derived"]
+      "after": ["evidence-is-machine-derived", "bug-diagnosis-evidence"]
     }
   }
 }

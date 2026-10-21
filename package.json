@@ -55,6 +55,10 @@
     "trial:note": "tsx scripts/trial-note.ts",
     "unrelated-writes:report": "tsx scripts/unrelated-writes-report.ts",
     "verify:loop": "bash scripts/verify-loop.sh",
+    "verify:preview-plane": "bash scripts/verify-preview-plane.sh",
+    "verify:bug-detective": "bash scripts/verify-bug-detective.sh",
+    "verify:observability": "bash scripts/verify-observability.sh",
+    "verify:tool-agnostic-boundary": "echo 'Planned: tool-agnostic IDE/CLI boundary. No implementation yet; owner: engineering.'",
     "verify:deploy": "npm run build && bash scripts/verify-deploy.sh",
     "verify:fundios": "tsx scripts/verify-fundios-e2e.ts"
   },

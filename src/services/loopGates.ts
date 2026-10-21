@@ -4,10 +4,12 @@ import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsolationService';
 import { ResourceGovernorService } from './resourceGovernorService';
 import type { GroundTruthProof } from './groundTruthService';
+import type { LoopFailureClass } from './loopFailureClass';
 import { extractLocators, runCommand } from './groundTruthService';
 import { stageAndScanSecrets } from './commitService';
 import { unrelatedWritesIn } from './unrelatedWrites';
 import { detectVerificationProfile } from './verificationProfileService';
+import { bugDetectiveService, type DiagnosisInput } from './bugDetectiveService';
 import { isGitRepository } from '../utils/pathGuard';
 import type { GateResult, LoopRunRecord, LoopSandboxConfig, LoopStage, UnitRecord } from './loopTypes';
 import type { WorkUnit } from './taskDocumentService';
@@ -208,6 +210,29 @@ const REGISTRY: Record<GateId, GateFn> = {
       return { passed: false, detail: `${unrelated.length} file(s) changed that the implementer did not claim: ${named}${more}` };
     }
     return { passed: true, detail: `SHADOW: would refuse ${unrelated.length} unrelated write(s): ${named}${more}` };
+  },
+
+  'bug-diagnosis-evidence': (ctx) => {
+    // L5 Diagnostic: the bug detective is advisory only. It produces a diagnosis — root-cause
+    // hypothesis, file:line pointers, remediation — but never refuses the stage and never writes.
+    // A failed diagnosis is still evidence: `uncertain: true` means the raw refusal must be read
+    // by hand. Any fix the diagnosis suggests still runs VERIFY → REVIEW → COMMIT through L2 gates.
+    const unit = ctx.unit;
+    const attempt = unit?.attempts[unit?.attempts.length - 1];
+    const input: DiagnosisInput = {
+      failureClass: (unit?.failureClass ?? 'unknown') as LoopFailureClass,
+      reason: attempt?.reason,
+      message: attempt?.detail,
+      stage: ctx.stage,
+    };
+    const diagnosis = bugDetectiveService.diagnose(input);
+    const pointerSummary = diagnosis.pointers.length
+      ? diagnosis.pointers.map((p) => `${p.file}${p.line != null ? ':' + p.line : ''}`).join(', ')
+      : 'no location';
+    return {
+      passed: true,
+      detail: `bug-diagnosis-evidence: ${diagnosis.rootCause} Pointers: ${pointerSummary}. Remediation: ${diagnosis.remediation}${diagnosis.uncertain ? ' — uncertain; read the raw refusal.' : ''}`,
+    };
   },
 
   'ground-truth': (ctx) => {

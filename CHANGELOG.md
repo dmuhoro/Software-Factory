@@ -4,6 +4,18 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Layer 5 Diagnostic — AI bug detective (ADR-021).** `src/services/bugDetectiveService.ts`: advisory, bounded, fail-closed diagnostic that flags errors, assigns root-cause hypotheses and file:line pointers, and recommends remediation. Never writes to a target tree; any fix still runs VERIFY → REVIEW → COMMIT through L2 gates. `POST /api/bug-detective/diagnose` (RBAC `loop:read`). Adds `defect` failure class (with `DEFECT_*`/`BUG_*` reason patterns) and `bug-diagnosis-evidence` gate (advisory, never refuses). `test/bug-detective.test.ts` (7 tests, all pass). `scripts/verify-bug-detective.sh` gate.
+- **Layer 6 Observability — verification gate.** `scripts/verify-observability.sh`: confirms `/factory/health`, `/factory/ready`, `/factory/metrics` surface real durable state, and blocked observability capabilities (`observability-dashboards`, `cycle-time-metrics`) name their operators.
+- **Layer 2 Agency — preview plane promoted to live.** `src/services/previewPlaneService.ts` (session lifecycle: worktree, dev server, stop/stopAll), `src/api/routes/preview.routes.ts` (POST/GET/DELETE `/api/preview/sessions`, screenshot), `test/preview-plane.test.ts` (6 tests, all pass). `scripts/verify-preview-plane.sh` gate.
+
+### Changed
+- **Capability manifest.** `preview-plane`, `bug-detective`, and `dual-language-reporting` promoted from `planned` to `live`, each naming its proof command. `bug-diagnosis-evidence` gate id added to `doctrine/hooks/hooks.json` and `src/services/gateIds.ts`, mapped to `defect` class in `src/services/loopFailureClass.ts`. `defect` added to `LOOP_FAILURE_CLASSES` and `GATE_FAILURE_CLASSES`; `defect` next step added to `stuckReportService.ts`.
+- **Architecture.** README Architecture section now describes seven layers (L1 Control through L7 Interface) with invariants, replacing the four-boundary model. Capabilities table regenerated: 17 live · 12 blocked · 1 planned.
+
+### Fixed
+- **Preview plane event loop.** Child dev-server processes are `unref`'d and stdio pipes destroyed on stop so the test process exits cleanly after sessions end.
+- **Doctrine manifest hash.** `doctrine/manifest.json` re-pinned for the `bug-diagnosis-evidence` hook addition.
 ## [4.16.7] - 2026-10-19 — ADR documentation, test coverage, server key setup
 
 ### Added

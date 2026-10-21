@@ -46,6 +46,7 @@ const NEXT_STEP: Record<LoopFailureClass, string> = {
   review: 'Read the reviewer findings on each axis in the attempt record, address the specific objection the review raised, and re-submit; a repeated review refusal usually means the acceptance criteria are ambiguous.',
   model: 'The model returned output the loop could not use (malformed manifest, empty files, or a missing provider). Check the provider is registered and enabled, and that the model follows the JSON file-manifest contract, then re-submit.',
   environment: 'The host, sandbox, or git state refused the work (bwrap, worktree, or an unclean tree). Run `npm run verify:host` on the executor host and clear the repository state before re-submitting.',
+  defect: 'The bug detective flagged a defect: read the diagnosis in the attempt detail, reproduce it by hand, implement the fix under the same VERIFY → REVIEW → COMMIT gates as any other change, and re-submit only once verification passes.',
   policy: 'A loop rule refused the change (no-op unit, unrelated writes, attempt cap, or a claimed file that did not change). Read which rule fired and change the design so the unit does real, claimed work.',
   unknown: 'The refusal did not match a known class. Read the attempt reason and detail verbatim in the unit report and diagnose from the raw refusal; if it recurs, it needs a new class in loopFailureClass.ts.',
 };

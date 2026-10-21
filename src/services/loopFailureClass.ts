@@ -25,6 +25,7 @@ export type LoopFailureClass =
   | 'model'
   | 'environment'
   | 'policy'
+  | 'defect'
   | 'unknown';
 
 /** Stable priority order: a tie between class counts is broken by this order (most severe first). */
@@ -33,6 +34,7 @@ export const LOOP_FAILURE_CLASSES: readonly LoopFailureClass[] = [
   'verification',
   'review',
   'model',
+  'defect',
   'environment',
   'policy',
   'unknown',
@@ -66,6 +68,7 @@ export const GATE_FAILURE_CLASSES: Record<string, LoopFailureClass> = {
   'attempt-cap': 'policy',
   'plan-is-executable': 'policy',
   'unrelated-writes': 'policy',
+  'bug-diagnosis-evidence': 'defect',
 };
 
 /** Non-gate refusal codes (the first token of a thrown message) and the class each denotes. */
@@ -79,6 +82,7 @@ const REASON_PATTERNS: ReadonlyArray<readonly [RegExp, LoopFailureClass]> = [
   [/^IMPLEMENTER_/, 'model'],
   [/^(SANDBOX_|GIT_|WORKTREE_|DOCTRINE_ROOT_)/, 'environment'],
   [/^merge-conflict/, 'environment'],
+  [/^(DEFECT_|BUG_)/, 'defect'],
   [/^NOTHING_STAGED/, 'policy'],
   [/^(REPO_NOT_CLEAN|LOOP_|TASK_DOCUMENT_|TARGET_REPOSITORY_|GATE_REFUSED|GATE_NOT_IMPLEMENTED)/, 'policy'],
 ];

@@ -424,6 +424,10 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   BENCH_ARMS_INCOMPLETE: { status: 422, message: 'The benchmark is a paired comparison; both the on and off arms are required.' },
   BENCH_STUB_NOT_EVIDENCE: { status: 422, message: 'A stub dry pass proves the harness, not a model, so it cannot evidence a skills-adoption claim.' },
   BENCH_NO_PAIRED_ARMS: { status: 422, message: 'A skills-adoption claim needs both arms; this report is missing one.' },
+  // Layer 5 Diagnostic: bug detective. Advisory only — never writes. These codes describe
+  // diagnostic boundaries, never the product of a diagnosis.
+  BUG_DIAGNOSIS_NOT_FOUND: { status: 404, message: 'No diagnosis exists for this unit or run.' },
+  BUG_DIAGNOSIS_READ_ONLY: { status: 403, message: 'The bug detective is advisory only; it does not accept fixes or writes.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */
