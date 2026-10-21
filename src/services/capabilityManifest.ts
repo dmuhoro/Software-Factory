@@ -183,14 +183,14 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
   {
     id: 'preview-plane',
     title: 'Preview plane',
-    status: 'planned',
+    status: 'live',
     summary: 'After each commit, builds the target repo in an ephemeral worktree, runs its dev server on an ephemeral port, and proxies it through an iframe/screenshot endpoint with commit → preview mapping. Additive only — does not change the loop, doctrine, or any gate.',
     proves: 'npm run verify:preview-plane',
   },
   {
     id: 'bug-detective',
     title: 'AI bug detective (advisory, bounded, fail-closed)',
-    status: 'planned',
+    status: 'live',
     summary: 'Flags errors in the product, assigns a root-cause hypothesis and file:line pointers, and recommends a remediation. Advisory only — never writes to a target tree; any fix still runs VERIFY → REVIEW → COMMIT through L2 gates.',
     proves: 'npm test -- test/bug-detective.test.ts',
   },

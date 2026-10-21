@@ -23,6 +23,7 @@ export const GATE_IDS = [
   'one-commit-per-unit',
   'evidence-is-machine-derived',
   'unrelated-writes',
+  'bug-diagnosis-evidence',
 ] as const;
 
 export type GateId = (typeof GATE_IDS)[number];
