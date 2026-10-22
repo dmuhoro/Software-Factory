@@ -150,3 +150,113 @@ test('LT-7: traces feed /factory/metrics llm section (integration shape)', async
   assert.ok(Array.isArray(metrics.callsByProvider));
   assert.ok(Array.isArray(metrics.callsByTenant));
 });
+
+test('LT-8: a declared price yields a cost, and no declared price yields an unknown cost', () => {
+  LLMTracingService.resetForTests();
+  const priced = LLMTracingService.record({
+    tenantId: TENANT, providerId: 'p1', model: 'm1', latencyMs: 10, inputChars: 400, outputChars: 200, status: 'success',
+    inputCostPerMillionTokens: 3, outputCostPerMillionTokens: 15,
+  });
+  // 100 input tokens at $3/M = 0.0003; 50 output tokens at $15/M = 0.00075.
+  assert.equal(priced.costBasis, 'declared-pricing');
+  assert.ok(Math.abs((priced.costUsd ?? 0) - 0.00105) < 1e-9, `unexpected cost ${priced.costUsd}`);
+
+  const unpriced = LLMTracingService.record({
+    tenantId: TENANT, providerId: 'p2', model: 'm2', latencyMs: 10, inputChars: 400, outputChars: 200, status: 'success',
+  });
+  assert.equal(unpriced.costBasis, 'unknown');
+  assert.equal(unpriced.costUsd, undefined, 'an unpriced call has no cost, not a zero cost');
+});
+
+test('LT-9: provider-reported tokens are used when the provider reports them', () => {
+  LLMTracingService.resetForTests();
+  const reported = LLMTracingService.record({
+    tenantId: TENANT, providerId: 'p1', model: 'm1', latencyMs: 10, inputChars: 400, outputChars: 200, status: 'success',
+    reportedInputTokens: 1234, reportedOutputTokens: 567,
+  });
+  assert.equal(reported.tokensSource, 'provider-reported');
+  assert.equal(reported.inputTokens, 1234);
+  assert.equal(reported.outputTokens, 567);
+  assert.equal(reported.totalTokens, 1801);
+
+  const estimated = LLMTracingService.record({
+    tenantId: TENANT, providerId: 'p1', model: 'm1', latencyMs: 10, inputChars: 400, outputChars: 200, status: 'success',
+  });
+  assert.equal(estimated.tokensSource, 'estimated');
+});
+
+test('LT-10: a trace names the door the call left through', () => {
+  LLMTracingService.resetForTests();
+  const guarded = LLMTracingService.record({ tenantId: TENANT, providerId: 'p1', model: 'm1', latencyMs: 10, inputChars: 10, outputChars: 10, status: 'success' });
+  assert.equal(guarded.door, 'egress-guard');
+  const sdk = LLMTracingService.record({ tenantId: TENANT, providerId: 'p2', model: 'm2', latencyMs: 10, inputChars: 10, outputChars: 10, status: 'success', door: 'model-egress' });
+  assert.equal(sdk.door, 'model-egress');
+
+  const metrics = LLMTracingService.metrics(LLMTracingService.query({ tenantId: TENANT }));
+  assert.equal(metrics.callsByDoor.length, 2);
+});
+
+test('LT-11: metrics count an unknown cost separately instead of counting it as free', () => {
+  LLMTracingService.resetForTests();
+  LLMTracingService.record({ tenantId: TENANT, providerId: 'p1', model: 'm1', latencyMs: 10, inputChars: 400, outputChars: 200, status: 'success', inputCostPerMillionTokens: 3, outputCostPerMillionTokens: 15 });
+  LLMTracingService.record({ tenantId: TENANT, providerId: 'p2', model: 'm2', latencyMs: 10, inputChars: 400, outputChars: 200, status: 'success' });
+
+  const metrics = LLMTracingService.metrics(LLMTracingService.query({ tenantId: TENANT }));
+  assert.equal(metrics.totalCalls, 2);
+  assert.equal(metrics.unknownCostCalls, 1);
+  assert.ok(metrics.totalCostUsd > 0, 'the priced call contributes its cost');
+  assert.ok(metrics.totalCostUsd < 0.01, 'and only that call');
+});
+
+test('LT-12: a live call through the guarded door is traced with its run, door, latency and cost', async () => {
+  LLMTracingService.resetForTests();
+  const http = await import('node:http');
+  const server = http.createServer((request, response) => {
+    request.resume();
+    request.on('end', () => {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  try {
+    const { FrontierModelService } = await import('../src/services/frontierModelService');
+    FrontierModelService.register({
+      tenantId: TENANT, id: 'traced', kind: 'local', baseUrl: `http://127.0.0.1:${port}/v1`, modelIds: ['stub-code'],
+      inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8,
+    });
+    await FrontierModelService.request(TENANT, { providerId: 'traced', model: 'stub-code', system: 'system', task: 'task', runId: 'run-42' });
+
+    const traces = LLMTracingService.query({ tenantId: TENANT, runId: 'run-42' });
+    assert.equal(traces.length, 1, 'the call through the door was not traced');
+    const trace = traces[0];
+    assert.equal(trace.door, 'egress-guard');
+    assert.equal(trace.status, 'success');
+    assert.ok(trace.latencyMs >= 0);
+    assert.ok(trace.inputTokens > 0);
+    assert.equal(trace.costBasis, 'declared-pricing');
+    assert.ok((trace.costUsd ?? 0) > 0, 'a declared price yields a real cost');
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test('LT-13: the deterministic Gemini path makes no model call, so it records no trace', async () => {
+  LLMTracingService.resetForTests();
+  const { GeminiService } = await import('../src/services/geminiService');
+  const { IndustryNiche } = await import('../src/models/tenant');
+  const result = await GeminiService.transformTelemetry(TENANT, IndustryNiche.REAL_ESTATE, 'listing.created', { listingId: 'L-1' }, 'corr-1');
+  assert.equal(result.tokensUsed, 0, 'the deterministic path reports no tokens because no call was made');
+  const traces = LLMTracingService.query({ tenantId: TENANT });
+  assert.deepEqual(traces, [], 'a path that made no model call must not leave a trace');
+});
+
+test('LT-14: the Gemini service traces its live calls through the SDK door', () => {
+  // The Gemini path leaves through the sanctioned SDK door (ADR-011), which is a different door
+  // from the guarded one. A trace that does not name the door cannot prove which egress path a
+  // call took, so the wiring is asserted here rather than assumed.
+  const source = fs.readFileSync(path.join(process.cwd(), 'src', 'services', 'geminiService.ts'), 'utf8');
+  assert.match(source, /LLMTracingService\.record\(/, 'the Gemini service records no trace');
+  assert.match(source, /door: 'model-egress'/, 'the Gemini trace does not name the SDK door');
+});

@@ -10,6 +10,7 @@ import { GeminiConfig } from '../configurations/gemini.config';
 import { CircuitBreaker, withExponentialBackoff } from '../utils/circuitBreaker';
 import { TelemetryLogger } from '../utils/telemetryLogger';
 import { createGeminiClient } from '../utils/modelEgress';
+import { LLMTracingService } from './llmTracingService';
 
 const circuitBreaker = new CircuitBreaker('gemini-structured-engine', {
   failureThreshold: 4,
@@ -63,7 +64,11 @@ export class GeminiService {
     }
 
     // Call Gemini API protected by Circuit Breaker & Exponential Backoff
-    const { result, attempts } = await withExponentialBackoff(
+    let promptLength = 0;
+    let result: { parsed: StructuredAiOutput; usage?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } };
+    let attempts = 0;
+    try {
+    ({ result, attempts } = await withExponentialBackoff(
       async () => {
         return await circuitBreaker.execute(async () => {
           const prompt = `You are the autonomous AI operational engine for a multi-tenant B2B SaaS Software Factory.
@@ -80,6 +85,7 @@ Strict Operational Directives:
 
 Incoming Business Telemetry Payload:
 ${JSON.stringify(payload, null, 2)}`;
+          promptLength = prompt.length;
 
           const response = await client.models.generateContent({
             model: GeminiConfig.defaultModel,
@@ -107,7 +113,23 @@ ${JSON.stringify(payload, null, 2)}`;
       GeminiConfig.resilience.maxBackoffMs,
       GeminiConfig.resilience.jitterFactor,
       GeminiConfig.resilience.overallDeadlineMs
-    );
+    ));
+    } catch (error) {
+      // The call left through the sanctioned SDK door and failed: the trace says so, with the
+      // latency the failure took and the error the caller will see.
+      LLMTracingService.record({
+        tenantId,
+        providerId: 'gemini-native',
+        model: GeminiConfig.defaultModel,
+        latencyMs: Date.now() - startTime,
+        inputChars: promptLength,
+        outputChars: 0,
+        status: 'failure',
+        errorCode: error instanceof Error ? error.message : 'UNKNOWN',
+        door: 'model-egress',
+      });
+      throw error;
+    }
 
     const durationMs = Date.now() - startTime;
     TelemetryLogger.info('Gemini transformation completed successfully', {
@@ -116,6 +138,22 @@ ${JSON.stringify(payload, null, 2)}`;
       correlationId,
       durationMs,
       metadata: { attempts, tokens: result.usage?.totalTokenCount },
+    });
+
+    // Every live model call is traced (Layer 6, ADR-011): this one left through the SDK door,
+    // so the trace names that door and carries the tokens the provider reported. No price is
+    // declared for this provider, so the cost is unknown rather than zero.
+    LLMTracingService.record({
+      tenantId,
+      providerId: 'gemini-native',
+      model: GeminiConfig.defaultModel,
+      latencyMs: durationMs,
+      inputChars: promptLength,
+      outputChars: JSON.stringify(result.parsed).length,
+      status: 'success',
+      door: 'model-egress',
+      reportedInputTokens: result.usage?.promptTokenCount ?? 0,
+      reportedOutputTokens: result.usage?.candidatesTokenCount ?? 0,
     });
 
     return {

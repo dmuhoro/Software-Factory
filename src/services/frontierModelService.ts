@@ -7,8 +7,20 @@ const MIN_MODEL_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_MODEL_REQUEST_TIMEOUT_MS = 600_000;
 const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 120_000;
 
-export interface ModelProvider { id: string; tenantId: string; kind: ModelProviderKind; baseUrl?: string; modelIds: string[]; secretRef?: string; enabled: boolean; timeoutMs?: number; createdAt: string; }
-export interface ModelRequest { providerId: string; model: string; system: string; task: string; maxOutputTokens?: number; }
+export interface ModelProvider {
+  id: string; tenantId: string; kind: ModelProviderKind; baseUrl?: string; modelIds: string[]; secretRef?: string;
+  enabled: boolean; timeoutMs?: number; createdAt: string;
+  /** The price the operator declared for this provider, in US dollars per million input tokens.
+   *  Declared, never assumed: a provider with no declared price has an unknown cost. */
+  inputCostPerMillionTokens?: number;
+  /** The price the operator declared for this provider, in US dollars per million output tokens. */
+  outputCostPerMillionTokens?: number;
+}
+export interface ModelRequest { providerId: string; model: string; system: string; task: string; maxOutputTokens?: number; /** The run this call belongs to, so a run's cost can be totalled. */ runId?: string; }
+
+/** The highest price this factory will accept as a declared rate, in dollars per million tokens.
+ *  Above this, the declaration is a mistake rather than a price. */
+const MAX_DECLARED_COST_PER_MILLION = 100_000;
 
 /** Maximum task size accepted by a model provider. Bounded to protect the egress budget. */
 const MAX_TASK_CHARS = 200_000;
@@ -31,7 +43,7 @@ function requireText(value: unknown, code: string, max: number): string {
  * the secret reference; every actual request re-validates at the socket boundary.
  */
 export class FrontierModelService {
-  public static register(input: { tenantId: string; id: string; kind?: ModelProviderKind; baseUrl?: string; modelIds?: string[]; secretRef?: string; enabled?: boolean; timeoutMs?: number }): ModelProvider {
+  public static register(input: { tenantId: string; id: string; kind?: ModelProviderKind; baseUrl?: string; modelIds?: string[]; secretRef?: string; enabled?: boolean; timeoutMs?: number; inputCostPerMillionTokens?: number; outputCostPerMillionTokens?: number }): ModelProvider {
     const kind = input.kind ?? 'openai-compatible';
     if (!['openai-compatible', 'gemini-native', 'local'].includes(kind)) throw new Error('MODEL_PROVIDER_KIND_NOT_RECOGNIZED');
     const id = requireText(input.id, 'MODEL_PROVIDER_ID_REQUIRED', 64);
@@ -46,11 +58,26 @@ export class FrontierModelService {
       }
       timeoutMs = input.timeoutMs;
     }
+    // A declared price is either a real price or a mistake: it must be a finite, non-negative
+    // number, and it must be declared for both directions or for neither. A half-declared price
+    // would produce a cost that is wrong in a way nobody could see.
+    const declaredCost = (value: number | undefined, code: string): number | undefined => {
+      if (value === undefined) return undefined;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > MAX_DECLARED_COST_PER_MILLION) {
+        throw new Error(code);
+      }
+      return value;
+    };
+    const inputCostPerMillionTokens = declaredCost(input.inputCostPerMillionTokens, 'MODEL_PROVIDER_INPUT_COST_OUT_OF_RANGE');
+    const outputCostPerMillionTokens = declaredCost(input.outputCostPerMillionTokens, 'MODEL_PROVIDER_OUTPUT_COST_OUT_OF_RANGE');
+    if ((inputCostPerMillionTokens === undefined) !== (outputCostPerMillionTokens === undefined)) {
+      throw new Error('MODEL_PROVIDER_COST_DECLARATION_INCOMPLETE');
+    }
     const modelIds = Array.isArray(input.modelIds)
       ? [...new Set(input.modelIds.filter((model): model is string => typeof model === 'string' && model.trim() !== '').map((model) => model.trim().slice(0, 128)))]
       : [];
     if (modelIds.length > 256) throw new Error('MODEL_PROVIDER_MODEL_LIST_TOO_LARGE');
-    const provider: ModelProvider = { id, tenantId: input.tenantId, kind, baseUrl: input.baseUrl ? input.baseUrl.trim() : undefined, modelIds, secretRef: input.secretRef, enabled: input.enabled ?? true, timeoutMs, createdAt: new Date().toISOString() };
+    const provider: ModelProvider = { id, tenantId: input.tenantId, kind, baseUrl: input.baseUrl ? input.baseUrl.trim() : undefined, modelIds, secretRef: input.secretRef, enabled: input.enabled ?? true, timeoutMs, inputCostPerMillionTokens, outputCostPerMillionTokens, createdAt: new Date().toISOString() };
     DurableStore.upsert('modelProviders', `${input.tenantId}:${id}`, provider as unknown as Record<string, unknown>);
     return provider;
   }
@@ -111,6 +138,7 @@ export class FrontierModelService {
       const latencyMs = Date.now() - startMs;
       LLMTracingService.record({
         tenantId,
+        runId: input.runId,
         providerId: provider.id,
         model,
         latencyMs,
@@ -118,6 +146,9 @@ export class FrontierModelService {
         outputChars: content.length,
         status,
         errorCode,
+        door: 'egress-guard',
+        inputCostPerMillionTokens: provider.inputCostPerMillionTokens,
+        outputCostPerMillionTokens: provider.outputCostPerMillionTokens,
       });
     }
   }

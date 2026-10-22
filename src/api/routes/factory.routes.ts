@@ -121,6 +121,12 @@ router.get('/metrics', async (_req: Request, res: Response) => {
         callsByModel: traceMetrics.callsByModel,
         callsByProvider: traceMetrics.callsByProvider,
         callsByTenant: traceMetrics.callsByTenant,
+        callsByDoor: traceMetrics.callsByDoor,
+        // The cost of the calls whose price the operator declared. Calls with no declared price
+        // are counted in `unknownCostCalls`, not counted as free.
+        totalCostUsd: traceMetrics.totalCostUsd,
+        unknownCostCalls: traceMetrics.unknownCostCalls,
+        providerReportedTokenCalls: traceMetrics.providerReportedTokenCalls,
       },
     },
   });

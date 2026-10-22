@@ -30,6 +30,15 @@ export interface LLMTrace {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Where the token figures came from: the provider's own usage, or this service's estimate. */
+  tokensSource: 'provider-reported' | 'estimated';
+  /** Which sanctioned door the call left through (ADR-011). */
+  door: 'egress-guard' | 'model-egress';
+  /** The cost of the call in US dollars, when the operator declared a price for this model.
+   *  Absent when no price is declared: an unpriced call has an unknown cost, not a zero cost. */
+  costUsd?: number;
+  /** How the cost was arrived at: 'declared-pricing' or 'unknown'. */
+  costBasis: 'declared-pricing' | 'unknown';
   status: 'success' | 'failure';
   errorCode?: string;
 }
@@ -52,6 +61,15 @@ export interface TraceMetrics {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalTokens: number;
+  /** The sum of the costs that are known. Calls with no declared price are counted separately
+   *  rather than counted as free: `unknownCostCalls` says what the total does not include. */
+  totalCostUsd: number;
+  /** How many calls have no declared price, and therefore no known cost. */
+  unknownCostCalls: number;
+  /** How many calls reported their own token usage rather than an estimate. */
+  providerReportedTokenCalls: number;
+  /** The calls per sanctioned door. */
+  callsByDoor: Array<{ door: string; calls: number; tokens: number }>;
   totalLatencyMs: number;
   avgLatencyMs: number;
   p50LatencyMs: number;
@@ -89,11 +107,30 @@ export class LLMTracingService {
     outputChars: number;
     status: 'success' | 'failure';
     errorCode?: string;
+    /** The token figures the provider reported, when it reported any. */
+    reportedInputTokens?: number;
+    reportedOutputTokens?: number;
+    /** Which sanctioned door the call left through (ADR-011). */
+    door?: 'egress-guard' | 'model-egress';
+    /** The price the operator declared for this model, in US dollars per million tokens. */
+    inputCostPerMillionTokens?: number;
+    outputCostPerMillionTokens?: number;
   }): LLMTrace {
     LLMTracingService.counter += 1;
-    const inputTokens = estimateTokens(input.inputChars);
-    const outputTokens = estimateTokens(input.outputChars);
+    const providerReported =
+      typeof input.reportedInputTokens === 'number' && typeof input.reportedOutputTokens === 'number';
+    const inputTokens = providerReported ? Math.max(0, Math.round(input.reportedInputTokens!)) : estimateTokens(input.inputChars);
+    const outputTokens = providerReported ? Math.max(0, Math.round(input.reportedOutputTokens!)) : estimateTokens(input.outputChars);
     const timestamp = new Date().toISOString();
+
+    // Cost only when a price was declared. A model with no declared price has an unknown cost;
+    // reporting zero would make an unpriced call look free.
+    const hasPricing =
+      typeof input.inputCostPerMillionTokens === 'number' && typeof input.outputCostPerMillionTokens === 'number';
+    const costUsd = hasPricing
+      ? (inputTokens / 1_000_000) * input.inputCostPerMillionTokens! + (outputTokens / 1_000_000) * input.outputCostPerMillionTokens!
+      : undefined;
+
     const trace: LLMTrace = {
       id: `trace-${stableId(input.tenantId, input.providerId, input.model, timestamp, LLMTracingService.counter)}`,
       tenantId: input.tenantId,
@@ -107,6 +144,10 @@ export class LLMTracingService {
       inputTokens,
       outputTokens,
       totalTokens: inputTokens + outputTokens,
+      tokensSource: providerReported ? 'provider-reported' : 'estimated',
+      door: input.door ?? 'egress-guard',
+      costUsd,
+      costBasis: costUsd === undefined ? 'unknown' : 'declared-pricing',
       status: input.status,
       errorCode: input.errorCode,
     };
@@ -149,6 +190,16 @@ export class LLMTracingService {
       return latencies[idx];
     };
 
+    const knownCost = traces.reduce((sum, trace) => sum + (trace.costUsd ?? 0), 0);
+    const unknownCostCalls = traces.filter((trace) => trace.costUsd === undefined).length;
+    const providerReportedTokenCalls = traces.filter((trace) => trace.tokensSource === 'provider-reported').length;
+
+    const byDoor = new Map<string, { calls: number; tokens: number }>();
+    for (const t of traces) {
+      const d = byDoor.get(t.door) ?? { calls: 0, tokens: 0 };
+      d.calls += 1; d.tokens += t.totalTokens; byDoor.set(t.door, d);
+    }
+
     const byModel = new Map<string, { calls: number; tokens: number }>();
     const byProvider = new Map<string, { calls: number; tokens: number }>();
     const byTenant = new Map<string, { calls: number; tokens: number }>();
@@ -168,6 +219,10 @@ export class LLMTracingService {
       totalInputTokens,
       totalOutputTokens,
       totalTokens,
+      totalCostUsd: Math.round(knownCost * 1e6) / 1e6,
+      unknownCostCalls,
+      providerReportedTokenCalls,
+      callsByDoor: [...byDoor.entries()].map(([door, v]) => ({ door, ...v })),
       totalLatencyMs,
       avgLatencyMs,
       p50LatencyMs: p(0.5),

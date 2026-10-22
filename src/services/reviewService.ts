@@ -20,6 +20,8 @@ import { injectSkills } from './skillInjectionService';
 
 export interface ReviewRequest {
   tenantId: string;
+  /** The run this call belongs to, so the trace can be totalled per run. */
+  runId?: string;
   repo: string;
   unit: WorkUnit;
   document: TaskDocument;
@@ -345,6 +347,7 @@ export class ReviewService {
         system,
         task,
         maxOutputTokens: 1_500,
+        runId: request.runId,
       });
       const parsed = parseReviewerOutput(response.content);
       return { axis, approved: parsed.approved, findings: parsed.findings, raw: response.content };

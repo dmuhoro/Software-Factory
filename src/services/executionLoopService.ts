@@ -606,6 +606,7 @@ export class ExecutionLoopService {
         });
         const implementRequest: ImplementRequest = {
           tenantId: input.tenantId,
+          runId: record.runId,
           repo,
           unit,
           document: input.document,
@@ -692,6 +693,7 @@ export class ExecutionLoopService {
         enter('review', 'before', { taskOverrides: input.document.models, usedRoles: ['reviewer'] });
         const reviewRequest: ReviewRequest = {
           tenantId: input.tenantId,
+          runId: record.runId,
           repo,
           unit,
           document: input.document,

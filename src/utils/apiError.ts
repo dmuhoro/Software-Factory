@@ -442,6 +442,11 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   PREVIEW_MISSING_COMMIT: { status: 400, message: 'commit is required to open a preview session.' },
   PREVIEW_SESSION_NOT_FOUND: { status: 404, message: 'No such preview session.' },
   PREVIEW_TENANT_MISMATCH: { status: 403, message: 'That preview session belongs to another tenant.' },
+  // Sprint 35 (WP-5): a declared model price. A price that is not a price, or a price declared
+  // for one direction only, is refused at registration rather than turned into a wrong cost.
+  MODEL_PROVIDER_INPUT_COST_OUT_OF_RANGE: { status: 422, message: 'The declared input price must be a number between 0 and 100000 dollars per million tokens.' },
+  MODEL_PROVIDER_OUTPUT_COST_OUT_OF_RANGE: { status: 422, message: 'The declared output price must be a number between 0 and 100000 dollars per million tokens.' },
+  MODEL_PROVIDER_COST_DECLARATION_INCOMPLETE: { status: 422, message: 'A declared price must cover both input and output tokens, or neither.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */

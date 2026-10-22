@@ -21,6 +21,8 @@ import { readFiles } from './parallelReadService';
 
 export interface ImplementRequest {
   tenantId: string;
+  /** The run this call belongs to, so the trace can be totalled per run. */
+  runId?: string;
   repo: string;
   unit: WorkUnit;
   document: TaskDocument;
@@ -311,6 +313,7 @@ export class ImplementerService {
       system,
       task,
       maxOutputTokens: 16_000,
+      runId: request.runId,
     });
     const parsed = parseImplementerOutput(response.content, request.repo);
     return {
