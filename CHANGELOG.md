@@ -2,7 +2,7 @@
 
 All notable architectural and code modifications are documented here.
 
-## [Unreleased]
+## [4.17.0] - 2026-10-22
 
 ### Added
 - **Layer 7 Interface — Model context compression on the live path (headroom steal, Sprint 35, WP-6).** `src/services/contextCompressionService.ts`: the logs, refusals and diffs that go to a model are reduced before they leave, with every evidence marker — file:line, exit code, error code, timestamp — protected and restored byte for byte. `src/utils/outputCompression.ts` gains `reduceText`, the reduction step on its own, because a model context needs the reduced *text* and not a base64 blob. Source code is never compressed: the implementer must reproduce a file exactly, so the referenced files reach the model byte-identical. The loop records what the compression saved on the run record (`record.contextCompression`: segments, bytes before and after, ratio, evidence preserved). `test/context-compression.test.ts` (5 tests) and the live loop test assert it.
