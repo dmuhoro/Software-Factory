@@ -18,6 +18,7 @@ import { GoalIntakeService } from '../../services/goalIntakeService';
 import { IssueIntakeService } from '../../services/issueIntakeService';
 import { GrillSessionService } from '../../services/grillSessionService';
 import { LearningDigestService } from '../../services/learningDigestService';
+import { PersistentMemoryService } from '../../services/persistentMemoryService';
 
 const router = Router();
 const tenant = (req: Request): string => String(req.body?.tenantId || req.query.tenantId || req.headers['x-tenant-id']);
@@ -214,6 +215,35 @@ router.get('/learning-digest', (req: Request, res: Response) => {
   if (!validateTenantRequest(req, res)) return;
   const digest = LearningDigestService.build(tenant(req));
   return res.json({ status: 'success', digest });
+});
+
+/**
+ * The tenant's cross-run memory (Sprint 35, WP-3). Read-only: what earlier runs of this factory
+ * learned — which units failed, in which class, and what verified. Scoped to the authenticated
+ * tenant: another tenant's memory is never returned, and a filter that is not understood is
+ * refused rather than ignored.
+ */
+router.get('/memories', (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  const tenantId = tenant(req);
+  const kind = req.query.kind;
+  const failureClass = req.query.failureClass;
+  const unitId = req.query.unitId;
+  const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+  if (kind !== undefined && !['outcome', 'pattern', 'warning', 'fix'].includes(String(kind))) {
+    return res.status(400).json({ status: 'error', code: 'MEMORY_KIND_NOT_RECOGNIZED', message: 'kind must be one of outcome, pattern, warning, fix' });
+  }
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+    return res.status(400).json({ status: 'error', code: 'MEMORY_LIMIT_OUT_OF_RANGE', message: 'limit must be an integer between 1 and 200' });
+  }
+  const memories = PersistentMemoryService.query({
+    tenantId,
+    kind: kind as never,
+    failureClass: failureClass === undefined ? undefined : String(failureClass),
+    unitId: unitId === undefined ? undefined : String(unitId),
+    limit,
+  });
+  return res.json({ status: 'success', memories });
 });
 
 /**

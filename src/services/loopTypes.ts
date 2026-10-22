@@ -139,6 +139,10 @@ export interface LoopRunRecord {
   idempotencyKey?: string;
   /** Number of narration claims recorded and discarded across the run. */
   narrationRejected: number;
+  /** The cross-run memory this run wrote and read (Sprint 35, WP-3). `recorded` are memory ids
+   *  this run created; `consulted` are the ids it read back before an attempt. Both are ids, so
+   *  the evidence is checkable rather than a claim. */
+  memories?: { recorded: string[]; consulted: string[] };
 }
 
 interface SlimCheck {

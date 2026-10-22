@@ -9,6 +9,7 @@ import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsol
 import { FrontierModelService } from './frontierModelService';
 import { ResourceGovernorService } from './resourceGovernorService';
 import { ImplementerService, buildPrompts, readReferencedFiles, type ImplementRequest } from './implementerService';
+import { PersistentMemoryService } from './persistentMemoryService';
 import { ReviewService, buildReviewPrompts, REVIEW_AXES, type ReviewRequest, type ReviewAxis } from './reviewService';
 import { commitUnit, readLoopVersion } from './commitService';
 import { collectGroundTruth, proofDigest, type GroundTruthProof } from './groundTruthService';
@@ -18,7 +19,7 @@ import { decompose, loadTaskDocument, type WorkUnit } from './taskDocumentServic
 import { assertRegistryComplete, runStageGates, type GateContext } from './loopGates';
 import { resolveFileWithin, workspaceRoot } from '../utils/pathGuard';
 import { slimProof, widenProof, type AttemptRecord, type GateResult, type LoopEvent, type LoopRunRecord, type LoopStage, type UnitRecord } from './loopTypes';
-import { classifyLoopFailure, runFailureClass, summariseFailureClasses } from './loopFailureClass';
+import { classifyLoopFailure, runFailureClass, summariseFailureClasses, type LoopFailureClass } from './loopFailureClass';
 import { buildStuckReports } from './stuckReportService';
 import { prFlowService } from './prFlowService';
 import { SkillInjectionService } from './skillInjectionService';
@@ -236,6 +237,34 @@ function tail(text: string, limit = 2000): string {
  * resume the work is started afresh, and the operator must decide again.
  */
 const cancellationRequested = new Set<string>();
+
+/**
+ * Read this tenant's memory of a unit, for the prompt of the attempt that is about to start.
+ *
+ * Fail-closed on the memory, not on the run: a memory that cannot be read costs the attempt its
+ * history and nothing else. The run never fails because a memory was unavailable, and a run that
+ * consulted nothing says so rather than pretending it had.
+ */
+function consultMemories(input: {
+  tenantId: string;
+  unitId: string;
+  failureClass?: LoopFailureClass;
+  event: (level: LoopEvent['level'], stage: LoopEvent['stage'], message: string) => void;
+}): { rendered: string; ids: string[] } {
+  try {
+    const memories = PersistentMemoryService.consultForUnit({
+      tenantId: input.tenantId,
+      unitId: input.unitId,
+      failureClass: input.failureClass,
+      limit: 5,
+    });
+    const rendered = PersistentMemoryService.renderConsultation(memories, 5);
+    return { rendered, ids: memories.map((memory) => memory.id) };
+  } catch (error) {
+    input.event('warn', 'implement', `cross-run memory unavailable for ${input.unitId}: ${(error as Error).message}`);
+    return { rendered: '', ids: [] };
+  }
+}
 
 export class ExecutionLoopService {
   /**
@@ -592,7 +621,26 @@ export class ExecutionLoopService {
         // The unit's referenced files are read in parallel before the prompt is built, so the
         // model context is assembled from concurrent reads rather than a serial queue.
         const referenced = await readReferencedFiles(repo, unit, { concurrency: loop.concurrency.maxParallelDefault });
-        const implementerPrompts = buildPrompts(implementRequest, SkillInjectionService.advisoryForImplementer(attempt.attempt), referenced);
+        // Cross-run memory: what earlier runs of this factory learned about this unit. It is
+        // read before the prompt is built, so the model sees the history of this unit rather
+        // than only the refusal of the attempt that just failed.
+        const consulted = consultMemories({
+          tenantId: input.tenantId,
+          unitId: unit.id,
+          failureClass: unitRecord.failureClass,
+          event: input.event,
+        });
+        if (consulted.ids.length) {
+          record.memories = record.memories ?? { recorded: [], consulted: [] };
+          for (const id of consulted.ids) {
+            if (!record.memories.consulted.includes(id)) record.memories.consulted.push(id);
+          }
+        }
+        const implementerPrompts = buildPrompts(
+          { ...implementRequest, priorLearnings: consulted.rendered || undefined },
+          SkillInjectionService.advisoryForImplementer(attempt.attempt),
+          referenced,
+        );
         DoctrineIsolationService.assertNoTargetInstructionContent(isolation, {
           'implementer.system': implementerPrompts.system,
           'implementer.task': implementerPrompts.task,
@@ -719,6 +767,19 @@ export class ExecutionLoopService {
         unitRecord.proofDigest = attempt.proofDigest;
         unitRecord.proof = slimProof(proof);
         unitRecord.finishedAt = iso();
+        try {
+          const memory = PersistentMemoryService.recordSuccess({
+            tenantId: input.tenantId,
+            runId: record.runId,
+            unitId: unit.id,
+            title: unit.title,
+            checks: commands.length,
+          });
+          record.memories = record.memories ?? { recorded: [], consulted: [] };
+          if (!record.memories.recorded.includes(memory.id)) record.memories.recorded.push(memory.id);
+        } catch (error) {
+          input.event('warn', 'commit', `cross-run memory could not record the success of ${unit.id}: ${(error as Error).message}`);
+        }
         recordCommit(unit.id, commit.sha, commit.subject);
         input.event('info', 'commit', `unit ${unit.id} committed ${commit.sha.slice(0, 12)} — ${commit.subject}`);
       } catch (error) {
@@ -742,6 +803,25 @@ export class ExecutionLoopService {
         // it from the truncated detail. (Sprint 29, WP-3.)
         attempt.failureClass = classifyLoopFailure({ stage: attempt.stage, reason: attempt.reason, gateIds: ids, message });
         unitRecord.failureClass = attempt.failureClass;
+
+        // Cross-run memory: the outcome of this attempt is written to the ledger now, so the next
+        // attempt — in this run or in a later one — can read it. The memory holds the factory's
+        // own summary, never the target's content.
+        try {
+          const memory = PersistentMemoryService.recordFailure({
+            tenantId: input.tenantId,
+            runId: record.runId,
+            unitId: unit.id,
+            stage: attempt.stage,
+            reason: attempt.reason,
+            failureClass: attempt.failureClass,
+            detail: attempt.detail,
+          });
+          record.memories = record.memories ?? { recorded: [], consulted: [] };
+          if (!record.memories.recorded.includes(memory.id)) record.memories.recorded.push(memory.id);
+        } catch (error) {
+          input.event('warn', attempt.stage, `cross-run memory could not record the failure of ${unit.id}: ${(error as Error).message}`);
+        }
 
         // A commit that already landed is evidence, not something to erase. Keep it and stop.
         if (committed) {

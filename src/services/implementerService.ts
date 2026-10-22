@@ -32,6 +32,14 @@ export interface ImplementRequest {
   /** Why the previous attempt of this unit failed, quoted back to the model. */
   feedback?: string;
   /**
+   * What earlier runs of this factory learned about this unit (Sprint 35, WP-3).
+   *
+   * Written by the factory, bounded, and advisory: it is history, not an instruction. A memory
+   * can never carry a target repository's words into a prompt, because a memory stores the
+   * factory's own summary of an outcome and nothing else.
+   */
+  priorLearnings?: string;
+  /**
    * The exact prompts to send. When present they are used verbatim, so the caller (the loop) can
    * assert them — that no quarantined target instruction entered them — before any model call.
    * When absent, they are built here. (Sprint 29, WP-1.)
@@ -233,6 +241,7 @@ export function buildPrompts(
     ).join('\n\n'),
     '',
     request.feedback ? `Previous attempt of this unit was refused. Fix exactly this:\n${request.feedback}` : '',
+    request.priorLearnings ?? '',
     'Return the JSON file manifest now.',
   ].filter(Boolean).join('\n');
 

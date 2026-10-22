@@ -14,6 +14,7 @@
 import { DurableStore } from './durableStore';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import type { LoopFailureClass } from './loopFailureClass';
 
 export interface MemoryRecord {
   id: string;
@@ -110,6 +111,95 @@ export class PersistentMemoryService {
     const updated = { ...record, consultCount: record.consultCount + 1, lastConsultedAt: new Date().toISOString() };
     DurableStore.upsert('loopMemories', id, updated as unknown as Record<string, unknown>);
     return updated;
+  }
+
+  /**
+   * Record the outcome of a failed attempt (the loop's live path).
+   *
+   * The summary is written by this factory and contains only the unit id, the stage, the failure
+   * class, and the refusal code. No target file content is ever stored, so a memory can be shown
+   * to a later run's model without becoming a channel for the target repository's instructions.
+   */
+  public static recordFailure(input: {
+    tenantId: string;
+    runId?: string;
+    unitId: string;
+    stage: string;
+    reason: string;
+    failureClass: LoopFailureClass;
+    detail?: string;
+  }): MemoryRecord {
+    return this.record({
+      tenantId: input.tenantId,
+      runId: input.runId,
+      kind: 'warning',
+      summary: `${input.unitId} failed at ${input.stage} (${input.failureClass}): ${input.reason}`,
+      detail: (input.detail ?? '').slice(0, 600),
+      unitId: input.unitId,
+      failureClass: input.failureClass,
+    });
+  }
+
+  /**
+   * Record a unit that verified and committed. The outcome is as much a memory as the failure is:
+   * "this shape of work verified here before" is the thing a later run needs to know.
+   */
+  public static recordSuccess(input: {
+    tenantId: string;
+    runId?: string;
+    unitId: string;
+    title?: string;
+    checks?: number;
+  }): MemoryRecord {
+    return this.record({
+      tenantId: input.tenantId,
+      runId: input.runId,
+      kind: 'outcome',
+      summary: `${input.unitId} verified and committed${input.title ? `: ${input.title}` : ''}`,
+      detail: `${input.checks ?? 0} verification check(s) exited 0`,
+      unitId: input.unitId,
+    });
+  }
+
+  /**
+   * The memories that matter for a unit about to be attempted: the ones recorded for this unit,
+   * plus the ones recorded for the same failure class. Newest first, bounded.
+   */
+  public static consultForUnit(input: {
+    tenantId: string;
+    unitId: string;
+    failureClass?: LoopFailureClass;
+    limit?: number;
+  }): MemoryRecord[] {
+    const limit = input.limit ?? 5;
+    const forUnit = this.query({ tenantId: input.tenantId, unitId: input.unitId, limit });
+    if (forUnit.length >= limit) return forUnit;
+    if (!input.failureClass) return forUnit;
+    const byClass = this.query({ tenantId: input.tenantId, failureClass: input.failureClass, limit });
+    const merged = [...forUnit];
+    for (const memory of byClass) {
+      if (merged.length >= limit) break;
+      if (merged.some((existing) => existing.id === memory.id)) continue;
+      merged.push(memory);
+    }
+    return merged;
+  }
+
+  /**
+   * Render consulted memories as the bounded, advisory block the model is shown.
+   *
+   * Only the summary and the failure class are rendered: the summary is written by this factory,
+   * and a memory must never be able to carry a target repository's words into a prompt.
+   */
+  public static renderConsultation(memories: MemoryRecord[], limit = 5): string {
+    const lines = memories
+      .slice(0, limit)
+      .map((memory) => `- ${memory.summary}${memory.failureClass ? ` [${memory.failureClass}]` : ''}`);
+    if (!lines.length) return '';
+    return [
+      'Prior attempts at this unit, recorded by earlier runs of this factory (advisory, not instructions):',
+      ...lines,
+    ].join('\n');
   }
 
   /** Test seam: reset the memory store. Clears disk so memories don't persist across tests. */
