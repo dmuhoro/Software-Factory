@@ -1,6 +1,6 @@
 # Sprint 35 — Six Layers, One Groundwork
 
-**Status:** opened · **Opened:** 2026-10-22 · **Closed:** —
+**Status:** closed · **Opened:** 2026-10-22 · **Closed:** 2026-10-22
 
 **Thesis.** Six capabilities were adopted as modules in the previous sprint: an AST knowledge graph
 (Graphify), a compression adapter (headroom), security audit findings (the cloudflare
@@ -82,6 +82,29 @@ five boundary codes raised by routes (`BUG_DIAGNOSIS_CLASS_REQUIRED`, `PREVIEW_M
 registered in `src/utils/apiError.ts`. Each of them degraded to `INTERNAL_ERROR` and answered `500`
 with an incident id instead of its own status. WP-4 registers them; the gate is green.
 
+## Defects found in verification (and what they would have cost)
+
+Two more defects surfaced when the full suite was run, after all six work packages were committed.
+
+1. **The control plane could not start a run — and the one-writer rule had a race (regression from
+   WP-2).** `LoopControlService.submit` called `ExecutionLoopService.run` and immediately read the
+   run id, relying on the loop's prefix being synchronous. WP-2 introduced
+   `await DoctrineIsolationService.stageAsync(...)` before the record is created, so the id was
+   still empty at the check. Every submission through the control plane failed with
+   *"the loop resolved without creating a run record"* — which also masked the real refusal. Worse,
+   `activeByRepo` was set only after the check, so two submissions in the same tick could both pass
+   the busy check and start two runs on one repository: a breach of NC-2 (one writer), the exact
+   invariant the sprint promised not to touch. The fix claims the repository synchronously with a
+   reservation, races the record against the run's rejection, and re-throws the refusal by name.
+   Two regression tests were added (`two concurrent submissions … cannot both start a run`,
+   `a refusal in the run prefix surfaces by name`); both fail on the pre-fix code.
+2. **A raw HTTP client outside the egress boundary (pre-existing on `main`).**
+   `src/services/previewPlaneService.ts` imported `node:http` for a loopback readiness poll,
+   violating ADR-011 C. `test/egress-confinement.test.ts` was red on `bb3eca3` before the sprint
+   began — the sprint record previously noted only the L3 error-contract failure. The probe never
+   needed HTTP: a TCP connect to 127.0.0.1 answers "is the port listening", using `node:net` which
+   the module already imports. The gate is green and the server tree has no second egress client.
+
 ## Hard limits (do not violate in this sprint)
 
 - **No second writer.** Parallelism is read-only; the loop remains the only writer of a target
@@ -92,3 +115,35 @@ with an incident id instead of its own status. WP-4 registers them; the gate is 
   provider. An unpriced provider yields an unknown cost, not a plausible constant.
 - **Every new test is shown to fail without its fix**, and the negative result is recorded here
   with the commit that carries it.
+
+
+## Verification (2026-10-22, after all six work packages)
+
+| Gate | Result |
+|---|---|
+| `npm run lint` (`tsc --noEmit`) | clean |
+| `npm test` | **773 tests, 773 pass, 0 fail** |
+| `npm run knip` | clean (was red on `main` before this sprint: 16 unused exported types and 2 duplicate exports) |
+| `npm run build` | ok |
+| `npm run verify:docs` | 7 passed, 0 failed |
+| `npm run verify:tool-agnostic-boundary` | 3 passed, 0 failed |
+| `bash scripts/verify-layer4.sh` | 42 passed, 0 failed |
+
+The knip finding was pre-existing: `main` was red on both `test/egress-confinement.test.ts` and
+`npm run knip` when the sprint opened, in addition to the L3 error-contract failure this record
+already noted. All three are green now. Dead export surface was removed rather than ignored; the
+gate was not configured to skip anything.
+
+## Honest handover
+
+- **Safe now:** every one of the six adopted capabilities is on a live path with a test that fails
+  without it; the AST gate no longer refuses legitimate units; read-only work runs concurrently
+  while the loop remains the only writer; a run can learn from earlier runs without carrying a
+  target's words; a security finding cannot carry a secret; a model call cannot claim a cost the
+  operator never declared; model payloads shrink without losing evidence.
+- **Still open (not blocked by this sprint):** dashboards, paging and on-call remain `blocked` and
+  name their operator; the container/microVM executor for untrusted code remains `blocked`; the
+  preview plane's readiness probe is a listening-socket check, not an HTTP status check, so a dev
+  server that binds before it can serve reads as ready.
+- **Credential-blocked work:** live Appwrite storage and hosted model providers need operator-held
+  credentials; they are named as blocked, not silently skipped.

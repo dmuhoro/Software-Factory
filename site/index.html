@@ -172,6 +172,13 @@
     "owner": "operator"
   },
   {
+    "id": "pr-config-preflight",
+    "title": "Pull-request configuration preflight (opens nothing)",
+    "status": "live",
+    "summary": "Checks the allowlisted secret reference, the permitted host, the owner/name scope and the no-merge rule without opening a pull request; a green run with an invalid token proves no socket was opened.",
+    "proves": "npm run verify:pr-config"
+  },
+  {
     "id": "live-github-pull-request",
     "title": "Live GitHub pull request",
     "status": "blocked",
@@ -190,6 +197,125 @@
     "title": "External cloud runtime",
     "status": "blocked",
     "summary": "cloudroom-core / cloudroom.dev are a different repository and a hosted product; any live use needs that project's credentials and trust boundary.",
+    "owner": "operator"
+  },
+  {
+    "id": "preview-plane",
+    "title": "Preview plane",
+    "status": "live",
+    "summary": "After each commit, builds the target repo in an ephemeral worktree, runs its dev server on an ephemeral port, and proxies it through an iframe/screenshot endpoint with commit → preview mapping. Additive only — does not change the loop, doctrine, or any gate.",
+    "proves": "npm run verify:preview-plane"
+  },
+  {
+    "id": "bug-detective",
+    "title": "AI bug detective (advisory, bounded, fail-closed)",
+    "status": "live",
+    "summary": "Flags errors in the product, assigns a root-cause hypothesis and file:line pointers, and recommends a remediation. Advisory only — never writes to a target tree; any fix still runs VERIFY → REVIEW → COMMIT through L2 gates.",
+    "proves": "npm test -- test/bug-detective.test.ts"
+  },
+  {
+    "id": "dual-language-reporting",
+    "title": "Dual-language reporting (technical + founder/CEO)",
+    "status": "live",
+    "summary": "Every durable record renders in both technical vocabulary (proof digests, gate results, failure classes, commit SHAs) and founder/CEO vocabulary (plain-language status, decisions needed, outcomes). No figure appears without a named reproducing command.",
+    "proves": "npm test -- test/dual-language-report.test.ts"
+  },
+  {
+    "id": "tool-agnostic-interface",
+    "title": "Tool-agnostic IDE/CLI boundary",
+    "status": "live",
+    "summary": "The doctrine, gates, and evidence boundary live outside Cursor/Cline/any IDE. Editors are clients of the boundary, not authors of it; the same run record is consumable by the built-in panel, a CLI, or an IDE extension. The boundary answers a per-file knowledge-graph query and a repository-scoped symbol query, renders both vocabularies, and compresses a payload for a model or a frontend. It reads; it never writes.",
+    "proves": "npm run verify:tool-agnostic-boundary"
+  },
+  {
+    "id": "ast-structural-verification",
+    "title": "AST structural verification gate (Layer 2)",
+    "status": "live",
+    "summary": "The loop parses the files a unit changed into knowledge graphs and refuses a provable structural defect — a call to a name that is defined nowhere in the repository. Definitions are resolved against the import closure, so an import of an unchanged module is not a defect. Advisory findings (a forward reference to a file a later unit will create, an unused import) are reported without refusing the stage.",
+    "proves": "npm test -- test/ast-structural-gate.test.ts"
+  },
+  {
+    "id": "cross-run-memory",
+    "title": "Cross-run memory (Layer 3)",
+    "status": "live",
+    "summary": "What earlier runs of the factory learned about a unit: which attempts failed, in which class, and what verified. The loop writes a memory when an attempt fails and when a unit commits, reads the tenant's memory back before the next attempt, and names the memory ids it wrote and read on the run record. A memory stores the factory's own summary, never a target repository's content.",
+    "proves": "npm test -- test/cross-run-memory.test.ts"
+  },
+  {
+    "id": "security-audit",
+    "title": "Machine-readable security audit (Layer 5)",
+    "status": "live",
+    "summary": "Ten rules over parsed source — hardcoded credentials, dynamic code execution, command injection, disabled TLS verification, the \"none\" token algorithm, and more — each finding carrying a file, a line, a severity, a remediation, a confidence, and the evidence that produced it. Secret values are masked, so a finding can never carry a credential into the ledger.",
+    "proves": "npm test -- test/security-audit.test.ts"
+  },
+  {
+    "id": "model-call-cost",
+    "title": "Model call tracing with token, latency and cost (Layer 6)",
+    "status": "live",
+    "summary": "Every model call is traced with the sanctioned door it left through, the tokens the provider reported (or this service's honest estimate), the latency, and the cost — the cost only when the operator declared a price for that model. An unpriced model has an unknown cost, counted separately, never a zero cost.",
+    "proves": "npm test -- test/llm-tracing.test.ts"
+  },
+  {
+    "id": "context-compression",
+    "title": "Model context compression (Layer 7)",
+    "status": "live",
+    "summary": "The logs, refusals and diffs that go to a model are reduced before they leave, with every evidence marker — file:line, exit code, error code — protected and restored byte for byte. Source code is never compressed: the implementer must reproduce a file exactly. The run record carries what the compression saved.",
+    "proves": "npm test -- test/context-compression.test.ts"
+  },
+  {
+    "id": "observability-dashboards",
+    "title": "Dashboards, alerts, on-call",
+    "status": "blocked",
+    "summary": "The /metrics endpoint exists; paging, dashboards, and on-call routing do not. Names the operator who must unblock it.",
+    "owner": "operator"
+  },
+  {
+    "id": "post-deployment-observation",
+    "title": "Post-deployment health check and rollback",
+    "status": "blocked",
+    "summary": "A release must have a health check and rollback target; observation and automated rollback are not yet wired.",
+    "owner": "operator"
+  },
+  {
+    "id": "container-executor",
+    "title": "Container / microVM executor for untrusted code",
+    "status": "blocked",
+    "summary": "Replaces the restricted local execution adapter with a container or microVM boundary. Roadmap item 1.",
+    "owner": "operator"
+  },
+  {
+    "id": "hosted-deployment",
+    "title": "Hosted deployment target with isolated secret injection",
+    "status": "blocked",
+    "summary": "Connects one hosted deployment target with isolated secret injection. Roadmap item 2.",
+    "owner": "operator"
+  },
+  {
+    "id": "external-idp",
+    "title": "External identity provider / interactive login",
+    "status": "blocked",
+    "summary": "Anyone holding a tenant id and its secret has full tenant access; no interactive login or IdP exists yet.",
+    "owner": "operator"
+  },
+  {
+    "id": "horizontal-scale",
+    "title": "Horizontal scale via shared store",
+    "status": "blocked",
+    "summary": "Single-writer JSON ledger means exactly one replica; shared store required (NC-2, ADR-015, Proposed).",
+    "owner": "engineering"
+  },
+  {
+    "id": "founder-jobs-dry-runs",
+    "title": "Founder jobs and client-like dry runs with evidence packs",
+    "status": "blocked",
+    "summary": "Five founder jobs and three client-like dry runs with evidence packs. Roadmap item 4.",
+    "owner": "operator"
+  },
+  {
+    "id": "cycle-time-metrics",
+    "title": "Cycle time, defect rate, repair rate, recovery time, product outcomes",
+    "status": "blocked",
+    "summary": "Measures product outcomes across launches. Roadmap item 5.",
     "owner": "operator"
   }
 ]
@@ -210,9 +336,27 @@
     <tr><td>Adopting external skill content</td><td><span class="ok">live</span></td><td><code>npx tsx scripts/vendor-skill.ts --check</code></td></tr>
     <tr><td>Measured effect of the skills</td><td><span class="no">blocked</span></td><td>blocked — owner: harness: engineering; model run: operator</td></tr>
     <tr><td>Hosted frontier model</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
+    <tr><td>Pull-request configuration preflight (opens nothing)</td><td><span class="ok">live</span></td><td><code>npm run verify:pr-config</code></td></tr>
     <tr><td>Live GitHub pull request</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
     <tr><td>Sandboxed execution in the shipped image</td><td><span class="ok">live</span></td><td><code>npm run verify:image node</code></td></tr>
     <tr><td>External cloud runtime</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
+    <tr><td>Preview plane</td><td><span class="ok">live</span></td><td><code>npm run verify:preview-plane</code></td></tr>
+    <tr><td>AI bug detective (advisory, bounded, fail-closed)</td><td><span class="ok">live</span></td><td><code>npm test -- test/bug-detective.test.ts</code></td></tr>
+    <tr><td>Dual-language reporting (technical + founder/CEO)</td><td><span class="ok">live</span></td><td><code>npm test -- test/dual-language-report.test.ts</code></td></tr>
+    <tr><td>Tool-agnostic IDE/CLI boundary</td><td><span class="ok">live</span></td><td><code>npm run verify:tool-agnostic-boundary</code></td></tr>
+    <tr><td>AST structural verification gate (Layer 2)</td><td><span class="ok">live</span></td><td><code>npm test -- test/ast-structural-gate.test.ts</code></td></tr>
+    <tr><td>Cross-run memory (Layer 3)</td><td><span class="ok">live</span></td><td><code>npm test -- test/cross-run-memory.test.ts</code></td></tr>
+    <tr><td>Machine-readable security audit (Layer 5)</td><td><span class="ok">live</span></td><td><code>npm test -- test/security-audit.test.ts</code></td></tr>
+    <tr><td>Model call tracing with token, latency and cost (Layer 6)</td><td><span class="ok">live</span></td><td><code>npm test -- test/llm-tracing.test.ts</code></td></tr>
+    <tr><td>Model context compression (Layer 7)</td><td><span class="ok">live</span></td><td><code>npm test -- test/context-compression.test.ts</code></td></tr>
+    <tr><td>Dashboards, alerts, on-call</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
+    <tr><td>Post-deployment health check and rollback</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
+    <tr><td>Container / microVM executor for untrusted code</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
+    <tr><td>Hosted deployment target with isolated secret injection</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
+    <tr><td>External identity provider / interactive login</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
+    <tr><td>Horizontal scale via shared store</td><td><span class="no">blocked</span></td><td>blocked — owner: engineering</td></tr>
+    <tr><td>Founder jobs and client-like dry runs with evidence packs</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
+    <tr><td>Cycle time, defect rate, repair rate, recovery time, product outcomes</td><td><span class="no">blocked</span></td><td>blocked — owner: operator</td></tr>
   </table>
 <!-- capabilities:end -->
 
