@@ -13,12 +13,11 @@
 
 import { execFileSync, spawn, ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
-import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
-export interface PreviewSession {
+interface PreviewSession {
   sessionId: string;
   tenantId: string;
   repo: string;
@@ -34,7 +33,7 @@ export interface PreviewSession {
   pid?: number;
 }
 
-export interface PreviewScreenshots {
+interface PreviewScreenshots {
   sessionId: string;
   commit: string;
   screenshots: Array<{ path: string; takenAt: string; viewport: string }>;
@@ -54,18 +53,24 @@ function findFreePort(): Promise<number> {
   });
 }
 
-/** Probe whether a dev server is accepting connections on the given port. */
-async function isPortReady(port: number, timeoutMs = 1000): Promise<boolean> {
+/**
+ * Probe whether a dev server is accepting connections on the given port.
+ *
+ * This is a loopback liveness check, not model egress: it asks the kernel whether the socket is
+ * listening, never speaks to a vendor host. ADR-011 confines raw *network clients* to the one
+ * egress door; a TCP connect to 127.0.0.1 needs no HTTP client, and importing one here would put a
+ * second egress-capable module in the server tree.
+ */
+function isPortReady(port: number, timeoutMs = 1000): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/`, (res) => {
-      res.resume();
-      resolve(res.statusCode !== undefined && res.statusCode < 500);
-    });
-    req.on('error', () => resolve(false));
-    req.setTimeout(timeoutMs, () => {
-      req.destroy();
-      resolve(false);
-    });
+    const socket = net.connect({ host: '127.0.0.1', port });
+    const done = (ready: boolean): void => {
+      socket.destroy();
+      resolve(ready);
+    };
+    socket.setTimeout(timeoutMs, () => done(false));
+    socket.once('connect', () => done(true));
+    socket.once('error', () => done(false));
   });
 }
 
@@ -104,7 +109,7 @@ function git(repo: string, args: string[]): string {
   }).trim();
 }
 
-export class PreviewPlaneService {
+class PreviewPlaneService {
   private sessions = new Map<string, PreviewSession>();
   private procs = new Map<string, ChildProcess>();
   private readonly worktreeRoot: string;
