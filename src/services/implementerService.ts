@@ -5,6 +5,7 @@ import { ModelAssignment } from './doctrineService';
 import { TaskDocument, WorkUnit } from './taskDocumentService';
 import { IsolationManifest } from './doctrineIsolationService';
 import { injectSkills } from './skillInjectionService';
+import { readFiles } from './parallelReadService';
 
 /**
  * The implementer port.
@@ -88,12 +89,18 @@ function referencedFromCommand(repo: string, command: string, out: Set<string>):
   }
 }
 
-/**
- * Current content of the files the unit's own criteria/verify commands reference. The model must
- * reproduce a full file exactly, so it must see the file it is editing. Bounded and honestly
- * truncated: never invented content beyond the cut, and a change that needs hidden parts is refused.
- */
-function referencedFileContents(repo: string, unit: WorkUnit): Array<{ path: string; content: string; truncated: boolean }> {
+/** A file the unit's own criteria reference, with the content the model is shown. */
+export interface ReferencedFile {
+  path: string;
+  content: string;
+  /** True when the file was larger than the byte ceiling and was cut. */
+  truncated: boolean;
+  /** The size of the file on disk, before any truncation. */
+  originalBytes: number;
+}
+
+/** The repository files this unit's criteria and verification command reference. */
+function referencedPaths(repo: string, unit: WorkUnit): string[] {
   const paths = new Set<string>();
   for (const criterion of unit.criteria) {
     if (criterion.check) referencedFromCommand(repo, criterion.check, paths);
@@ -101,20 +108,61 @@ function referencedFileContents(repo: string, unit: WorkUnit): Array<{ path: str
   if (unit.verify) referencedFromCommand(repo, unit.verify, paths);
   if (paths.size === 0) return [];
   if (paths.size > MAX_REFERENCE_FILES) return [];
+  return [...paths].sort();
+}
 
-  const files: Array<{ path: string; content: string; truncated: boolean }> = [];
+/** Applies the total-bytes ceiling. Over the ceiling, nothing is shown: a partial context is a
+ *  context the model will guess around, and a guessed file is a fabricated file. */
+function assembleReferencedFiles(entries: ReferencedFile[]): ReferencedFile[] {
   let total = 0;
-  for (const relative of [...paths].sort()) {
+  for (const entry of entries) {
+    total += Buffer.byteLength(entry.content, 'utf8');
+    if (total > MAX_REFERENCE_TOTAL_BYTES) return [];
+  }
+  return entries;
+}
+
+/**
+ * Current content of the files the unit's own criteria/verify commands reference. The model must
+ * reproduce a full file exactly, so it must see the file it is editing. Bounded and honestly
+ * truncated: never invented content beyond the cut, and a change that needs hidden parts is refused.
+ */
+function referencedFileContents(repo: string, unit: WorkUnit): ReferencedFile[] {
+  const paths = referencedPaths(repo, unit);
+  if (!paths.length) return [];
+  const entries: ReferencedFile[] = paths.map((relative) => {
     const resolved = path.join(repo, relative);
     const bytes = fs.statSync(resolved).size;
     const truncated = bytes > MAX_REFERENCE_FILE_BYTES;
-    const content = fs.readFileSync(resolved, 'utf8');
-    const shown = truncated ? content.slice(0, MAX_REFERENCE_FILE_BYTES) : content;
-    total += Buffer.byteLength(shown, 'utf8');
-    if (total > MAX_REFERENCE_TOTAL_BYTES) return [];
-    files.push({ path: relative, content: shown, truncated });
+    const buffer = fs.readFileSync(resolved);
+    const shown = truncated ? buffer.subarray(0, MAX_REFERENCE_FILE_BYTES).toString('utf8') : buffer.toString('utf8');
+    return { path: relative, content: shown, truncated, originalBytes: bytes };
+  });
+  return assembleReferencedFiles(entries);
+}
+
+/**
+ * The same context, read in parallel (Layer 3 runtime).
+ *
+ * The loop reads these files on every attempt, and the reads are independent, so they are done
+ * concurrently. The bytes shown are the bytes the synchronous path shows — same ceiling, same
+ * truncation, same total-bytes rule — so the prompt a model receives does not depend on which
+ * path produced it.
+ */
+export async function readReferencedFiles(
+  repo: string,
+  unit: WorkUnit,
+  options: { concurrency?: number } = {},
+): Promise<ReferencedFile[]> {
+  const paths = referencedPaths(repo, unit);
+  if (!paths.length) return [];
+  const reads = await readFiles(repo, paths, { concurrency: options.concurrency, maxBytes: MAX_REFERENCE_FILE_BYTES });
+  const entries: ReferencedFile[] = [];
+  for (const read of reads) {
+    if (read.error || read.missing || read.content === undefined) continue;
+    entries.push({ path: read.path, content: read.content, truncated: read.truncated, originalBytes: read.originalBytes });
   }
-  return files;
+  return assembleReferencedFiles(entries);
 }
 
 /** Bounded view of the repository so the model sees what exists without a whole-tree dump. */
@@ -139,7 +187,11 @@ export function fileInventory(repo: string, limit = 400): string[] {
   return out.sort();
 }
 
-export function buildPrompts(request: ImplementRequest, advisory: { enabled: boolean; block: string } = { enabled: false, block: '' }): { system: string; task: string } {
+export function buildPrompts(
+  request: ImplementRequest,
+  advisory: { enabled: boolean; block: string } = { enabled: false, block: '' },
+  referenced?: ReferencedFile[],
+): { system: string; task: string } {
   const { unit, document } = request;
   const criteria = unit.criteria.map((criterion) => `- ${criterion.id}: ${criterion.text}${criterion.check ? ` (check: ${criterion.check})` : ''}`).join('\n');
   const inventory = fileInventory(request.repo).slice(0, 400);
@@ -176,8 +228,8 @@ export function buildPrompts(request: ImplementRequest, advisory: { enabled: boo
     'Repository files (bounded inventory):',
     inventory.join('\n'),
     '',
-    referencedFileContents(request.repo, unit).map((file) =>
-      `--- ${file.path} (current content, ${Buffer.byteLength(file.content, 'utf8')} bytes shown${file.truncated ? ' of ' + fs.statSync(path.join(request.repo, file.path)).size + '; content after this cut is NOT included: do not invent it, keep the file as-is beyond what you can see' : ''}) ---\n${file.content}\n--- end ${file.path} ---`
+    (referenced ?? referencedFileContents(request.repo, unit)).map((file) =>
+      `--- ${file.path} (current content, ${Buffer.byteLength(file.content, 'utf8')} bytes shown${file.truncated ? ' of ' + file.originalBytes + '; content after this cut is NOT included: do not invent it, keep the file as-is beyond what you can see' : ''}) ---\n${file.content}\n--- end ${file.path} ---`
     ).join('\n\n'),
     '',
     request.feedback ? `Previous attempt of this unit was refused. Fix exactly this:\n${request.feedback}` : '',

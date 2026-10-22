@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DoctrineService } from './doctrineService';
+import { readFiles } from './parallelReadService';
 
 /**
  * Repo-doctrine isolation.
@@ -39,6 +40,9 @@ export interface IsolationManifest {
   quarantine: QuarantineEntry[];
   childEnv: Record<string, string>;
   stagedAt: string;
+  /** How the target's instruction files were read: 'parallel' (the loop's path) or 'sequential'.
+   *  Recorded so a run record says which path produced its evidence. */
+  readStrategy: 'parallel' | 'sequential';
 }
 
 /**
@@ -53,6 +57,8 @@ export interface IsolationEvidence {
   targetRepo: string;
   stagedAt: string;
   quarantine: QuarantineEntry[];
+  /** How the target's instruction files were read when this run staged its isolation. */
+  readStrategy: 'parallel' | 'sequential';
 }
 
 const TARGET_INSTRUCTION_FILES = [
@@ -151,10 +157,12 @@ export class DoctrineIsolationService {
   }
 
   /**
-   * Stages isolation for a run against `targetRepo`. Throws — before any work happens — when the
-   * doctrine root is unusable, is inside the target repository, or fails its manifest check.
+   * The rules half of staging: the checks that must hold before any work happens.
+   * Throws when the doctrine root is unusable, is inside the target repository, or fails its
+   * manifest check. Shared by the synchronous and the parallel staging path so there is one
+   * set of rules and not two that can drift.
    */
-  public static stage(targetRepo: string, extraEnv: Record<string, string> = {}): IsolationManifest {
+  private static validate(targetRepo: string): { repo: string; root: string; digest: string } {
     const repo = path.resolve(targetRepo);
     if (!fs.existsSync(path.join(repo, '.git'))) throw fail('TARGET_REPOSITORY_NOT_GIT', repo);
 
@@ -174,13 +182,41 @@ export class DoctrineIsolationService {
       const detail = [...verification.mismatches.map((item) => `changed:${item}`), ...verification.missing.map((item) => `missing:${item}`), ...verification.unexpected.map((item) => `unhashed:${item}`)].join(',');
       throw fail('DOCTRINE_MANIFEST_MISMATCH', detail);
     }
-    const digest = DoctrineService.digest();
+    return { repo, root, digest: DoctrineService.digest() };
+  }
 
-    const quarantine: QuarantineEntry[] = listFiles(repo).map((relativePath) => {
-      const full = path.join(repo, relativePath);
-      const buffer = fs.readFileSync(full);
-      return { relativePath, sha256: sha256(buffer), bytes: buffer.byteLength, action: 'recorded-not-read' as const };
+  /** Turn the bytes of the target's instruction files into the quarantine record. */
+  private static quarantineFrom(repo: string, files: string[], buffers: Map<string, Buffer>): QuarantineEntry[] {
+    return files.map((relativePath) => {
+      const buffer = buffers.get(relativePath);
+      // A file that could not be read is still recorded: it exists in the target, it was not
+      // read, and a run that cannot read it must not pretend the quarantine is empty.
+      const bytes = buffer ?? Buffer.alloc(0);
+      return {
+        relativePath,
+        sha256: buffer ? sha256(buffer) : 'sha256:unreadable',
+        bytes: bytes.byteLength,
+        action: 'recorded-not-read' as const,
+      };
     });
+  }
+
+  /**
+   * Stages isolation for a run against `targetRepo`. Throws — before any work happens — when the
+   * doctrine root is unusable, is inside the target repository, or fails its manifest check.
+   */
+  public static stage(targetRepo: string, extraEnv: Record<string, string> = {}): IsolationManifest {
+    const { repo, root, digest } = this.validate(targetRepo);
+    const files = listFiles(repo);
+    const buffers = new Map<string, Buffer>();
+    for (const relativePath of files) {
+      try {
+        buffers.set(relativePath, fs.readFileSync(path.join(repo, relativePath)));
+      } catch {
+        // Recorded as unreadable below; the run continues to quarantine it.
+      }
+    }
+    const quarantine = this.quarantineFrom(repo, files, buffers);
 
     return {
       doctrineRoot: root,
@@ -189,6 +225,41 @@ export class DoctrineIsolationService {
       quarantine,
       childEnv: this.childEnv(root, digest, extraEnv),
       stagedAt: new Date().toISOString(),
+      readStrategy: 'sequential',
+    };
+  }
+
+  /**
+   * Stages isolation with the target's instruction files read in parallel.
+   *
+   * The work is identical to `stage` — the same validation, the same file list, the same hashes
+   * over the same bytes — but the reads of the target's instruction files overlap instead of
+   * queueing. The hash is taken over the raw bytes, so a file that is not valid UTF-8 hashes
+   * identically here and in the re-check at `report`.
+   */
+  public static async stageAsync(
+    targetRepo: string,
+    extraEnv: Record<string, string> = {},
+    options: { concurrency?: number } = {},
+  ): Promise<IsolationManifest> {
+    const { repo, root, digest } = this.validate(targetRepo);
+    const files = listFiles(repo);
+    const reads = await readFiles(repo, files, { concurrency: options.concurrency, maxBytes: 8 * 1024 * 1024 });
+    const buffers = new Map<string, Buffer>();
+    for (const read of reads) {
+      if (read.base64 === undefined) continue;
+      buffers.set(read.path, Buffer.from(read.base64, 'base64'));
+    }
+    const quarantine = this.quarantineFrom(repo, files, buffers);
+
+    return {
+      doctrineRoot: root,
+      doctrineDigest: digest,
+      targetRepo: repo,
+      quarantine,
+      childEnv: this.childEnv(root, digest, extraEnv),
+      stagedAt: new Date().toISOString(),
+      readStrategy: 'parallel',
     };
   }
 
@@ -201,6 +272,7 @@ export class DoctrineIsolationService {
       targetRepo: manifest.targetRepo,
       stagedAt: manifest.stagedAt,
       quarantine: manifest.quarantine.map((entry) => ({ ...entry })),
+      readStrategy: manifest.readStrategy,
     };
   }
 

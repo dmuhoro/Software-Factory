@@ -271,6 +271,8 @@ test('the loop commits two verified units unattended, with every gate executed a
 
     // Isolation: the target's instruction file was recorded and never entered a prompt.
     assert.ok(record.quarantineCount >= 1, 'the target instruction file was quarantined');
+    // The live path staged isolation with parallel reads; the record says which path ran.
+    assert.equal(record.isolation?.readStrategy, 'parallel', 'the run did not stage isolation with parallel reads');
     assert.ok(stub.prompts.length >= 2);
     for (const prompt of stub.prompts) {
       assert.ok(!prompt.includes('TARGET INSTRUCTIONS'), 'the target repository instructed the loop');

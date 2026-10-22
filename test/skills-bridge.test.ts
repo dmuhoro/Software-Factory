@@ -226,7 +226,7 @@ function reviewRequest(): import('../src/services/reviewService').ReviewRequest 
     document: { title: 'Doc', goal: 'Ship', constraints: [], models: {}, milestones: [], sourceHash: 'sha256:doc' },
     assignment: { role: 'reviewer', tier: 'frontier', providerId: 'stub', model: 'stub', source: 'task-document' },
     doctrineLines: ['R-13: nothing commits without review approval'],
-    isolation: { doctrineRoot: '/d', doctrineDigest: 'sha256:deadbeef', targetRepo: repo, quarantine: [], childEnv: {}, stagedAt: 'now' },
+    isolation: { doctrineRoot: '/d', doctrineDigest: 'sha256:deadbeef', targetRepo: repo, quarantine: [], childEnv: {}, stagedAt: 'now', readStrategy: 'sequential' as const },
     proof: { passed: true, repo, head: 'HEAD', checks: [], claimedFiles: [], observedFiles: [], rejectedNarration: [], recordedAt: 'now' },
     timeoutMs: 60_000,
   };

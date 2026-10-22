@@ -8,7 +8,7 @@ import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsolationService';
 import { FrontierModelService } from './frontierModelService';
 import { ResourceGovernorService } from './resourceGovernorService';
-import { ImplementerService, buildPrompts, type ImplementRequest } from './implementerService';
+import { ImplementerService, buildPrompts, readReferencedFiles, type ImplementRequest } from './implementerService';
 import { ReviewService, buildReviewPrompts, REVIEW_AXES, type ReviewRequest, type ReviewAxis } from './reviewService';
 import { commitUnit, readLoopVersion } from './commitService';
 import { collectGroundTruth, proofDigest, type GroundTruthProof } from './groundTruthService';
@@ -291,7 +291,12 @@ export class ExecutionLoopService {
       }
     }
 
-    const isolation = DoctrineIsolationService.stage(repo, options.env ?? {});
+    // The target's instruction files are hashed for the quarantine manifest before any work
+    // starts. Those reads are independent, so they run in parallel (Layer 2/3 read-only
+    // parallelism); the rules that decide *whether* to run them are unchanged.
+    const isolation = await DoctrineIsolationService.stageAsync(repo, options.env ?? {}, {
+      concurrency: loop.concurrency.maxParallelDefault,
+    });
     const document = loadTaskDocument(path.resolve(options.taskDocument));
     const units = decompose(document, { maxAcceptanceCriteriaPerMilestone: loop.unit.maxAcceptanceCriteriaPerMilestone });
     const assignments = DoctrineService.allAssignments(document.models);
@@ -584,7 +589,10 @@ export class ExecutionLoopService {
         // A quarantined instruction file is recorded and never read — so prove its content did not
         // enter this payload before the payload leaves the process. Done here, before the model
         // call, so a leak is refused before any socket is opened. (Sprint 29, WP-1; ADR-008.)
-        const implementerPrompts = buildPrompts(implementRequest, SkillInjectionService.advisoryForImplementer(attempt.attempt));
+        // The unit's referenced files are read in parallel before the prompt is built, so the
+        // model context is assembled from concurrent reads rather than a serial queue.
+        const referenced = await readReferencedFiles(repo, unit, { concurrency: loop.concurrency.maxParallelDefault });
+        const implementerPrompts = buildPrompts(implementRequest, SkillInjectionService.advisoryForImplementer(attempt.attempt), referenced);
         DoctrineIsolationService.assertNoTargetInstructionContent(isolation, {
           'implementer.system': implementerPrompts.system,
           'implementer.task': implementerPrompts.task,
