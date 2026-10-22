@@ -29,12 +29,12 @@ import {
 } from './repoKnowledgeIndex';
 import type { SymbolNode } from './astKnowledgeGraph';
 
-export type ASTIssueType =
+type ASTIssueType =
   | 'undefined-import'
   | 'undefined-call'
   | 'unused-import';
 
-export type ASTIssueSeverity = 'blocking' | 'advisory';
+type ASTIssueSeverity = 'blocking' | 'advisory';
 
 export interface ASTVerificationInput {
   /** Files to verify (relative to repo root). */
@@ -45,7 +45,7 @@ export interface ASTVerificationInput {
   enforce?: boolean;
 }
 
-export interface ASTVerificationIssue {
+interface ASTVerificationIssue {
   file: string;
   type: ASTIssueType;
   severity: ASTIssueSeverity;
@@ -55,7 +55,7 @@ export interface ASTVerificationIssue {
   line?: number;
 }
 
-export interface ASTVerificationResult {
+interface ASTVerificationResult {
   /** True when there is no blocking issue (or enforce is off). */
   passed: boolean;
   /** All issues, blocking first. */
@@ -109,7 +109,7 @@ function isTypeScriptFile(file: string): boolean {
 }
 
 /** Verify files using AST structural analysis. */
-export function verifyAST(input: ASTVerificationInput): ASTVerificationResult {
+function verifyAST(input: ASTVerificationInput): ASTVerificationResult {
   const repo = path.resolve(input.repo);
   const seedFiles = input.files
     .map((file) => path.normalize(file))
@@ -235,16 +235,16 @@ export function verifyAST(input: ASTVerificationInput): ASTVerificationResult {
 }
 
 /** Scan a repository for source files without verifying anything (used by the L7 repo query). */
-export function listRepositorySources(repo: string, maxFiles?: number): { files: string[]; truncated: boolean } {
+function listRepositorySources(repo: string, maxFiles?: number): { files: string[]; truncated: boolean } {
   const scan = scanRepositorySources(repo, maxFiles ? { maxFiles } : {});
   return { files: scan.files, truncated: scan.truncated };
 }
 
-export interface ASTVerificationAdapter {
+interface ASTVerificationAdapter {
   verify(input: ASTVerificationInput): ASTVerificationResult;
 }
 
-export class ASTVerificationAdapterImpl implements ASTVerificationAdapter {
+class ASTVerificationAdapterImpl implements ASTVerificationAdapter {
   verify(input: ASTVerificationInput): ASTVerificationResult {
     return verifyAST(input);
   }

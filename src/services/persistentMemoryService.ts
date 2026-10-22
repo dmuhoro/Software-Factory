@@ -210,4 +210,3 @@ export class PersistentMemoryService {
   }
 }
 
-export const persistentMemoryService = PersistentMemoryService;

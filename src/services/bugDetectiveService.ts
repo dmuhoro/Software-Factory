@@ -46,7 +46,7 @@ export interface DiagnosisInput {
   sourceFile?: string;
 }
 
-export interface DiagnosisPointer {
+interface DiagnosisPointer {
   file: string;
   line?: number;
   /** Why this location matters — what the detective sees there. */
@@ -58,7 +58,7 @@ export interface DiagnosisPointer {
   confidence: number;
 }
 
-export interface Diagnosis {
+interface Diagnosis {
   /** Stable id for the diagnosis, derived from the input so the same input yields the same id. */
   id: string;
   /** The failure class being diagnosed. */
@@ -78,7 +78,7 @@ export interface Diagnosis {
 }
 
 /** A machine-readable security audit finding. */
-export interface SecurityFinding {
+interface SecurityFinding {
   /** Stable id for the finding. */
   id: string;
   /** Severity: 'critical' | 'high' | 'medium' | 'low' | 'info'. */
@@ -340,7 +340,7 @@ function auditSecurity(input: DiagnosisInput, graph?: KnowledgeGraph): SecurityF
  * When `sourceText` and `sourceFile` are provided, the AST knowledge graph is used to resolve
  * real file:line pointers for symbols named in the failure (Graphify integration).
  */
-export function diagnose(input: DiagnosisInput): Diagnosis {
+function diagnose(input: DiagnosisInput): Diagnosis {
   const inputPointers = extractInputPointers(input);
   const astPointers = extractASTPointers(input);
   const pointers = [...inputPointers, ...astPointers];
@@ -366,11 +366,11 @@ function cryptoHash(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 16);
 }
 
-export interface BugDetectiveService {
+interface BugDetectiveService {
   diagnose(input: DiagnosisInput): Diagnosis;
 }
 
-export class BugDetectiveServiceImpl implements BugDetectiveService {
+class BugDetectiveServiceImpl implements BugDetectiveService {
   diagnose(input: DiagnosisInput): Diagnosis {
     return diagnose(input);
   }

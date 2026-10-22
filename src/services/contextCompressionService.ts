@@ -57,7 +57,7 @@ export function createCollector(): CompressionCollector {
  * An empty segment is not compressed and not counted: there is nothing to save, and counting it
  * would make the ratio a smaller number than the truth.
  */
-export function compressSegment(
+function compressSegment(
   text: string,
   level: CompressionLevel = 'medium',
   collector?: CompressionCollector,
@@ -108,12 +108,12 @@ export function collectorTotals(collector: CompressionCollector): {
   };
 }
 
-export interface ContextCompressionService {
+interface ContextCompressionService {
   compressLog(text: string, collector?: CompressionCollector): ContextCompression;
   compressDiff(text: string, collector?: CompressionCollector): ContextCompression;
 }
 
-export class ContextCompressionServiceImpl implements ContextCompressionService {
+class ContextCompressionServiceImpl implements ContextCompressionService {
   compressLog(text: string, collector?: CompressionCollector): ContextCompression {
     return compressLog(text, collector);
   }
@@ -122,4 +122,3 @@ export class ContextCompressionServiceImpl implements ContextCompressionService 
   }
 }
 
-export const contextCompressionService = new ContextCompressionServiceImpl();

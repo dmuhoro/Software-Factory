@@ -27,7 +27,7 @@ import { buildKnowledgeGraph, type KnowledgeGraph } from './astKnowledgeGraph';
 /** The hard ceiling on concurrent reads. Doctrine's `maxParallelCeiling` is 8. */
 export const MAX_READ_CONCURRENCY = 8;
 /** The default number of concurrent reads (doctrine's `maxParallelDefault`). */
-export const DEFAULT_READ_CONCURRENCY = 4;
+const DEFAULT_READ_CONCURRENCY = 4;
 
 export interface ParallelReadOptions {
   /** How many reads may be in flight at once. Clamped to [1, MAX_READ_CONCURRENCY]. */
@@ -63,7 +63,7 @@ export interface PathStat {
   error?: string;
 }
 
-export interface ParsedSource {
+interface ParsedSource {
   path: string;
   graph?: KnowledgeGraph;
   error?: string;
@@ -195,7 +195,7 @@ export async function statPaths(repo: string, paths: readonly string[], options:
  * overlap rather than queueing behind one another; the ordering guarantee is
  * what makes the result reproducible.
  */
-export async function parseSourceFiles(
+async function parseSourceFiles(
   repo: string,
   paths: readonly string[],
   options: ParallelReadOptions = {},
@@ -215,13 +215,13 @@ export async function parseSourceFiles(
   );
 }
 
-export interface ParallelReadService {
+interface ParallelReadService {
   readFiles(repo: string, paths: readonly string[], options?: ParallelReadOptions & { maxBytes?: number }): Promise<FileRead[]>;
   statPaths(repo: string, paths: readonly string[], options?: ParallelReadOptions): Promise<PathStat[]>;
   parseSourceFiles(repo: string, paths: readonly string[], options?: ParallelReadOptions): Promise<ParsedSource[]>;
 }
 
-export class ParallelReadServiceImpl implements ParallelReadService {
+class ParallelReadServiceImpl implements ParallelReadService {
   readFiles(repo: string, paths: readonly string[], options: ParallelReadOptions & { maxBytes?: number } = {}): Promise<FileRead[]> {
     return readFiles(repo, paths, options);
   }
@@ -233,4 +233,3 @@ export class ParallelReadServiceImpl implements ParallelReadService {
   }
 }
 
-export const parallelReadService = new ParallelReadServiceImpl();

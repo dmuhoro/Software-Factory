@@ -12,7 +12,7 @@
  * reproduce with a named command.
  */
 
-export type Vocabulary = 'technical' | 'founder';
+type Vocabulary = 'technical' | 'founder';
 
 export interface DualLanguageRecord {
   runId: string;
@@ -41,7 +41,7 @@ export interface UnitSummary {
   blockedBy?: string;
 }
 
-export interface GateSummary {
+interface GateSummary {
   id: string;
   stage: string;
   passed: boolean;

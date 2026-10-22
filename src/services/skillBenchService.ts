@@ -131,7 +131,7 @@ export const ADOPTION_MIN_FIRST_ATTEMPT_DELTA = 0.1;
 export const ADOPTION_SIGNIFICANCE = 0.05;
 
 /** The power the reported minimum detectable effect is computed at. */
-export const ADOPTION_POWER = 0.8;
+const ADOPTION_POWER = 0.8;
 
 /** The z for a 95% interval. */
 const Z_95 = 1.959963984540054;

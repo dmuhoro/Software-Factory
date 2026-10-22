@@ -43,7 +43,7 @@ export interface BoundaryQuery {
 }
 
 /** A repository-scoped query: where is this symbol defined? */
-export interface RepositoryQuery {
+interface RepositoryQuery {
   /** Repository root to search. */
   repo: string;
   /** Symbol name to look for. */
@@ -52,7 +52,7 @@ export interface RepositoryQuery {
   maxFiles?: number;
 }
 
-export interface SymbolLookup {
+interface SymbolLookup {
   symbol: SymbolNode | undefined;
   callers: Array<{ from: string; to: string; kind: string }>;
   references: Array<{ from: string; to: string; kind: string }>;
@@ -107,7 +107,7 @@ export function queryBoundary(input: BoundaryQuery): BoundaryResponse {
  * and `truncated` says whether the scan stopped at its ceiling. A caller can
  * therefore tell "defined nowhere" from "not seen yet".
  */
-export function queryRepository(input: RepositoryQuery): SymbolSearchResult {
+function queryRepository(input: RepositoryQuery): SymbolSearchResult {
   return searchRepositorySymbols(input.repo, input.symbol, input.maxFiles ? { maxFiles: input.maxFiles } : {});
 }
 
@@ -140,7 +140,7 @@ export function compressForFrontendBoundary(text: string): CompressionResult {
   return compressForFrontend(text);
 }
 
-export interface ToolAgnosticBoundaryService {
+interface ToolAgnosticBoundaryService {
   queryBoundary(input: BoundaryQuery): BoundaryResponse;
   queryRepository(input: RepositoryQuery): SymbolSearchResult;
   renderRunRecord(record: DualLanguageRecord): { technical: string; founder: string };
@@ -158,7 +158,7 @@ export interface ToolAgnosticBoundaryService {
   compressForFrontend(text: string): CompressionResult;
 }
 
-export class ToolAgnosticBoundaryServiceImpl implements ToolAgnosticBoundaryService {
+class ToolAgnosticBoundaryServiceImpl implements ToolAgnosticBoundaryService {
   queryBoundary(input: BoundaryQuery): BoundaryResponse {
     return queryBoundary(input);
   }
@@ -188,4 +188,3 @@ export class ToolAgnosticBoundaryServiceImpl implements ToolAgnosticBoundaryServ
   }
 }
 
-export const toolAgnosticBoundary = new ToolAgnosticBoundaryServiceImpl();

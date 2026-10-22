@@ -26,7 +26,7 @@
 
 import * as ts from 'typescript';
 
-export type SymbolKind =
+type SymbolKind =
   | 'function'
   | 'class'
   | 'variable'

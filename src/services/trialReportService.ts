@@ -46,7 +46,7 @@ export interface CommitFact {
   fixedBy?: string[];
 }
 
-export interface TrialTotals {
+interface TrialTotals {
   runs: number;
   runsByStatus: Record<string, number>;
   units: {
@@ -86,10 +86,6 @@ export interface TrialReport {
   notes: TrialNote[];
   /** Every figure the inputs could not support, named — the report's honesty ledger. */
   underivable: string[];
-}
-
-export function utcDayOf(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 10);
 }
 
 function parseInstant(value: string | undefined): number | null {
@@ -373,7 +369,7 @@ export function renderTrialReport(report: TrialReport): string {
 }
 
 /** Notes live beside the ledger so they are as durable as the runs they judge. */
-export function trialNotesPath(ledgerFile: string): string {
+function trialNotesPath(ledgerFile: string): string {
   return path.join(path.dirname(ledgerFile), 'trial-notes.jsonl');
 }
 

@@ -27,7 +27,7 @@ import {
 } from './astKnowledgeGraph';
 
 /** Directories never worth indexing: dependencies, build output, and our own ledgers. */
-export const IGNORED_DIRECTORIES = new Set([
+const IGNORED_DIRECTORIES = new Set([
   '.git',
   'node_modules',
   'dist',

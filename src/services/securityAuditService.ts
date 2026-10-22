@@ -20,9 +20,9 @@
 
 import * as ts from 'typescript';
 
-export type SecuritySeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+type SecuritySeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
-export interface SecurityFinding {
+interface SecurityFinding {
   /** Stable id for the finding. */
   id: string;
   /** The rule that fired. */
@@ -376,7 +376,7 @@ function auditFile(file: AuditFile): Omit<SecurityFinding, 'id'>[] {
 const SEVERITY_ORDER: Record<SecuritySeverity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 
 /** The rules this service can fire. */
-export const SECURITY_AUDIT_RULES = [
+const SECURITY_AUDIT_RULES = [
   'hardcoded-secret',
   'hardcoded-private-key',
   'dynamic-code-execution',

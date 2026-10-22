@@ -27,7 +27,7 @@ export interface CompressionInput {
   target?: 'llm' | 'frontend' | 'storage';
 }
 
-export interface CompressionAdapterResult {
+interface CompressionAdapterResult {
   /** Compressed text as base64. */
   compressed: string;
   /** Original byte length. */
@@ -41,7 +41,7 @@ export interface CompressionAdapterResult {
 }
 
 /** Compress text through the adapter. */
-export function compressAdapter(input: CompressionInput): CompressionAdapterResult {
+function compressAdapter(input: CompressionInput): CompressionAdapterResult {
   let result: CompressionResult;
   switch (input.target) {
     case 'llm':
@@ -66,23 +66,23 @@ export function compressAdapter(input: CompressionInput): CompressionAdapterResu
 }
 
 /** Decompress text back to original. */
-export function decompressAdapter(compressedBase64: string): string {
+function decompressAdapter(compressedBase64: string): string {
   return decompressOutput(compressedBase64);
 }
 
 /** Round-trip check. */
-export function roundTripAdapter(text: string, level: 'light' | 'medium' | 'aggressive' = 'light'): boolean {
+function roundTripAdapter(text: string, level: 'light' | 'medium' | 'aggressive' = 'light'): boolean {
   const result = compressOutput(text, level);
   return decompressOutput(result.compressed) === text;
 }
 
-export interface CompressionAdapter {
+interface CompressionAdapter {
   compress(input: CompressionInput): CompressionAdapterResult;
   decompress(compressedBase64: string): string;
   roundTrip(text: string, level?: 'light' | 'medium' | 'aggressive'): boolean;
 }
 
-export class CompressionAdapterImpl implements CompressionAdapter {
+class CompressionAdapterImpl implements CompressionAdapter {
   compress(input: CompressionInput): CompressionAdapterResult {
     return compressAdapter(input);
   }

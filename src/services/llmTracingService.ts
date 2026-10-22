@@ -243,4 +243,3 @@ export class LLMTracingService {
   }
 }
 
-export const llmTracingService = LLMTracingService;
