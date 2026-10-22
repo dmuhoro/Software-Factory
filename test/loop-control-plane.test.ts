@@ -196,6 +196,47 @@ test('a second submission for a repository with a live run is refused', async ()
   }
 });
 
+test('two concurrent submissions for one repository cannot both start a run', async () => {
+  const { repo, task } = cleanRepo('race', CHECK);
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  const blocking = http.createServer((request, response) => {
+    request.on('data', () => {});
+    request.on('end', () => { void hold.then(() => { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ choices: [{ message: { content: '```json\n{"files":[]}\n```' } }] })); }); });
+  });
+  await new Promise<void>((resolve) => blocking.listen(0, '127.0.0.1', resolve));
+  const address = blocking.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  FrontierModelService.register({ tenantId: TENANT, id: 'race-blocking', kind: 'local', baseUrl: `http://127.0.0.1:${port}/v1`, modelIds: ['stub-code'] });
+  try {
+    // The run's prefix awaits disk I/O before the record exists. Two submissions issued in the same
+    // tick must still serialize: the repository is claimed synchronously, not after the first await.
+    const results = await Promise.allSettled([
+      LoopControlService.submit({ tenantId: TENANT, repo, taskDocument: task, attemptCap: 1 }),
+      LoopControlService.submit({ tenantId: TENANT, repo, taskDocument: task, attemptCap: 1 }),
+    ]);
+    const fulfilled = results.filter((result) => result.status === 'fulfilled');
+    const refused = results.filter((result) => result.status === 'rejected');
+    assert.equal(fulfilled.length, 1, 'two concurrent submissions both started a run on one repository');
+    assert.equal(refused.length, 1);
+    assert.match(String((refused[0] as PromiseRejectedResult).reason), /LOOP_RUN_ALREADY_ACTIVE/);
+    release();
+    await LoopControlService.whenSettled((fulfilled[0] as PromiseFulfilledResult<{ runId: string }>).value.runId);
+  } finally {
+    release();
+    await new Promise<void>((resolve) => blocking.close(() => resolve()));
+  }
+});
+
+test('a refusal in the run prefix surfaces by name, not as a phantom-run fault', async () => {
+  const { repo, task } = cleanRepo('dirty', CHECK);
+  fs.writeFileSync(path.join(repo, 'untracked.txt'), 'dirty\n');
+  await assert.rejects(
+    () => LoopControlService.submit({ tenantId: TENANT, repo, taskDocument: task }),
+    /REPO_NOT_CLEAN/,
+  );
+});
+
 // ── the host-resource refusal, driven through the real loop ─────────────────
 
 const BENIGN_SAMPLE = { cpus: 8, freeMemMb: 8192, loadAvgPerCpu: 0.25 };

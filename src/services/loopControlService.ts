@@ -100,7 +100,19 @@ export class LoopControlService {
       throw new Error(`TENANT_CONCURRENCY_LIMIT:${admission.reasons.join(';')}`);
     }
 
+    // Claim the repository synchronously, before the run's first await. The record is created only
+    // after the preflight and doctrine staging have read from disk, so a second submission could
+    // otherwise pass the `busy` check while the first is still starting. The one-writer rule (NC-2)
+    // must not depend on how many I/O awaits the run's prefix happens to contain. The placeholder is
+    // replaced by the real run id the moment the record exists.
+    const reservation = `reserving:${leaseId}`;
+    this.activeByRepo.set(repo, reservation);
+
     let runId = '';
+    let markCreated = (): void => {};
+    const recordCreated = new Promise<void>((resolve) => {
+      markCreated = resolve;
+    });
     const runPromise = ExecutionLoopService.run({
       repo,
       taskDocument,
@@ -114,23 +126,35 @@ export class LoopControlService {
             DurableStore.upsert('factoryLoopRuns', id, { ...existing, idempotencyKey: input.idempotencyKey } as unknown as Record<string, unknown>);
           }
         }
+        markCreated();
       },
     });
 
-    if (!runId) {
-      // The run refused before it created a record (dirty tree, unreadable document, doctrine
-      // drift). Release the reserved slot and surface the real refusal rather than reporting a
-      // run that does not exist.
+    // The prefix is asynchronous, so wait for the record (or the refusal) rather than reading
+    // `runId` synchronously. A rejection carries the real refusal — a broken host, a dirty tree, an
+    // unreadable document — and is surfaced by name instead of as a phantom-run internal fault.
+    const settled = runPromise.then(
+      () => undefined,
+      (cause) => {
+        throw cause instanceof Error ? cause : new Error(String(cause));
+      },
+    );
+    try {
+      await Promise.race([recordCreated, settled]);
+    } catch (cause) {
+      if (this.activeByRepo.get(repo) === reservation) this.activeByRepo.delete(repo);
       TenantQueueService.release(leaseId);
-      await runPromise;
+      throw cause;
+    }
+
+    if (!runId) {
+      if (this.activeByRepo.get(repo) === reservation) this.activeByRepo.delete(repo);
+      TenantQueueService.release(leaseId);
       throw new Error('the loop resolved without creating a run record');
     }
 
-// The run's synchronous prefix has already created its record, so the repository is now
-      // claimed. Registering synchronously closes the window where a second submission could pass
-      // the `busy` check above. If the driver resolved without ever creating a record it has a
-      // bug, not a domain condition: throw a plain internal fault, never a phantom run id.
-      this.activeByRepo.set(repo, runId);
+    // The record exists, so the repository is now claimed by the real run id.
+    this.activeByRepo.set(repo, runId);
     this.active.set(runId, { runId, repo, tenantId: input.tenantId, settled: runPromise });
     const release = (): void => {
       this.active.delete(runId);
