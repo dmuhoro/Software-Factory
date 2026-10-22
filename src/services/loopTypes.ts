@@ -143,6 +143,16 @@ export interface LoopRunRecord {
    *  this run created; `consulted` are the ids it read back before an attempt. Both are ids, so
    *  the evidence is checkable rather than a claim. */
   memories?: { recorded: string[]; consulted: string[] };
+  /** What the run's model context compression saved (Sprint 35, WP-6). `segments` is how many
+   *  payloads were reduced, `originalBytes` and `compressedBytes` are the sizes before and
+   *  after, and `evidencePreserved` is how many evidence markers were protected. */
+  contextCompression?: {
+    segments: number;
+    originalBytes: number;
+    compressedBytes: number;
+    ratio: number;
+    evidencePreserved: number;
+  };
 }
 
 interface SlimCheck {

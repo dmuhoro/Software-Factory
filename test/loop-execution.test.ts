@@ -273,6 +273,11 @@ test('the loop commits two verified units unattended, with every gate executed a
     assert.ok(record.quarantineCount >= 1, 'the target instruction file was quarantined');
     // The live path staged isolation with parallel reads; the record says which path ran.
     assert.equal(record.isolation?.readStrategy, 'parallel', 'the run did not stage isolation with parallel reads');
+
+    // Layer 7 context compression ran on the model's payloads, and the record says what it saved.
+    assert.ok(record.contextCompression, 'the run record carries no context-compression evidence');
+    assert.ok((record.contextCompression?.segments ?? 0) >= 1, 'no model payload was compressed');
+    assert.ok((record.contextCompression?.originalBytes ?? 0) >= (record.contextCompression?.compressedBytes ?? 0));
     assert.ok(stub.prompts.length >= 2);
     for (const prompt of stub.prompts) {
       assert.ok(!prompt.includes('TARGET INSTRUCTIONS'), 'the target repository instructed the loop');

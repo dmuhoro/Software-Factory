@@ -7,6 +7,7 @@ import { TaskDocument, WorkUnit } from './taskDocumentService';
 import { IsolationManifest } from './doctrineIsolationService';
 import { GroundTruthProof } from './groundTruthService';
 import { injectSkills } from './skillInjectionService';
+import { compressDiff, compressLog, type CompressionCollector } from './contextCompressionService';
 
 /**
  * The review port. A judgement-tier model reads the working-tree diff and the verification
@@ -264,7 +265,12 @@ const REVIEW_SYSTEM = (doctrineLines: string[], axis: ReviewAxis): string => {
   return lines.join('\n');
 };
 
-export function buildReviewPrompts(request: ReviewRequest, axis: ReviewAxis = 'standards', advisory: { enabled: boolean; block: string } = { enabled: false, block: '' }): { system: string; task: string } {
+export function buildReviewPrompts(
+  request: ReviewRequest,
+  axis: ReviewAxis = 'standards',
+  advisory: { enabled: boolean; block: string } = { enabled: false, block: '' },
+  collector?: CompressionCollector,
+): { system: string; task: string } {
   const { unit, document } = request;
   const criteria = unit.criteria.map((criterion) => `- ${criterion.id}: ${criterion.text}${criterion.check ? ` (check: ${criterion.check})` : ''}`).join('\n');
   const diff = attemptDiff(request.repo);
@@ -290,9 +296,9 @@ export function buildReviewPrompts(request: ReviewRequest, axis: ReviewAxis = 's
     '---',
     `Working-tree diff vs HEAD (${diff.truncated ? `truncated at ${MAX_DIFF_CHARS} characters` : 'complete'}):`,
     '---',
-    diff.text || '(empty — no diff was produced)',
+    compressDiff(diff.text, collector).text || '(empty — no diff was produced)',
     '---',
-    request.feedback ? `This attempt follows a previous reviewer rejection. Confirm the findings are fixed:\n${request.feedback}` : '',
+    request.feedback ? `This attempt follows a previous reviewer rejection. Confirm the findings are fixed:\n${compressLog(request.feedback, collector).text}` : '',
     'Return the JSON verdict now.',
   ].filter(Boolean).join('\n');
 

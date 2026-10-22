@@ -42,11 +42,31 @@ export interface CompressionResult {
   level: CompressionLevel;
 }
 
-/** Compress text output. Evidence markers are protected before compression. */
-export function compressOutput(
-  text: string,
-  level: CompressionLevel = 'medium',
-): CompressionResult {
+/** The result of reducing a payload without encoding it. */
+export interface ReducedText {
+  /** The reduced text, ready to be placed in a prompt. */
+  text: string;
+  /** The byte length before reduction. */
+  originalBytes: number;
+  /** The byte length after reduction. */
+  compressedBytes: number;
+  /** How much was removed (0..1). */
+  ratio: number;
+  /** How many evidence markers were protected and restored. */
+  evidencePreserved: number;
+  /** The level used. */
+  level: CompressionLevel;
+}
+
+/**
+ * Reduce a payload: protect the evidence, strip the noise, restore the evidence.
+ *
+ * This is the step the gzip path also uses, exposed on its own because a model context needs the
+ * reduced *text*, not a base64 blob. The reduction is conservative by construction: at `medium` it
+ * removes blank lines and trailing whitespace, and at `aggressive` it also removes filler words —
+ * which is why a prompt uses `medium` and a log uses `aggressive`.
+ */
+export function reduceText(text: string, level: CompressionLevel = 'medium'): ReducedText {
   const originalBytes = Buffer.byteLength(text, 'utf8');
 
   // Step 1: Find and protect evidence markers.
@@ -85,17 +105,35 @@ export function compressOutput(
     processed = processed.replace(placeholder, original);
   }
 
-  // Step 4: Gzip compress.
-  const compressedBuf = zlib.gzipSync(Buffer.from(processed, 'utf8'), { level: 9 });
+  const compressedBytes = Buffer.byteLength(processed, 'utf8');
+  return {
+    text: processed,
+    originalBytes,
+    compressedBytes,
+    ratio: originalBytes > 0 ? 1 - compressedBytes / originalBytes : 0,
+    evidencePreserved: evidenceCount,
+    level,
+  };
+}
+
+/** Compress text output. Evidence markers are protected before compression. */
+export function compressOutput(
+  text: string,
+  level: CompressionLevel = 'medium',
+): CompressionResult {
+  const reduced = reduceText(text, level);
+
+  // Step 4: Gzip compress the reduced text.
+  const compressedBuf = zlib.gzipSync(Buffer.from(reduced.text, 'utf8'), { level: 9 });
   const compressed = compressedBuf.toString('base64');
   const compressedBytes = compressedBuf.length;
 
   return {
     compressed,
-    originalBytes,
+    originalBytes: reduced.originalBytes,
     compressedBytes,
-    ratio: originalBytes > 0 ? 1 - compressedBytes / originalBytes : 0,
-    evidencePreserved: evidenceCount,
+    ratio: reduced.originalBytes > 0 ? 1 - compressedBytes / reduced.originalBytes : 0,
+    evidencePreserved: reduced.evidencePreserved,
     level,
   };
 }

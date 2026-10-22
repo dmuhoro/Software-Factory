@@ -10,6 +10,7 @@ import { FrontierModelService } from './frontierModelService';
 import { ResourceGovernorService } from './resourceGovernorService';
 import { ImplementerService, buildPrompts, readReferencedFiles, type ImplementRequest } from './implementerService';
 import { PersistentMemoryService } from './persistentMemoryService';
+import { collectorTotals, createCollector, type CompressionCollector } from './contextCompressionService';
 import { ReviewService, buildReviewPrompts, REVIEW_AXES, type ReviewRequest, type ReviewAxis } from './reviewService';
 import { commitUnit, readLoopVersion } from './commitService';
 import { collectGroundTruth, proofDigest, type GroundTruthProof } from './groundTruthService';
@@ -364,6 +365,9 @@ export class ExecutionLoopService {
       }
       options.onEvent?.(entry);
     };
+    // One collector for the whole run: what the model payloads cost before and after the
+    // Layer 7 context compression, recorded on the run record.
+    const compression = createCollector();
     const baseContext = (): Omit<GateContext, 'stage' | 'timing'> => ({ repo, isolation, run: record, tenantProviders });
 
     const enterStage = (stage: LoopStage, timing: 'before' | 'after', extra: Partial<GateContext> = {}): GateResult[] => {
@@ -472,6 +476,7 @@ export class ExecutionLoopService {
               persist,
               event,
               checkHardStop,
+              compression,
             });
             if (proof) lastProof = proof;
           }
@@ -538,6 +543,8 @@ export class ExecutionLoopService {
     persist: () => void;
     event: (level: LoopEvent['level'], stage: LoopEvent['stage'], message: string) => void;
     checkHardStop: () => void;
+    /** The run's context-compression collector: what the model payloads cost before and after. */
+    compression: CompressionCollector;
   }): Promise<GroundTruthProof | undefined> {
     const { repo, unit, unitRecord, record, isolation, attemptCap, loop, tenantProviders } = input;
     unitRecord.status = 'running';
@@ -637,10 +644,14 @@ export class ExecutionLoopService {
             if (!record.memories.consulted.includes(id)) record.memories.consulted.push(id);
           }
         }
+        // Layer 7 context compression: the refusal tail that goes back to the model is a log,
+        // and a log is mostly noise around the evidence. It is reduced before it is sent, and
+        // what it saved is written into the run record.
         const implementerPrompts = buildPrompts(
           { ...implementRequest, priorLearnings: consulted.rendered || undefined },
           SkillInjectionService.advisoryForImplementer(attempt.attempt),
           referenced,
+          input.compression,
         );
         DoctrineIsolationService.assertNoTargetInstructionContent(isolation, {
           'implementer.system': implementerPrompts.system,
@@ -709,12 +720,14 @@ export class ExecutionLoopService {
         const reviewPrompts: Partial<Record<ReviewAxis, { system: string; task: string }>> = {};
         const reviewPayloads: Record<string, string> = {};
         for (const axis of REVIEW_AXES) {
-          const built = buildReviewPrompts(reviewRequest, axis, SkillInjectionService.advisoryForRole('reviewer'));
+          const built = buildReviewPrompts(reviewRequest, axis, SkillInjectionService.advisoryForRole('reviewer'), input.compression);
           reviewPrompts[axis] = built;
           reviewPayloads[`reviewer.${axis}.system`] = built.system;
           reviewPayloads[`reviewer.${axis}.task`] = built.task;
         }
         DoctrineIsolationService.assertNoTargetInstructionContent(isolation, reviewPayloads);
+        // What the context compression saved so far, recorded on the run.
+        record.contextCompression = collectorTotals(input.compression);
         const review = await ReviewService.review({ ...reviewRequest, prompts: reviewPrompts });
         attempt.review = {
           approved: review.approved,
@@ -805,6 +818,8 @@ export class ExecutionLoopService {
         // it from the truncated detail. (Sprint 29, WP-3.)
         attempt.failureClass = classifyLoopFailure({ stage: attempt.stage, reason: attempt.reason, gateIds: ids, message });
         unitRecord.failureClass = attempt.failureClass;
+        // What the context compression saved so far on this run.
+        record.contextCompression = collectorTotals(input.compression);
 
         // Cross-run memory: the outcome of this attempt is written to the ledger now, so the next
         // attempt — in this run or in a later one — can read it. The memory holds the factory's
@@ -895,6 +910,9 @@ export class ExecutionLoopService {
     checkHardStop: () => void;
   }): Promise<GroundTruthProof | undefined> {
     const { repo, tenantId, document, units, record, isolation, attemptCap, loop, tenantProviders, persist, event, checkHardStop } = input;
+    // One collector for the parallel driver: what the model payloads cost before and after the
+    // Layer 7 context compression.
+    const compression = createCollector();
 
     const targetBranch = git(repo, ['rev-parse', '--abbrev-ref', 'HEAD']);
     if (targetBranch.code !== 0 || !targetBranch.out || targetBranch.out === 'HEAD') {
@@ -959,8 +977,10 @@ export class ExecutionLoopService {
                 persist,
                 event,
                 checkHardStop,
+                compression,
               });
               if (proof) lastProof = proof;
+              record.contextCompression = collectorTotals(compression);
               if (slot.unitRecord.status === 'done') {
                 const merge = this.mergeUnitBranch(repo, slot.unit.id, slot.branch, targetBranch.out, event);
                 if ('conflicted' in merge) throw new Error(`merge-conflict:${slot.unit.id}:${merge.detail}`);

@@ -6,6 +6,7 @@ import { TaskDocument, WorkUnit } from './taskDocumentService';
 import { IsolationManifest } from './doctrineIsolationService';
 import { injectSkills } from './skillInjectionService';
 import { readFiles } from './parallelReadService';
+import { compressLog, type CompressionCollector } from './contextCompressionService';
 
 /**
  * The implementer port.
@@ -201,6 +202,7 @@ export function buildPrompts(
   request: ImplementRequest,
   advisory: { enabled: boolean; block: string } = { enabled: false, block: '' },
   referenced?: ReferencedFile[],
+  collector?: CompressionCollector,
 ): { system: string; task: string } {
   const { unit, document } = request;
   const criteria = unit.criteria.map((criterion) => `- ${criterion.id}: ${criterion.text}${criterion.check ? ` (check: ${criterion.check})` : ''}`).join('\n');
@@ -242,7 +244,7 @@ export function buildPrompts(
       `--- ${file.path} (current content, ${Buffer.byteLength(file.content, 'utf8')} bytes shown${file.truncated ? ' of ' + file.originalBytes + '; content after this cut is NOT included: do not invent it, keep the file as-is beyond what you can see' : ''}) ---\n${file.content}\n--- end ${file.path} ---`
     ).join('\n\n'),
     '',
-    request.feedback ? `Previous attempt of this unit was refused. Fix exactly this:\n${request.feedback}` : '',
+    request.feedback ? `Previous attempt of this unit was refused. Fix exactly this:\n${compressLog(request.feedback, collector).text}` : '',
     request.priorLearnings ?? '',
     'Return the JSON file manifest now.',
   ].filter(Boolean).join('\n');
