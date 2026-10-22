@@ -96,3 +96,67 @@ test('AVA-6: empty file list yields no issues', () => {
   assert.equal(result.issues.length, 0);
   assert.ok(result.passed);
 });
+
+test('AVA-7: a method call is not a call to an undefined symbol', () => {
+  fs.writeFileSync(path.join(repo, 'methods.ts'), [
+    "import fs from 'node:fs';",
+    'export function readIt(): string {',
+    "  const raw = fs.readFileSync('a.txt', 'utf8');",
+    '  return raw.trim();',
+    '}',
+  ].join('\n'));
+
+  const result = astVerificationAdapter.verify({ files: ['methods.ts'], repo, enforce: true });
+  const undefinedCalls = result.issues.filter((issue) => issue.type === 'undefined-call');
+  assert.equal(undefinedCalls.length, 0, `method calls must not be reported: ${JSON.stringify(undefinedCalls)}`);
+  assert.ok(result.passed);
+});
+
+test('AVA-8: importing from a module this unit did not change is not reported', () => {
+  fs.writeFileSync(path.join(repo, 'existing.ts'), 'export const EXISTING = 1;\n');
+  fs.writeFileSync(path.join(repo, 'consumer.ts'), [
+    "import { EXISTING } from './existing';",
+    'export const doubled = EXISTING * 2;',
+  ].join('\n'));
+
+  const result = astVerificationAdapter.verify({ files: ['consumer.ts'], repo, enforce: true });
+  const undefinedImports = result.issues.filter((issue) => issue.type === 'undefined-import');
+  assert.equal(undefinedImports.length, 0, `an unchanged module is still defined: ${JSON.stringify(undefinedImports)}`);
+  assert.ok(result.passed);
+});
+
+test('AVA-9: a call to a name that is defined nowhere is blocking', () => {
+  fs.writeFileSync(path.join(repo, 'nowhere.ts'), 'export function go(): void { mysteryCall(); }\n');
+
+  const result = astVerificationAdapter.verify({ files: ['nowhere.ts'], repo, enforce: true });
+  const blocking = result.issues.filter((issue) => issue.type === 'undefined-call' && issue.severity === 'blocking');
+  assert.equal(blocking.length, 1, 'an undefined direct call blocks');
+  assert.equal(result.passed, false);
+  assert.equal(result.blockingIssues, 1);
+});
+
+test('AVA-10: an import of a module a later unit will create is advisory, not blocking', () => {
+  fs.writeFileSync(path.join(repo, 'forward.ts'), [
+    "import { later } from './not-created-yet';",
+    'export const value = later();',
+  ].join('\n'));
+
+  const result = astVerificationAdapter.verify({ files: ['forward.ts'], repo, enforce: true });
+  const findings = result.issues.filter((issue) => issue.type === 'undefined-import');
+  assert.equal(findings.length, 1, 'the forward reference is reported');
+  assert.equal(findings[0].severity, 'advisory');
+  assert.ok(result.passed, 'a forward reference between units must not refuse the stage');
+});
+
+test('AVA-11: an unused import is reported as advisory', () => {
+  fs.writeFileSync(path.join(repo, 'unused.ts'), [
+    "import { readFileSync } from 'node:fs';",
+    'export const value = 1;',
+  ].join('\n'));
+
+  const result = astVerificationAdapter.verify({ files: ['unused.ts'], repo, enforce: true });
+  const unused = result.issues.filter((issue) => issue.type === 'unused-import');
+  assert.equal(unused.length, 1);
+  assert.equal(unused[0].severity, 'advisory');
+  assert.ok(result.passed);
+});

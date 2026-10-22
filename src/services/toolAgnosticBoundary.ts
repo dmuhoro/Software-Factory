@@ -29,6 +29,7 @@ import {
   compressForFrontend,
   type CompressionResult,
 } from '../utils/outputCompression';
+import { searchRepositorySymbols, type SymbolSearchResult } from './repoKnowledgeIndex';
 
 export interface BoundaryQuery {
   /** File path to analyze. */
@@ -39,6 +40,16 @@ export interface BoundaryQuery {
   symbol?: string;
   /** Compression level for payload (optional). */
   compression?: 'light' | 'medium' | 'aggressive';
+}
+
+/** A repository-scoped query: where is this symbol defined? */
+export interface RepositoryQuery {
+  /** Repository root to search. */
+  repo: string;
+  /** Symbol name to look for. */
+  symbol: string;
+  /** Maximum number of files to scan. */
+  maxFiles?: number;
 }
 
 export interface SymbolLookup {
@@ -89,6 +100,17 @@ export function queryBoundary(input: BoundaryQuery): BoundaryResponse {
   return response;
 }
 
+/**
+ * Query the repository for a symbol (the L7 repo query).
+ *
+ * The answer carries its own honesty: `filesScanned` says how much was seen,
+ * and `truncated` says whether the scan stopped at its ceiling. A caller can
+ * therefore tell "defined nowhere" from "not seen yet".
+ */
+export function queryRepository(input: RepositoryQuery): SymbolSearchResult {
+  return searchRepositorySymbols(input.repo, input.symbol, input.maxFiles ? { maxFiles: input.maxFiles } : {});
+}
+
 /** Render a run record in dual language through the boundary. */
 export function renderRunRecord(record: DualLanguageRecord): { technical: string; founder: string } {
   return renderDualLanguage(record);
@@ -120,6 +142,7 @@ export function compressForFrontendBoundary(text: string): CompressionResult {
 
 export interface ToolAgnosticBoundaryService {
   queryBoundary(input: BoundaryQuery): BoundaryResponse;
+  queryRepository(input: RepositoryQuery): SymbolSearchResult;
   renderRunRecord(record: DualLanguageRecord): { technical: string; founder: string };
   renderUnit(unit: {
     unitId: string;
@@ -138,6 +161,9 @@ export interface ToolAgnosticBoundaryService {
 export class ToolAgnosticBoundaryServiceImpl implements ToolAgnosticBoundaryService {
   queryBoundary(input: BoundaryQuery): BoundaryResponse {
     return queryBoundary(input);
+  }
+  queryRepository(input: RepositoryQuery): SymbolSearchResult {
+    return queryRepository(input);
   }
   renderRunRecord(record: DualLanguageRecord): { technical: string; founder: string } {
     return renderRunRecord(record);

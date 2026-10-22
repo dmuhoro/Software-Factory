@@ -1,6 +1,4 @@
 import { execFileSync } from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
 import { GATE_IDS, type GateId } from './gateIds';
 import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService, type IsolationManifest } from './doctrineIsolationService';
@@ -12,7 +10,7 @@ import { stageAndScanSecrets } from './commitService';
 import { unrelatedWritesIn } from './unrelatedWrites';
 import { detectVerificationProfile } from './verificationProfileService';
 import { bugDetectiveService, type DiagnosisInput } from './bugDetectiveService';
-import { buildKnowledgeGraph, findDefinition, type KnowledgeGraph, type SymbolNode } from './astKnowledgeGraph';
+import { astVerificationAdapter } from './astVerificationAdapter';
 import { isGitRepository } from '../utils/pathGuard';
 import type { GateResult, LoopRunRecord, LoopSandboxConfig, LoopStage, UnitRecord } from './loopTypes';
 import type { WorkUnit } from './taskDocumentService';
@@ -239,85 +237,44 @@ const REGISTRY: Record<GateId, GateFn> = {
   },
 
   'ast-structural-verification': (ctx) => {
-    // L2 Agency: AST-based structural verification (Graphify steal). Parses the changed files
-    // into knowledge graphs and checks for structural defects that simple command exit codes
-    // miss: unused imports, references to undefined symbols, functions with no callers.
-    // Advisory when enforce is off, blocking when on. Never writes to the target tree.
+    // L2 Agency: AST-based structural verification (Graphify steal).
+    //
+    // The implementation lives in `astVerificationAdapter.ts` and nowhere else. It used to be
+    // duplicated here, and the duplicate was wrong twice over: it treated a method call
+    // (`fs.readFileSync()`) as a call to an undefined symbol, and it looked for definitions only
+    // among the changed files, so importing an unchanged module looked undefined. Both made the
+    // gate refuse legitimate units. One implementation, resolved against the import closure.
+    //
+    // Only provable findings refuse the stage: a call to a name that is defined nowhere in the
+    // repository and is not provided by the runtime. Everything else (an unresolvable module, an
+    // export a later unit will add, an unused import) is reported as advisory, because a forward
+    // reference between units is a legitimate thing for a plan to contain.
     const proof = ctx.proof;
     if (!proof) return { passed: true, detail: 'no proof was produced; AST structural check deferred' };
 
-    const changedFiles = proof.claimedFiles.filter((f) => /\.(ts|js|tsx|jsx)$/.test(f));
+    const changedFiles = proof.claimedFiles.filter((file) => /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(file));
     if (!changedFiles.length) {
       return { passed: true, detail: 'no TypeScript/JavaScript files changed; AST structural check not applicable' };
     }
 
-    const issues: string[] = [];
-    const allSymbols = new Map<string, SymbolNode[]>(); // symbol name -> definitions across all files
+    const result = astVerificationAdapter.verify({ files: changedFiles, repo: ctx.repo, enforce: true });
+    const blocking = result.issues.filter((issue) => issue.severity === 'blocking');
 
-    // First pass: build graphs and collect all symbol definitions.
-    const graphs = new Map<string, KnowledgeGraph>();
-    for (const file of changedFiles) {
-      const fullPath = path.join(ctx.repo, file);
-      try {
-        if (!fs.existsSync(fullPath)) continue;
-        const sourceText = fs.readFileSync(fullPath, 'utf8');
-        const graph = buildKnowledgeGraph(fullPath, sourceText);
-        graphs.set(file, graph);
-        for (const sym of graph.symbols) {
-          const list = allSymbols.get(sym.name) ?? [];
-          list.push(sym);
-          allSymbols.set(sym.name, list);
-        }
-      } catch {
-        // Skip files that can't be read or parsed.
-      }
-    }
-
-    // Build a map of non-import symbols for definition checking.
-    const definedSymbols = new Map<string, SymbolNode[]>();
-    for (const [name, syms] of allSymbols) {
-      const nonImports = syms.filter((s) => s.kind !== 'import');
-      if (nonImports.length > 0) definedSymbols.set(name, nonImports);
-    }
-
-    // Second pass: check each file for structural issues.
-    for (const [file, graph] of graphs) {
-      // Check imports: imported symbols from relative modules should be defined somewhere.
-      for (const sym of graph.symbols) {
-        if (sym.kind !== 'import') continue;
-        const moduleSpec = sym.moduleSpec ?? '';
-        if (!moduleSpec.startsWith('./') && !moduleSpec.startsWith('../')) continue;
-        if (moduleSpec.startsWith('node:')) continue;
-        const imported = sym.name.split(',').map((n) => n.trim());
-        for (const name of imported) {
-          if (definedSymbols.has(name)) continue;
-          issues.push(`${file}: imported symbol '${name}' from '${moduleSpec}' is not defined in changed files`);
-        }
-      }
-
-      // Check call edges: called symbols should be defined somewhere (not just imported).
-      for (const edge of graph.edges) {
-        if (edge.kind !== 'calls') continue;
-        const target = edge.to;
-        if (target.startsWith('module:')) continue;
-        if (/^[A-Z]/.test(target)) continue;
-        if (definedSymbols.has(target)) continue;
-        if (/^(console|Math|JSON|Array|Object|String|Number|Boolean|Date|Promise|setTimeout|setInterval|clearTimeout|clearInterval|require|module|process|global|window|document)\b/.test(target)) continue;
-        issues.push(`${file}: call to '${target}' has no definition in changed files`);
-      }
-    }
-
-    if (issues.length) {
-      const detail = issues.slice(0, 10).join('; ');
+    if (blocking.length) {
+      const detail = blocking
+        .slice(0, 10)
+        .map((issue) => `${issue.file}${issue.line ? ':' + issue.line : ''}: ${issue.detail}`)
+        .join('; ');
       return {
         passed: false,
-        detail: `AST structural verification: ${issues.length} issue(s): ${detail}`,
+        detail: `AST structural verification: ${blocking.length} blocking issue(s): ${detail}`,
       };
     }
 
+    const advisory = result.issues.length;
     return {
       passed: true,
-      detail: `AST structural verification: ${graphs.size} file(s) parsed, ${Array.from(allSymbols.values()).flat().length} symbol(s) defined, no structural issues found`,
+      detail: `AST structural verification: ${result.filesParsed} file(s) parsed, ${result.symbolsDefined} symbol(s) resolved, no blocking issues${advisory ? `, ${advisory} advisory finding(s)` : ''}`,
     };
   },
 
