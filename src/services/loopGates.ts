@@ -273,30 +273,36 @@ const REGISTRY: Record<GateId, GateFn> = {
       }
     }
 
+    // Build a map of non-import symbols for definition checking.
+    const definedSymbols = new Map<string, SymbolNode[]>();
+    for (const [name, syms] of allSymbols) {
+      const nonImports = syms.filter((s) => s.kind !== 'import');
+      if (nonImports.length > 0) definedSymbols.set(name, nonImports);
+    }
+
     // Second pass: check each file for structural issues.
     for (const [file, graph] of graphs) {
-      // Check imports: imported symbols should be defined somewhere in the changed set or be
-      // node builtins / external packages.
+      // Check imports: imported symbols from relative modules should be defined somewhere.
       for (const sym of graph.symbols) {
         if (sym.kind !== 'import') continue;
+        const moduleSpec = sym.moduleSpec ?? '';
+        if (!moduleSpec.startsWith('./') && !moduleSpec.startsWith('../')) continue;
+        if (moduleSpec.startsWith('node:')) continue;
         const imported = sym.name.split(',').map((n) => n.trim());
         for (const name of imported) {
-          if (name.startsWith('node:')) continue; // node builtin
-          const isExternal = !allSymbols.has(name) && !/^[./]/.test(name);
-          if (isExternal) continue; // external package, not our problem
-          if (allSymbols.has(name)) continue; // defined in changed set
-          issues.push(`${file}: imported symbol '${name}' is not defined in changed files`);
+          if (definedSymbols.has(name)) continue;
+          issues.push(`${file}: imported symbol '${name}' from '${moduleSpec}' is not defined in changed files`);
         }
       }
 
-      // Check call edges: called symbols should be defined somewhere or be external.
+      // Check call edges: called symbols should be defined somewhere (not just imported).
       for (const edge of graph.edges) {
         if (edge.kind !== 'calls') continue;
         const target = edge.to;
-        if (target.startsWith('module:')) continue; // module import, handled above
-        if (/^[A-Z]/.test(target)) continue; // likely a class or constructor, skip
-        if (allSymbols.has(target)) continue; // defined in changed set
-        if (/^(console|Math|JSON|Array|Object|String|Number|Boolean|Date|Promise|setTimeout|setInterval|clearTimeout|clearInterval|require|module|process|global|window|document)\b/.test(target)) continue; // JS builtins
+        if (target.startsWith('module:')) continue;
+        if (/^[A-Z]/.test(target)) continue;
+        if (definedSymbols.has(target)) continue;
+        if (/^(console|Math|JSON|Array|Object|String|Number|Boolean|Date|Promise|setTimeout|setInterval|clearTimeout|clearInterval|require|module|process|global|window|document)\b/.test(target)) continue;
         issues.push(`${file}: call to '${target}' has no definition in changed files`);
       }
     }

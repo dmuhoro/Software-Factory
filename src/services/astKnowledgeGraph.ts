@@ -23,6 +23,8 @@ export interface SymbolNode {
   line: number;
   column?: number;
   signature?: string;   // truncated declaration text, for evidence
+  /** Module specifier for imports (e.g. './other', 'react', 'node:fs'). Undefined for non-imports. */
+  moduleSpec?: string;
 }
 
 export interface GraphEdge {
@@ -122,6 +124,13 @@ export function buildKnowledgeGraph(filePath: string, sourceText: string): Knowl
         column: lineAndCol.character + 1,
         signature: declText,
       };
+      // Capture module specifier for imports.
+      if (kind === 'import' && node.kind === ts.SyntaxKind.ImportDeclaration) {
+        const imp = node as ts.ImportDeclaration;
+        if (ts.isStringLiteral(imp.moduleSpecifier)) {
+          symbol.moduleSpec = imp.moduleSpecifier.text;
+        }
+      }
       symbols.push(symbol);
 
       if (parentId) {
