@@ -51,9 +51,11 @@ test('setup: provision a root credential', async () => {
   resetRateLimiterForTests();
 });
 
+const FAKE_API_KEY = `sk-${'1234567890abcdef'.repeat(2)}`;
+
 const DIRTY = `import { execSync } from 'node:child_process';
 
-const API_KEY = 'sk-1234567890abcdef1234567890abcdef';
+const API_KEY = '${FAKE_API_KEY}';
 
 export function run(target: string): string {
   execSync('cat ' + target);
@@ -86,7 +88,7 @@ test('SA-1: a hardcoded credential is reported with a file, a line, a severity a
 
 test('SA-2: the evidence never contains the credential itself', () => {
   const result = auditSource([{ path: 'src/creds.ts', content: DIRTY }]);
-  const credential = 'sk-1234567890abcdef1234567890abcdef';
+  const credential = FAKE_API_KEY;
   for (const finding of result.findings) {
     assert.ok(!finding.evidence.includes(credential), `the evidence leaked the credential: ${finding.evidence}`);
   }

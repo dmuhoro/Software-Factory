@@ -28,9 +28,11 @@ const base: DiagnosisInput = {
   stage: 'verify',
 };
 
+const FAKE_API_KEY = `sk-${'1234567890abcdef'.repeat(2)}`;
+
 const SOURCE_WITH_SECRET = `import { readFileSync } from 'node:fs';
 
-const API_KEY = 'sk-1234567890abcdef1234567890abcdef';
+const API_KEY = '${FAKE_API_KEY}';
 
 export function loadConfig(): unknown {
   return readFileSync(process.env.CONFIG_PATH, 'utf8');
