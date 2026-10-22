@@ -428,6 +428,20 @@ const DOMAIN_ERRORS: Readonly<Record<string, DomainRule>> = Object.freeze({
   // diagnostic boundaries, never the product of a diagnosis.
   BUG_DIAGNOSIS_NOT_FOUND: { status: 404, message: 'No diagnosis exists for this unit or run.' },
   BUG_DIAGNOSIS_READ_ONLY: { status: 403, message: 'The bug detective is advisory only; it does not accept fixes or writes.' },
+  // Sprint 35 (WP-4): the security audit. Advisory like the rest of Layer 5 — it reports.
+  SECURITY_AUDIT_REPO_REQUIRED: { status: 400, message: 'A repository path is required to audit.' },
+  SECURITY_AUDIT_REPO_OUTSIDE_WORKSPACE: { status: 403, message: 'That repository is outside the approved workspace.' },
+  // Sprint 35 (WP-3): the cross-run memory route.
+  MEMORY_KIND_NOT_RECOGNIZED: { status: 400, message: 'kind must be one of outcome, pattern, warning, fix.' },
+  MEMORY_LIMIT_OUT_OF_RANGE: { status: 400, message: 'limit must be an integer between 1 and 200.' },
+  // Sprint 35 (WP-4): these codes were raised by the Layer 5 and Layer 2 routes but were never
+  // registered here, so every one of them degraded to INTERNAL_ERROR and a 500 with an incident
+  // id. A boundary that names itself must publish its name; the L3 error-contract gate says so.
+  BUG_DIAGNOSIS_CLASS_REQUIRED: { status: 400, message: 'failureClass is required to diagnose a failure.' },
+  PREVIEW_MISSING_REPO: { status: 400, message: 'repo is required to open a preview session.' },
+  PREVIEW_MISSING_COMMIT: { status: 400, message: 'commit is required to open a preview session.' },
+  PREVIEW_SESSION_NOT_FOUND: { status: 404, message: 'No such preview session.' },
+  PREVIEW_TENANT_MISMATCH: { status: 403, message: 'That preview session belongs to another tenant.' },
 });
 
 /** Upstream answers we deliberately refuse to relay. Only a summary reaches the client. */

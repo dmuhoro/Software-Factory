@@ -27,6 +27,7 @@ import {
   type KnowledgeGraph,
   type SymbolNode,
 } from './astKnowledgeGraph';
+import { auditSource } from './securityAuditService';
 
 export interface DiagnosisInput {
   /** The failure class the loop already assigned (e.g. 'defect', 'verification', 'review'). */
@@ -93,8 +94,12 @@ export interface SecurityFinding {
   remediation: string;
   /** Confidence 0..1 that this is a real issue, not a false positive. */
   confidence: number;
-  /** Machine-readable evidence: the matched pattern or symbol. */
+  /** Machine-readable evidence: the matched pattern or symbol. Secret values are masked. */
   evidence: string;
+  /** The enclosing function or class, when the finding was resolved through the AST. */
+  symbol?: string;
+  /** How the finding was located: 'ast' (a parsed construct) or 'text' (the refusal itself). */
+  source: 'ast' | 'text';
 }
 
 /** Does the input carry any recognisable signal (reason code, message marker, or location)? */
@@ -254,8 +259,13 @@ function remediationFor(input: DiagnosisInput): string {
   }
 }
 
-/** Scan source text for security-relevant patterns and produce machine-readable findings.
- *  Advisory only: flags potential issues, never blocks or edits. */
+/**
+ * Produce the machine-readable security findings for a diagnosis.
+ *
+ * Two sources, both named: the refusal itself (the message-shaped findings, e.g. a staged diff
+ * that matched a credential pattern) and the source that was scanned (the rule set in
+ * `securityAuditService.ts`, which resolves every finding to a real file and line).
+ */
 function auditSecurity(input: DiagnosisInput, graph?: KnowledgeGraph): SecurityFinding[] {
   const findings: SecurityFinding[] = [];
   const message = input.message ?? '';
@@ -263,73 +273,59 @@ function auditSecurity(input: DiagnosisInput, graph?: KnowledgeGraph): SecurityF
   const sourceText = input.sourceText ?? '';
   const sourceFile = input.sourceFile ?? '';
 
-  // Secret patterns in the refusal message.
-  type SecretPattern = [pattern: RegExp, rule: string, severity: 'critical' | 'high' | 'medium' | 'low' | 'info', description: string, remediation: string];
-  const secretPatterns: SecretPattern[] = [
+  // The refusal-shaped findings: what the loop already refused, stated as a finding.
+  type RefusalPattern = [pattern: RegExp, rule: string, severity: SecurityFinding['severity'], description: string, remediation: string];
+  const refusalPatterns: RefusalPattern[] = [
     [/SECRET_CONTENT_REFUSED/, 'secret-scan', 'critical', 'Staged content matched a credential pattern', 'Remove the secret from staged files and re-submit.'],
     [/SECRET_PATH_REFUSED/, 'secret-scan', 'critical', 'A changed path is reserved for secrets', 'Do not commit files under reserved secret paths.'],
     [/TARGET_DOCTRINE_LEAKED_INTO_RUN/, 'doctrine-integrity', 'critical', 'A quarantined instruction file reached a run payload', 'Remove the leaked instruction from the run payload.'],
     [/DOCTRINE_MANIFEST_MISMATCH/, 'doctrine-integrity', 'high', 'The doctrine does not match its manifest', 'Re-run doctrine:manifest to re-pin the manifest.'],
   ];
 
-  let findingId = 0;
-  for (const [pattern, rule, severity, description, remediation] of secretPatterns) {
-    if (pattern.test(reason) || pattern.test(message)) {
-      findingId += 1;
-      // Try to resolve a location via AST if we have source.
-      let file = sourceFile;
-      let line: number | undefined;
-      let confidence = 0.8;
-      let evidence = pattern.source;
-      if (graph && sourceFile) {
-        const symbols = graph.symbols.filter((s) => s.kind === 'import' || s.kind === 'variable');
-        if (symbols.length > 0) {
-          file = symbols[0].file;
-          line = symbols[0].line;
-          evidence = `${rule} matched in ${sourceFile}`;
-          confidence = 0.9;
-        }
-      }
+  for (const [pattern, rule, severity, description, remediation] of refusalPatterns) {
+    if (!pattern.test(reason) && !pattern.test(message)) continue;
+    findings.push({
+      id: `sec-${findings.length + 1}`,
+      severity,
+      rule,
+      description,
+      file: sourceFile,
+      remediation,
+      confidence: 0.8,
+      evidence: pattern.source,
+      source: 'text',
+    });
+  }
+
+  // The source-shaped findings: the rule set, resolved against real lines.
+  if (sourceText && sourceFile) {
+    const audit = auditSource([{ path: sourceFile, content: sourceText }]);
+    for (const finding of audit.findings) {
       findings.push({
-        id: `sec-${findingId}`,
-        severity,
-        rule,
-        description,
-        file,
-        line,
-        remediation,
-        confidence,
-        evidence,
+        id: `sec-${findings.length + 1}`,
+        severity: finding.severity,
+        rule: finding.rule,
+        description: finding.description,
+        file: finding.file,
+        line: finding.line,
+        remediation: finding.remediation,
+        confidence: finding.confidence,
+        evidence: finding.evidence,
+        symbol: finding.symbol,
+        source: finding.source,
       });
     }
   }
 
-  // Hardcoded secret patterns in source text (AST-aware).
-  type HardcodedPattern = [pattern: RegExp, rule: string, severity: 'critical' | 'high' | 'medium' | 'low' | 'info', description: string, remediation: string];
-  const hardcodedPatterns: HardcodedPattern[] = [
-    [/AKIA[0-9A-Z]{16}/, 'hardcoded-secret', 'high', 'AWS access key id hardcoded in source', 'Move to environment variable or secret manager.'],
-    [/(?:password|secret|api.?key|token)\s*[:=]\s*['"][^'"]{8,}/i, 'hardcoded-secret', 'high', 'Potential hardcoded secret value', 'Replace with a secret reference.'],
-    [/sk-[A-Za-z0-9]{20,}/, 'hardcoded-secret', 'high', 'Looks like an API key hardcoded in source', 'Move to environment variable or secret manager.'],
-  ];
-  if (sourceText) {
-    const lines = sourceText.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      const lineText = lines[i];
-      for (const [pattern, rule, severity, description, remediation] of hardcodedPatterns) {
-        if (pattern.test(lineText)) {
-          findingId += 1;
-          findings.push({
-            id: `sec-${findingId}`,
-            severity,
-            rule,
-            description,
-            file: sourceFile,
-            line: i + 1,
-            remediation,
-            confidence: 0.75,
-            evidence: lineText.trim().slice(0, 120),
-          });
-        }
+  // The graph is the context the finding sits in: the first symbol of the file is the enclosing
+  // scope when the finding has no line of its own.
+  if (graph && sourceFile && findings.length && findings.every((finding) => finding.line === undefined)) {
+    const symbols = graph.symbols.filter((symbol) => symbol.kind === 'import' || symbol.kind === 'variable');
+    if (symbols.length > 0) {
+      for (const finding of findings) {
+        finding.file = symbols[0].file;
+        finding.line = symbols[0].line;
+        finding.confidence = Math.max(finding.confidence, 0.9);
       }
     }
   }

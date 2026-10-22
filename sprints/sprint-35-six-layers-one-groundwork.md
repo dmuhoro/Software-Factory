@@ -60,7 +60,7 @@ repairs the two live defects the audit found on the way.
 | WP-1 | L2/L5/L7 | Graphify: repository knowledge index, import-closure resolution, one AST implementation behind the gate | done |
 | WP-2 | L2/L3 | Orca: read-only parallel inspection service, wired into the real paths | done |
 | WP-3 | L3 | ai-memory: persistent cross-run memory wired into the loop runtime | done |
-| WP-4 | L5 | Cloudflare: machine-readable security audit findings over repository source | pending |
+| WP-4 | L5 | Cloudflare: machine-readable security audit findings over repository source | done |
 | WP-5 | L6 | Opik: every model call traced through the door, with token, latency, and cost | pending |
 | WP-6 | L7 | Headroom: context compression on the live model-context path | pending |
 
@@ -71,6 +71,14 @@ repairs the two live defects the audit found on the way.
 | WP-1 | `test/ast-structural-gate.test.ts` (ASG-1..4), driven through `runGate` | the pre-fix gate restored from `git show HEAD:src/services/loopGates.ts` → **1 pass, 3 fail** (ASG-1 refused a legitimate file, ASG-3 refused an import of an unchanged module, ASG-2's refusal carried no file:line) | **4 pass, 0 fail** |
 | WP-3 | `test/cross-run-memory.test.ts` (two live runs) | the memory wiring neutralised in `executionLoopService.ts` → **0 pass, 1 fail** (nothing was written to the ledger, so nothing could be read back) | **1 pass, 0 fail**, plus 4 pass in `test/loop-memories-route.test.ts` |
 | WP-2 | `test/loop-execution.test.ts` (the live loop) + `test/parallel-read.test.ts` (PR-1..7) | the sequential staging restored in `executionLoopService.run` → **16 pass, 1 fail** (the run record said `sequential`, so the live path had not moved) | **17 pass, 0 fail**, plus 8 pass in `test/parallel-read.test.ts` |
+
+## A defect found on the way (not part of the six)
+
+`main` was **not green** when this sprint opened: `test/l3-error-contract.test.ts` failed, because
+five boundary codes raised by routes (`BUG_DIAGNOSIS_CLASS_REQUIRED`, `PREVIEW_MISSING_REPO`,
+`PREVIEW_MISSING_COMMIT`, `PREVIEW_SESSION_NOT_FOUND`, `PREVIEW_TENANT_MISMATCH`) were never
+registered in `src/utils/apiError.ts`. Each of them degraded to `INTERNAL_ERROR` and answered `500`
+with an incident id instead of its own status. WP-4 registers them; the gate is green.
 
 ## Hard limits (do not violate in this sprint)
 

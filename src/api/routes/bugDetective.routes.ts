@@ -12,6 +12,10 @@ import { respondWithError } from '../../utils/respondWithError';
 import { validateTenantRequest } from '../middleware/tenantAuth';
 import { rbacRequire } from '../middleware/rbac';
 import { bugDetectiveService, type DiagnosisInput } from '../../services/bugDetectiveService';
+import { auditSource } from '../../services/securityAuditService';
+import { scanRepositorySources } from '../../services/repoKnowledgeIndex';
+import { readFiles } from '../../services/parallelReadService';
+import { resolveWithin } from '../../utils/pathGuard';
 
 const router = Router();
 const tenant = (req: Request): string => String(req.headers['x-tenant-id']);
@@ -51,6 +55,54 @@ router.get('/diagnoses/:unitId', async (req: Request, res: Response) => {
     });
   } catch (error) {
     return respondWithError(res, error, 'BUG_DIAGNOSIS_GET_FAILED');
+  }
+});
+
+/**
+ * Audit a repository's source and return machine-readable security findings.
+ *
+ * Advisory, bounded, fail-closed. The repository must live inside the approved workspace, the
+ * files are read (never written), and every finding names a file, a line, a severity, a
+ * remediation, and the evidence that produced it. Secret values are masked in the evidence, so
+ * a finding can never carry a credential into the ledger.
+ */
+router.post('/audit', async (req: Request, res: Response) => {
+  if (!validateTenantRequest(req, res)) return;
+  if (!rbacRequire(req, res, 'loop:read')) return;
+  try {
+    const { repo, files } = req.body ?? {};
+    if (typeof repo !== 'string' || !repo.trim()) {
+      return res.status(400).json({ status: 'error', code: 'SECURITY_AUDIT_REPO_REQUIRED', message: 'repo is required' });
+    }
+    const root = resolveWithin(repo, { code: 'SECURITY_AUDIT_REPO_OUTSIDE_WORKSPACE', mustExist: true, mustBeDirectory: true });
+
+    const requested = Array.isArray(files) ? files.filter((file): file is string => typeof file === 'string') : undefined;
+    const scan = scanRepositorySources(root, requested ? { files: requested } : {});
+    if (!scan.files.length) {
+      return res.status(200).json({
+        status: 'success',
+        audit: { findings: [], filesScanned: 0, rules: [] },
+        detail: 'no source files were found to audit',
+      });
+    }
+
+    const reads = await readFiles(root, scan.files, { maxBytes: 1024 * 1024 });
+    const auditable = reads
+      .filter((read) => !read.error && !read.missing && read.content !== undefined)
+      .map((read) => ({ path: read.path, content: read.content as string }));
+    const audit = auditSource(auditable);
+
+    return res.status(200).json({
+      status: 'success',
+      audit: {
+        findings: audit.findings,
+        filesScanned: audit.filesScanned,
+        rules: audit.rules,
+        truncated: scan.truncated,
+      },
+    });
+  } catch (error) {
+    return respondWithError(res, error, 'SECURITY_AUDIT_FAILED');
   }
 });
 
