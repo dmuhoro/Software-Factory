@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { runCommand, isSandboxVisible } from './groundTruthService';
+import { runCommand } from './groundTruthService';
 import { DoctrineService } from './doctrineService';
 import { DoctrineIsolationService } from './doctrineIsolationService';
 import type { LoopSandboxConfig } from './loopTypes';
@@ -48,7 +48,9 @@ function sandboxVisiblePath(repo: string): string {
   const localBin = path.join(path.resolve(repo), 'node_modules', '.bin');
   const dirs = [...SANDBOX_BIN_DIRS];
   const runtimeBin = path.dirname(process.execPath);
-  if (isSandboxVisible(runtimeBin)) dirs.push(runtimeBin);
+  // groundTruthService binds this exact directory after masking /home, so the runtime remains
+  // reachable without exposing the operator's home tree.
+  if (fs.existsSync(runtimeBin)) dirs.push(runtimeBin);
   dirs.push(localBin);
   return [...new Set(dirs)].join(':');
 }
@@ -69,7 +71,9 @@ function resolveExecutable(executable: string, repo: string): string {
       if (fs.existsSync(system)) return system;
     }
   }
-  if (executable === 'node' && isSandboxVisible(process.execPath) && fs.existsSync(process.execPath)) return process.execPath;
+  // The shared sandbox binds the active runtime's bin directory after masking /home. Resolve it
+  // here even when the host path is under a masked root; visibility is established by that bind.
+  if (executable === 'node' && fs.existsSync(process.execPath)) return process.execPath;
   const local = path.join(path.resolve(repo), 'node_modules', '.bin', executable);
   if (fs.existsSync(local)) return local;
   return executable;

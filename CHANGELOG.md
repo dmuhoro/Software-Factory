@@ -2,6 +2,11 @@
 
 All notable architectural and code modifications are documented here.
 
+## [4.17.1] - 2026-11-18 — Autonomous loop runtime handoff
+
+### Fixed
+- **Sandbox-visible runtime for direct and profile verification (Sprint 36).** `src/services/groundTruthService.ts` now binds only the active Node runtime's bin directory after bwrap masks `/home`, and constructs a minimal visible `PATH` containing that runtime, system bin directories, and repository-local binaries. `src/services/verificationProfileService.ts` resolves the same narrowly bound runtime for profile steps. Direct milestone commands such as `verify: node check.cjs` and repository-profile checks no longer fail with `SANDBOX_TOOLCHAIN_HIDDEN` on version-manager Node installations. The `/home` mask, scrubbed environment, and fail-closed sandbox contract remain intact. Evidence: the detached CLI emits its `watch` event stream, the focused sandbox suite passes 8/8, and `test/loop-die-resume.test.ts` passes all four interruption/resume drills.
+
 ## [4.17.0] - 2026-10-22
 
 ### Added

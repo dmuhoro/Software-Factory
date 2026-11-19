@@ -181,6 +181,13 @@ function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, 
     '--proc', '/proc',
   ];
 
+  // The host may run Node from a version manager under /home, which is intentionally masked
+  // above. Expose only the active interpreter's bin directory so direct milestone commands such
+  // as `verify: node check.cjs` work without exposing the operator's home directory. The profile
+  // verifier uses the same visible runtime contract when it expands npm scripts.
+  const runtimeBin = path.dirname(process.execPath);
+  if (fs.existsSync(runtimeBin)) argv.push('--ro-bind', runtimeBin, runtimeBin);
+
   for (const relative of sandbox.writableDirs ?? []) {
     const resolved = path.resolve(repoPath, relative);
     if (resolved !== repoPath && !resolved.startsWith(`${repoPath}${path.sep}`)) {
@@ -200,7 +207,10 @@ function sandboxArgv(repo: string, sandbox: LoopSandboxConfig, command: string, 
 
   argv.push('--clearenv');
   argv.push('--setenv', 'HOME', '/tmp/loop');
-  argv.push('--setenv', 'PATH', env?.PATH ?? '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin');
+  const visiblePath = [runtimeBin, '/usr/local/bin', '/usr/bin', '/bin', path.join(repoPath, 'node_modules', '.bin')]
+    .filter((candidate, index, all) => fs.existsSync(candidate) && all.indexOf(candidate) === index)
+    .join(':');
+  argv.push('--setenv', 'PATH', visiblePath);
   for (const [key, value] of Object.entries(env ?? {})) {
     if (key === 'PATH' || key === 'HOME') continue;
     argv.push('--setenv', key, value);
