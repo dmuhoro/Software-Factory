@@ -4,6 +4,9 @@ All notable architectural and code modifications are documented here.
 
 ## [Unreleased] — Stitch production UI foundation
 
+### Changed
+- **Typed live API boundary.** Added `src/services/factoryApi.ts` for health and telemetry requests. The cockpit no longer owns raw request parsing, and provider/code panels are explicitly labelled as reference material rather than live runtime evidence.
+
 ### Added
 - **Obsidian Orbit UI foundation (Sprint 37, first cockpit layer).** Added repository-local design tokens, accessible focus behavior, reduced-motion support, and responsive baseline styling without CDN dependencies. Added `docs/STITCH_PRODUCTION_UI_PROMPT.md`, which constrains future Stitch output to React/TypeScript components, real API contracts, truthful runtime states, and testable integration boundaries.
 

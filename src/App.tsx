@@ -41,6 +41,7 @@ import { LoopControlPanel } from './components/LoopControlPanel';
 import { GrillIntakePanel } from './components/GrillIntakePanel';
 import { ComparePayloadsModal } from './components/ComparePayloadsModal';
 import { downloadTenantAuditReport } from './utils/reportGenerator';
+import { getFactoryHealth, ingestTelemetry } from './services/factoryApi';
 
 interface TelemetryResult {
   status: string;
@@ -198,10 +199,8 @@ export default function App() {
     setHealthLoading(true);
     setHealthError(null);
     try {
-      const hRes = await fetch('/api/factory/health');
-
-      if (hRes.ok) {
-        const hJson = await hRes.json();
+      try {
+        const hJson = await getFactoryHealth();
         setLastUpdatedTime(new Date().toLocaleTimeString());
         if (typeof hJson.version === 'string') setAppVersion(hJson.version);
         if (hJson.systemHealth) {
@@ -220,11 +219,9 @@ export default function App() {
             lastUpdated: new Date().toLocaleTimeString(),
           });
         }
-      } else {
-        setHealthError(`Health endpoint returned HTTP ${hRes.status}`);
+      } catch (error) {
+        setHealthError(error instanceof Error ? error.message : 'Health endpoint is unreachable');
       }
-    } catch (error) {
-      setHealthError(error instanceof Error ? error.message : 'Health endpoint is unreachable');
     } finally {
       setHealthLoading(false);
     }
@@ -294,27 +291,16 @@ export default function App() {
       tenantId: tenantTarget,
       niche: selectedNiche,
       eventType: eventType,
-        metadata: {
-          sourceSystem: 'MissionControl-WebClient',
-          region: 'europe-west2',
-          clientVersion: appVersion,
-          idempotencyKey: `idem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      metadata: {
+        sourceSystem: 'MissionControl-WebClient',
+        clientVersion: appVersion,
+        idempotencyKey: `idem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         },
       payload: forceMalformed ? { corruptedPayloadKey: null, missingRequiredFields: true } : currentPayload,
     };
 
     try {
-      const res = await fetch('/api/telemetry/ingest', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-Id': body.tenantId,
-          'X-Industry-Niche': body.niche,
-        },
-        body: JSON.stringify(body),
-      });
-
-      const json = await res.json();
+      const { response: res, body: json } = await ingestTelemetry(body);
       const elapsed = Date.now() - startTime;
 
       if (!res.ok) {
@@ -415,7 +401,7 @@ export default function App() {
         exportedAt: new Date().toISOString(),
         system: 'Software Factory Runtime Engine',
         version: appVersion,
-        auditStandard: 'SOC2-TypeII-HIPAA-ISO27001',
+        evidenceSource: 'Selected runtime execution record',
       },
       executionRecord: executionResult,
     };
@@ -1137,7 +1123,7 @@ structured inference latency: ${executionResult.durationMs}ms`}
                 <span className="text-xs font-mono text-slate-400">/appwrite-functions/gemini-orchestrator/index.js</span>
               </div>
               <p className="text-xs text-slate-400">
-                Production-grade serverless handler initializing the official <code className="text-indigo-300">@google/genai</code> SDK, verifying tenant team permissions, enforcing strict JSON Schema, and executing asynchronous updates.
+                Illustrative provider adapter reference. Live execution evidence comes from telemetry responses and runtime health endpoints, not this static code sample.
               </p>
               <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 font-mono text-xs text-slate-300 overflow-x-auto max-h-72">
                 <pre>{`// Appwrite Serverless Function Entrypoint
@@ -1161,7 +1147,7 @@ export default async ({ req, res, log, error }) => {
 
   // Google GenAI Structured Call
   const aiResponse = await ai.models.generateContent({
-    model: 'gemini-1.5-pro',
+    model: process.env.MODEL_NAME,
     contents: prompt,
     config: { responseMimeType: 'application/json', responseSchema: SCHEMAS[niche] }
   });
@@ -1188,13 +1174,13 @@ export default async ({ req, res, log, error }) => {
             <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-base font-semibold text-white">Gemini 1.5 Pro Structured Output Protocol Design</h2>
+                  <h2 className="text-base font-semibold text-white">Structured Output Protocol Reference</h2>
                   <p className="text-xs text-slate-400">
-                    Defines deterministic system consumption schemas using the official <code className="text-indigo-300">@google/genai</code> <code className="text-indigo-300">Type</code> enum.
+                    Reference schemas for provider adapters. This panel is documentation, not a claim about the currently configured model.
                   </p>
                 </div>
                 <span className="text-xs font-mono px-3 py-1 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">
-                  Model: Gemini 1.5 Pro / 3.8 Flash
+                  Provider: configured at runtime
                 </span>
               </div>
 
@@ -1204,7 +1190,7 @@ export default async ({ req, res, log, error }) => {
                     title: 'Real Estate Schema',
                     niche: 'real_estate',
                     keys: ['propertyId', 'estimatedValuationUsd', 'valuationRange', 'marketTrend', 'leadQualityScore', 'riskFactors'],
-                    guarantee: 'Zero hallucination on property price bounds',
+                    guarantee: 'Schema validation required before success',
                   },
                   {
                     title: 'Healthcare Schema',

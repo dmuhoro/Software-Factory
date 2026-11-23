@@ -15,6 +15,8 @@ The Stitch export is valuable as an information-architecture and visual-system r
 - Removed a hardcoded model name from historical audit reconstruction.
 - Removed the header’s unsupported “Zero Conflation: Enforced” success claim and replaced it with the narrower “Tenant isolation: API-gated” label.
 - Added a production Stitch prompt at `docs/STITCH_PRODUCTION_UI_PROMPT.md`.
+- Added `src/services/factoryApi.ts` so health and telemetry request/response parsing has one typed boundary instead of being embedded in the page component.
+- Labelled the provider implementation and schema panels as reference documentation and removed static model/guarantee wording that could be mistaken for current runtime evidence.
 
 ## Evidence
 
