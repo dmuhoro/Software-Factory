@@ -82,6 +82,7 @@ export default function App() {
   // hardcoded label: the whole point is that a live URL states which build it is serving.
   const [appVersion, setAppVersion] = useState<string>('unknown');
   const [healthLoading, setHealthLoading] = useState<boolean>(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
 
   // Execution History Logs
   const [executionLogs, setExecutionLogs] = useState<TelemetryExecutionLog[]>([]);
@@ -195,6 +196,7 @@ export default function App() {
   // Fetch Health & Metrics from API
   const fetchHealthAndMetrics = useCallback(async () => {
     setHealthLoading(true);
+    setHealthError(null);
     try {
       const hRes = await fetch('/api/factory/health');
 
@@ -218,9 +220,11 @@ export default function App() {
             lastUpdated: new Date().toLocaleTimeString(),
           });
         }
+      } else {
+        setHealthError(`Health endpoint returned HTTP ${hRes.status}`);
       }
-    } catch {
-      // offline or startup
+    } catch (error) {
+      setHealthError(error instanceof Error ? error.message : 'Health endpoint is unreachable');
     } finally {
       setHealthLoading(false);
     }
@@ -290,12 +294,12 @@ export default function App() {
       tenantId: tenantTarget,
       niche: selectedNiche,
       eventType: eventType,
-      metadata: {
-        sourceSystem: 'MissionControl-WebClient',
-        region: 'europe-west2',
-        clientVersion: '3.2.0',
-        idempotencyKey: `idem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      },
+        metadata: {
+          sourceSystem: 'MissionControl-WebClient',
+          region: 'europe-west2',
+          clientVersion: appVersion,
+          idempotencyKey: `idem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        },
       payload: forceMalformed ? { corruptedPayloadKey: null, missingRequiredFields: true } : currentPayload,
     };
 
@@ -398,10 +402,7 @@ export default function App() {
       niche: log.niche,
       durationMs: log.durationMs,
       structuredOutput: log.structuredOutput,
-      audit: {
-        tokens: log.tokensConsumed,
-        model: 'gemini-1.5-pro',
-      },
+      audit: { tokens: log.tokensConsumed },
       error: log.error,
     });
   };
@@ -412,7 +413,8 @@ export default function App() {
     const exportData = {
       exportMetadata: {
         exportedAt: new Date().toISOString(),
-        system: 'Software Factory Multi-Tenant B2B Platform v3.2.0',
+        system: 'Software Factory Runtime Engine',
+        version: appVersion,
         auditStandard: 'SOC2-TypeII-HIPAA-ISO27001',
       },
       executionRecord: executionResult,
@@ -496,7 +498,7 @@ export default function App() {
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Multi-Tenant B2B SaaS Control Plane • Node runtime • Durable ledger + Gemini Structured AI
+                Evidence-first control plane • Node runtime • Durable ledger
               </p>
             </div>
           </div>
@@ -510,7 +512,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/80 text-xs">
               <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="text-slate-300 font-mono">Zero Conflation: Enforced</span>
+              <span className="text-slate-300 font-mono">Tenant isolation: API-gated</span>
             </div>
             <button
               onClick={fetchHealthAndMetrics}
@@ -566,6 +568,15 @@ export default function App() {
         {/* TAB 1: TELEMETRY STREAM & LOGS */}
         {activeTab === 'stream' && (
           <div className="space-y-6">
+            {healthError && (
+              <div role="alert" className="flex items-start gap-3 rounded-xl border border-amber-800/70 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <div>
+                  <p className="font-semibold">Runtime health is unavailable</p>
+                  <p className="mt-1 font-mono text-amber-300/80">{healthError}. The cockpit is showing the last known state only.</p>
+                </div>
+              </div>
+            )}
             {/* Runtime health - real readiness checks, memory and uptime only */}
             <HealthDashboard
               health={healthData}

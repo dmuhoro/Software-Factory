@@ -2,6 +2,19 @@
 
 All notable architectural and code modifications are documented here.
 
+## [Unreleased] — Stitch production UI foundation
+
+### Added
+- **Obsidian Orbit UI foundation (Sprint 37, first cockpit layer).** Added repository-local design tokens, accessible focus behavior, reduced-motion support, and responsive baseline styling without CDN dependencies. Added `docs/STITCH_PRODUCTION_UI_PROMPT.md`, which constrains future Stitch output to React/TypeScript components, real API contracts, truthful runtime states, and testable integration boundaries.
+
+### Fixed
+- **Truthful runtime status in the telemetry cockpit.** Health endpoint failures now surface as an explicit degraded banner instead of being silently swallowed. Telemetry metadata uses the server-reported application version rather than a stale hardcoded client version. Audit exports identify the runtime and reported version without inventing a model name. The header now labels tenant isolation as an API-gated boundary rather than asserting a fabricated success state.
+
+### Verification
+- `npm run lint` — pass
+- `npm run build` — pass (existing esbuild `import.meta`/CommonJS warning remains)
+- `git diff --check` — pass
+
 ## [4.17.1] - 2026-11-18 — Autonomous loop runtime handoff
 
 ### Fixed

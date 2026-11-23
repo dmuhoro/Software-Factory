@@ -1,1 +1,60 @@
 @import "tailwindcss";
+
+:root {
+  --orbit-canvas: #070a12;
+  --orbit-surface: #0d1220;
+  --orbit-surface-raised: #131a2a;
+  --orbit-border: #202b42;
+  --orbit-text: #e8edf7;
+  --orbit-muted: #8d9ab3;
+  --orbit-primary: #818cf8;
+  --orbit-success: #34d399;
+  --orbit-warning: #fbbf24;
+  --orbit-danger: #fb7185;
+  --orbit-radius: 0.75rem;
+  --orbit-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+html {
+  background: var(--orbit-canvas);
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: var(--orbit-canvas);
+  color: var(--orbit-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+textarea,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  transition: transform 160ms var(--orbit-ease-out), border-color 160ms var(--orbit-ease-out), background-color 160ms var(--orbit-ease-out), color 160ms var(--orbit-ease-out);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+:focus-visible {
+  outline: 2px solid var(--orbit-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
